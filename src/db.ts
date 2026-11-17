@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 import type { DistributiveOmit, GameEvent } from './domain/types'
+import { now } from './now'
 
 export type StoredEvent = GameEvent & { pending: 1 | 0; seq?: number }
 
@@ -30,7 +31,7 @@ async function getDeviceId(): Promise<string> {
 
 export async function appendEvent(e: DistributiveOmit<GameEvent, 'id' | 'ts' | 'deviceId'>): Promise<void> {
   const deviceId = await getDeviceId()
-  await db.events.add({ ...e, id: crypto.randomUUID(), ts: Date.now(), deviceId, pending: 1 } as StoredEvent)
+  await db.events.add({ ...e, id: crypto.randomUUID(), ts: now(), deviceId, pending: 1 } as StoredEvent)
 }
 
 export function initStorage(): void {

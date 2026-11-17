@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, getSetting } from './db'
 import { replay } from './domain/replay'
+import { now as clock } from './now'
 import type { GameEvent, GameState } from './domain/types'
 
 export function useGame(): GameState | undefined {
-  const [now, setNow] = useState(() => Date.now())
+  const [now, setNow] = useState(() => clock())
   useEffect(() => {
-    const tick = () => setNow(Date.now())
+    const tick = () => setNow(clock())
     const onVis = () => document.visibilityState === 'visible' && tick()
     document.addEventListener('visibilitychange', onVis)
     const t = setInterval(tick, 60_000)
