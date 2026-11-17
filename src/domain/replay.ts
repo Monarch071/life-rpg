@@ -350,7 +350,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   const a = interview?.analysis;
   const character: GameState['character'] = interview && {
     archetype: a?.archetype ?? className, summary: a?.summary ?? '', strengths: a?.strengths ?? [], weaknesses: a?.weaknesses ?? [],
-    focus: a?.focus ?? [], questGuidance: a?.questGuidance ?? '', date: interview.date,
+    focus: a?.focus ?? [], questGuidance: a?.questGuidance ?? '', date: interview.date, ai: !!a,
   };
 
   return {

@@ -67,7 +67,7 @@ export interface GameState {
            metrics: Partial<Record<Metric, number>>; checkedIn: boolean; lastEnergy: number|null;
            busyUntil: HHMM|null; aiNote: string|null; calendar: { title: string; start: HHMM; end: HHMM }[];
            shadowMetrics: { metric: Metric; you: number|null; target: number; lowerIsBetter: boolean }[] };
-  character: { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; focus: string[]; questGuidance: string; date: ISODate } | null;   // по последней валидной анкете
+  character: { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; focus: string[]; questGuidance: string; date: ISODate; ai: boolean } | null;   // по последней валидной анкете
   interviewAnswers: Answers | null;   // последние ответы анкеты (для промпта заданий)
   lastHealth: { ts: number; date: ISODate; health: HealthData } | null;
   skills: { unlocked: string[]; points: number };   // points = доступно сейчас

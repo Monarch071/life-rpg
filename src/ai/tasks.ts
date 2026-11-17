@@ -20,9 +20,10 @@ export const KEY_ANSWERS: [string, string][] = [['weight', 'Вес, кг'], ['we
 function portrait(state: GameState): string[] {
   const c = state.character
   if (!c) return []
+  if (!c.ai) return ['Портрет героя:', `Архетип: ${c.archetype}`] // без согласия на анализ ИИ ответы анкеты не уходят
   const a = state.interviewAnswers ?? {}
   const key = KEY_ANSWERS.filter(([id]) => a[id] !== undefined && a[id] !== '' && !(Array.isArray(a[id]) && !(a[id] as string[]).length))
-    .map(([id, label]) => `${label}: ${Array.isArray(a[id]) ? (a[id] as string[]).join(', ') : a[id]}`)
+    .map(([id, label]) => `${label}: ${(Array.isArray(a[id]) ? (a[id] as string[]).join(', ') : String(a[id])).slice(0, 150)}`)
   return ['Портрет героя:', `Архетип: ${c.archetype}`, `О герое: ${c.summary}`, `Зоны роста: ${c.focus.join('; ')}`, `Как давать задания: ${c.questGuidance}`,
     ...(key.length ? [`Ключевые ответы: ${key.join('; ')}`] : [])]
 }

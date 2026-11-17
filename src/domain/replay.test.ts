@@ -618,7 +618,7 @@ test('анкета поднимает характеристики, но не о
   const analysis = { archetype: 'Мечтатель', summary: 'Итог', strengths: ['а'], weaknesses: ['б'], stats: { ...STATS7, str: 12 }, focus: ['сон'], questGuidance: 'мягко' };
   const s = replay([ev({ type: 'onboarding_completed', profile: profile(4) }), interview({ answers: { goal: 'x', n: 3 }, analysis })], NOW);
   expect(s.stats.str).toBe(12); expect(s.stats.end).toBe(8); expect(s.stats.spi).toBe(11); // max(8, …): не опускает
-  expect(s.character).toMatchObject({ archetype: 'Мечтатель', summary: 'Итог', focus: ['сон'], questGuidance: 'мягко', date: '2026-11-17' });
+  expect(s.character).toMatchObject({ archetype: 'Мечтатель', summary: 'Итог', focus: ['сон'], questGuidance: 'мягко', date: '2026-11-17', ai: true });
   expect(s.interviewAnswers).toEqual({ goal: 'x', n: 3 });
 });
 
@@ -626,7 +626,7 @@ test('невалидный analysis → ruleStats; повреждённые answ
   const bad = { archetype: 'Х', summary: 'с', strengths: [], weaknesses: [], stats: { ...STATS7, str: 99 }, focus: [], questGuidance: '' };
   const s = replay([interview({ answers: { pushups: 50, pullups: 15, plank: 240, evil: {}, nan: NaN }, analysis: bad })], NOW);
   expect(s.stats.str).toBeGreaterThanOrEqual(14); expect(s.stats.str).toBeLessThanOrEqual(20);
-  expect(s.character!.archetype).toBe(s.className); expect(s.character!.strengths).toEqual([]);
+  expect(s.character!.archetype).toBe(s.className); expect(s.character!.strengths).toEqual([]); expect(s.character!.ai).toBe(false);
   expect(s.interviewAnswers).toEqual({ pushups: 50, pullups: 15, plank: 240 });
   expect(() => replay([interview({ answers: 'мусор', analysis: 5 }), interview({ answers: null, analysis: null })], NOW)).not.toThrow();
 });

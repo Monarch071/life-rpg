@@ -1,7 +1,8 @@
 import { QUESTIONS, SECTIONS, cleanAnswers, type Answers, type SectionId } from '../domain/interview'
 
 export type QA = { q: string; a: string }
-export interface Draft { answers: Answers; idx: number; followups: QA[]; asked: SectionId[] }
+/** aiFollow: согласие на уточнения ИИ (undefined — ещё не спрашивали). */
+export interface Draft { answers: Answers; idx: number; followups: QA[]; asked: SectionId[]; aiFollow?: boolean }
 export const TOTAL = QUESTIONS.length
 
 /** Черновик из настроек (недоверенные данные). idx 0..TOTAL, где TOTAL — все вопросы пройдены. */
@@ -15,6 +16,7 @@ export function parseDraft(x: unknown): Draft | null {
     followups: Array.isArray(d.followups)
       ? d.followups.filter((f): f is QA => !!f && typeof f.q === 'string' && typeof f.a === 'string').slice(0, 3 * SECTIONS.length) : [],
     asked: Array.isArray(d.asked) ? d.asked.filter((s): s is SectionId => ids.has(s)) : [],
+    ...(typeof d.aiFollow === 'boolean' ? { aiFollow: d.aiFollow } : {}),
   }
 }
 

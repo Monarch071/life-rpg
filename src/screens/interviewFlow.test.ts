@@ -10,6 +10,9 @@ test('parseDraft: мусор → null, idx ограничен, лишнее от
   expect(parseDraft({ idx: 2.5 })!.idx).toBe(0)
   const d = parseDraft({ idx: 5, answers: { o1: 3, bad: {} }, followups: [{ q: 'a', a: 'b' }, { q: 1 }], asked: ['body', 'nope'] })!
   expect(d).toEqual({ idx: 5, answers: { o1: 3 }, followups: [{ q: 'a', a: 'b' }], asked: ['body'] })
+  expect(d).not.toHaveProperty('aiFollow')
+  expect(parseDraft({ aiFollow: false })!.aiFollow).toBe(false)
+  expect(parseDraft({ aiFollow: 'yes' })).not.toHaveProperty('aiFollow')
 })
 
 test('splitScale: подписи краёв, в т.ч. со скобками внутри', () => {

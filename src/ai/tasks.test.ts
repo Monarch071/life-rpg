@@ -73,11 +73,15 @@ test('validateAiQuests: stat-массив [\x27int\x27] отбрасываетс
 
 test('questContext: портрет героя только при наличии character', () => {
   expect(questContext(state, profile, null, '08:00')).not.toContain('Портрет героя')
-  const withC = { ...state, character: { archetype: 'Тихий стратег', summary: 'Ты спокойный', strengths: [], weaknesses: [], focus: ['Дисциплина'], questGuidance: 'Мягкий темп', date: '2026-11-17' },
+  const withC = { ...state, character: { archetype: 'Тихий стратег', summary: 'Ты спокойный', strengths: [], weaknesses: [], focus: ['Дисциплина'], questGuidance: 'Мягкий темп', date: '2026-11-17', ai: true },
     interviewAnswers: { weight: 80, year_goal: 'Выучить английский', motivators: ['Свобода'] } }
   const t = questContext(withC, profile, null, '08:00')
   expect(t).toContain('Тихий стратег'); expect(t).toContain('Дисциплина'); expect(t).toContain('Мягкий темп')
   expect(t).toContain('Вес, кг: 80'); expect(t).toContain('Свобода')
+  const long = questContext({ ...withC, interviewAnswers: { year_goal: 'я'.repeat(400) } }, profile, null, '08:00')
+  expect(long).toContain('я'.repeat(150)); expect(long).not.toContain('я'.repeat(151))
+  const rules = questContext({ ...withC, character: { ...withC.character, ai: false } }, profile, null, '08:00')
+  expect(rules).toContain('Тихий стратег'); expect(rules).not.toContain('Ключевые ответы'); expect(rules).not.toContain('Мягкий темп'); expect(rules).not.toContain('Вес, кг')
 })
 
 test('KEY_ANSWERS ссылаются на существующие вопросы анкеты', async () => {

@@ -74,6 +74,8 @@ export default function Character({ state, go, interview }: { state: GameState; 
   const img = useBlobUrl(imageNameFor(state.avatarImages, state.tier))
   const [chart, setChart] = useState(true)
   const prev = state.statHistory.length ? state.statHistory[Math.max(0, state.statHistory.length - 7)].stats : null
+  // контур «неделю назад» — только когда есть история и он отличается от текущего
+  const radarPrev = prev && state.statHistory.length >= 2 && (Object.keys(STATS) as Stat[]).some(k => prev[k] !== state.stats[k]) ? prev : null
   return (
     <div className="home stack">
       <section className="hero">
@@ -96,8 +98,8 @@ export default function Character({ state, go, interview }: { state: GameState; 
           </div>
         </div>
         {chart ? <>
-          <StatRadar stats={state.stats} prev={prev} />
-          {prev && <p className="muted center radar-key"><i /> неделю назад</p>}
+          <StatRadar stats={state.stats} prev={radarPrev} />
+          {radarPrev && <p className="muted center radar-key"><i /> неделю назад</p>}
         </> : (Object.keys(STATS) as Stat[]).map(s => {
           const pts = state.statPoints[s] % 10
           const m = state.multipliers[s]

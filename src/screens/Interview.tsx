@@ -127,20 +127,21 @@ export default function Interview({ state, onClose }: { state: GameState; onClos
 
   // Enter → «Далее» (кроме textarea и кнопок навигации)
   const nextRef = useRef(() => {})
+  const escRef = useRef(() => {})
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
-      if (e.key === 'Escape') return onClose()
+      if (e.key === 'Escape') return escRef.current()
       if (e.key !== 'Enter' || e.shiftKey || t.tagName === 'TEXTAREA' || t.closest('.onb-nav, .ivw-top, .sheet, .lvlup')) return
       e.preventDefault(); nextRef.current()
     }
     document.addEventListener('keydown', h)
     return () => document.removeEventListener('keydown', h)
-  }, [onClose])
+  }, [])
 
   if (!d) return <div className="ivw" />
   const q = QUESTIONS[Math.min(d.idx, TOTAL - 1)]
-  const si = secIdx(d.idx)
+  const si = secIdx(phase.k === 'fu' || phase.k === 'think' ? d.idx - 1 : d.idx) // уточнения — про только что пройденный раздел
   const sec = SECTIONS[si]
   const SecIcon = ICONS[sec.icon] ?? Sparkles
   const fu = phase.k === 'fu' ? phase.list[phase.i] : null
@@ -151,7 +152,7 @@ export default function Interview({ state, onClose }: { state: GameState; onClos
   // после раздела — уточнения ИИ (один раз на раздел), ошибка — тихо дальше
   const afterSection = async (nd: Draft) => {
     const s = QUESTIONS[nd.idx - 1].section
-    if (!cfg || nd.asked.includes(s) || (nd.idx < TOTAL && QUESTIONS[nd.idx].section === s)) return goTo(nd, true)
+    if (!cfg || !nd.aiFollow || nd.asked.includes(s) || (nd.idx < TOTAL && QUESTIONS[nd.idx].section === s)) return goTo(nd, true)
     const withAsk = { ...nd, asked: [...nd.asked, s] }
     save(withAsk); setPhase({ k: 'think' })
     const list = await withTimeout(aiFollowups(cfg, s, nd.answers), 20_000).catch(() => [] as Followup[])
@@ -190,7 +191,14 @@ export default function Interview({ state, onClose }: { state: GameState; onClos
     } finally { busy.current = false }
   }
 
-  nextRef.current = next
+  // закрыть: сначала сохранить недописанный ответ текущего вопроса
+  const close = () => {
+    if (phase.k === 'q' && !empty(ans) && validAnswer(q, ans)) void setSetting(DRAFT, { ...d, answers: { ...d.answers, [q.id]: ans! } }).catch(() => {})
+    onClose()
+  }
+  const consent = !!cfg && d.aiFollow === undefined && phase.k !== 'reveal'
+  nextRef.current = () => { if (!consent && phase.k !== 'confirm') next() }
+  escRef.current = () => (phase.k === 'confirm' ? setPhase({ k: 'end' }) : consent ? undefined : close())
 
   if (phase.k === 'reveal') {
     const c = state.character
@@ -218,7 +226,7 @@ export default function Interview({ state, onClose }: { state: GameState; onClos
       <small>Раздел {si + 1} из {SECTIONS.length}</small>
       <h2>{sec.title}</h2>
       <p>{countIn(si)} вопросов</p>
-      {cfg && <p className="muted note">После раздела ответы уйдут в {PROVIDER_NAMES[cfg.provider]}, чтобы ИИ задал уточняющие вопросы.</p>}
+      {cfg && d.aiFollow && <p className="muted note">После раздела ответы уйдут в {PROVIDER_NAMES[cfg.provider]}, чтобы ИИ задал уточняющие вопросы.</p>}
     </div>)
   else if (phase.k === 'think' || phase.k === 'analyze') body = (
     <div className="ivw-intro" role="status">
@@ -250,7 +258,7 @@ export default function Interview({ state, onClose }: { state: GameState; onClos
             <span className="sec-ic" aria-hidden="true"><SecIcon size={18} /></span>
             <b>{sec.title}</b>
             <small>Вопрос {Math.min(pos, TOTAL)} из {TOTAL}</small>
-            <button type="button" className="x" aria-label="Закрыть, ответы сохранятся" onClick={onClose}><X size={20} aria-hidden="true" /></button>
+            <button type="button" className="x" aria-label="Закрыть, ответы сохранятся" onClick={close}><X size={20} aria-hidden="true" /></button>
           </div>
           <div className="ivw-segs" role="progressbar" aria-label="Прогресс анкеты" aria-valuemin={0} aria-valuemax={TOTAL} aria-valuenow={Math.min(d.idx, TOTAL)}>
             {SECTIONS.map((s, i) => {
@@ -269,10 +277,21 @@ export default function Interview({ state, onClose }: { state: GameState; onClos
           <button type="button" className="primary" disabled={!ready || working} onClick={next}>{nextLabel}</button>
         </div>
       </div>
+      {consent && cfg && (
+        <div className="sheet-wrap">
+          <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="ivw-ai">
+            <h2 id="ivw-ai">Использовать ИИ для уточняющих вопросов?</h2>
+            <p className="muted">Твои ответы раздела будут отправляться в {PROVIDER_NAMES[cfg.provider]}.</p>
+            <button className="btn primary big" autoFocus onClick={() => save({ ...d, aiFollow: true })}>Да</button>
+            <button className="btn ghost big" onClick={() => save({ ...d, aiFollow: false })}>Нет</button>
+          </div>
+        </div>
+      )}
       {phase.k === 'confirm' && cfg && (
         <div className="sheet-wrap" onClick={e => e.target === e.currentTarget && setPhase({ k: 'end' })}>
           <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="ivw-cf">
             <h2 id="ivw-cf">Ответы будут отправлены в {PROVIDER_NAMES[cfg.provider]} для анализа. Продолжить?</h2>
+            <p className="muted">Портрет и ключевые ответы (вес, деньги, здоровье) ИИ будет учитывать в ежедневных заданиях.</p>
             <button className="btn primary big" autoFocus onClick={() => void finish(true)}>Отправить</button>
             <button className="btn big" onClick={() => void finish(false)}>Без ИИ — по правилам</button>
             <button className="btn ghost big" onClick={() => setPhase({ k: 'end' })}>Отмена</button>
