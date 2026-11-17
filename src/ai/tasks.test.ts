@@ -62,3 +62,11 @@ test('aiTuning и aiWeeklyReport: ограничивают ответ', async ()
   gen.mockResolvedValueOnce({ text: '' })
   await expect(aiWeeklyReport(cfg, state)).rejects.toBeInstanceOf(AiError)
 })
+
+test('validateAiQuests: stat-массив [\x27int\x27] отбрасывается', async () => {
+  const { validateAiQuests } = await import('./tasks')
+  const q = (stat: unknown, t: string) => ({ title: t, stat, difficulty: 2, minutes: 10, allDay: false, why: '' })
+  const ctx = { date: '2026-11-17', multipliers: { str: 1, end: 1, int: 1, dis: 1, cha: 1, fin: 1, spi: 1 }, windows: [{ start: '10:00', end: '22:00' }], energy: { morning: 3, day: 3, evening: 3, night: 3 }, wakeAt: '10:00' }
+  const r = validateAiQuests({ quests: [q(['int'], 'Читать 10 страниц'), q('int', 'Прочитать статью'), q('str', 'Отжаться 20 раз'), q('spi', 'Медитация 5 минут')] }, ctx as any)
+  expect(r.map(x => x.stat)).toEqual(['int', 'str', 'spi'])
+})

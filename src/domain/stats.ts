@@ -33,3 +33,6 @@ export function classFor(stats: Record<Stat, number>): string {
 }
 
 export const tierFor = (level: number): 1|2|3|4 => (level >= 30 ? 4 : level >= 15 ? 3 : level >= 5 ? 2 : 1);
+
+/** Проверка характеристики из недоверенных данных: только строка‑ключ STATS (hasOwn приводит массив ['int'] к 'int'). */
+export const isStat = (x: unknown): x is Stat => typeof x === 'string' && Object.hasOwn(STATS, x);

@@ -3,7 +3,7 @@ import { addDays, gameDate, weekStart } from './day';
 import { adjustMultipliers } from './difficulty';
 import { shadowXpForDay } from './shadow';
 import { SKILLS, skillEffects } from './skills';
-import { classFor, initialStats, STATS, tierFor } from './stats';
+import { classFor, initialStats, isStat, STATS, tierFor } from './stats';
 import type { AvatarParams, Boss, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, Metric, Profile, Quest, Stat, WeeklyQuest } from './types';
 import { weakestStat } from './weekly';
 import { currencyFor, levelFromXp } from './xp';
@@ -15,7 +15,7 @@ const STAT_KEYS = Object.keys(STATS) as Stat[];
 const fill = (n: number) => Object.fromEntries(STAT_KEYS.map(s => [s, n])) as Record<Stat, number>;
 const WEEKLY_KINDS = ['active_days', 'stat_quests', 'steps_total', 'shadow_wins'];
 const validWeekly = (w: any): w is WeeklyQuest => !!w && typeof w.id === 'string' && typeof w.title === 'string' && w.title.length >= 1 && w.title.length <= 120 && WEEKLY_KINDS.includes(w.kind)
-  && Number.isFinite(w.target) && w.target > 0 && w.target <= 10_000_000 && Number.isFinite(w.xp) && (w.stat === null || Object.hasOwn(STATS, w.stat));
+  && Number.isFinite(w.target) && w.target > 0 && w.target <= 10_000_000 && Number.isFinite(w.xp) && (w.stat === null || isStat(w.stat));
 const validStages = (st: unknown): st is string[] => Array.isArray(st) && st.length >= 2 && st.length <= 8
   && st.every(x => typeof x === 'string' && x.trim().length > 0 && x.trim().length <= 80);
 const sum = (qs: DoneQuest[]) => qs.reduce((a, q) => a + q.xp, 0);
@@ -93,7 +93,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
         if (issued.has(e.date)) break; // побеждает первый
         if (!Array.isArray(e.quests)) break;
         const qs = e.quests.filter((q: any) => !!q && typeof q === 'object' && typeof q.id === 'string' && typeof q.title === 'string'
-          && Object.hasOwn(STATS, q.stat) && Number.isFinite(q.xp)).map(q => ({ ...q, done: false }));
+          && isStat(q.stat) && Number.isFinite(q.xp)).map(q => ({ ...q, done: false }));
         issued.set(e.date, qs);
         for (const q of qs) questById.set(q.id, q);
         break;
@@ -220,7 +220,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
     finalized.push(qs.map(q => ({ stat: q.stat, done: q.done })));
     multipliers = adjustMultipliers(multipliers, finalized.slice(-7).flat());
     for (const [s, f] of Object.entries(tunings.get(d)?.factors ?? {}))
-      if (Object.hasOwn(STATS, s) && typeof f === 'number' && Number.isFinite(f))
+      if (isStat(s) && typeof f === 'number' && Number.isFinite(f))
         multipliers[s as Stat] = Math.min(3, Math.max(0.5, multipliers[s as Stat] * Math.min(1.1, Math.max(0.9, f))));
   }
 
@@ -229,7 +229,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   for (const e of bossEvents) {
     if (e.type === 'boss_created') {
       const title = typeof e.title === 'string' ? e.title.trim() : '';
-      if (!bossMap.has(e.bossId) && title.length > 0 && title.length <= 80 && Object.hasOwn(STATS, e.stat) && validStages(e.stages))
+      if (!bossMap.has(e.bossId) && title.length > 0 && title.length <= 80 && isStat(e.stat) && validStages(e.stages))
         bossMap.set(e.bossId, { id: e.bossId, title, stat: e.stat, stages: e.stages.map(x => x.trim()), done: 0, defeated: false, abandoned: false });
       continue;
     }

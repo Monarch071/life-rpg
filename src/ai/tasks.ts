@@ -1,6 +1,6 @@
 import { addDays } from '../domain/day'
 import { freeWindows, placeQuests, type Win } from '../domain/schedule'
-import { STATS } from '../domain/stats'
+import { isStat, STATS } from '../domain/stats'
 import type { GameState, HHMM, ISODate, Profile, Quest, Stat } from '../domain/types'
 import { weakestStat } from '../domain/weekly'
 import { questXp } from '../domain/xp'
@@ -44,7 +44,7 @@ export function validateAiQuests(raw: unknown, ctx: { date: ISODate; multipliers
     if (ok.length >= 7) break
     const title = typeof r?.title === 'string' ? r.title.trim() : ''
     const allDay = r?.allDay === true
-    if (title.length < 3 || title.length > 80 || !Object.hasOwn(STATS, r.stat)) continue
+    if (title.length < 3 || title.length > 80 || !isStat(r.stat)) continue
     if (!Number.isInteger(r.difficulty) || r.difficulty < 1 || r.difficulty > 5) continue
     if (!allDay && (!Number.isInteger(r.minutes) || r.minutes < 5 || r.minutes > 120)) continue
     const key = title.toLowerCase()
