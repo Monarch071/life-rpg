@@ -1,10 +1,15 @@
 import { useState } from 'react'
+import { useGame } from './useGame'
+import Onboarding from './screens/Onboarding'
 
 const TABS = ['Главная', 'Персонаж', 'Настройки'] as const
 type Tab = (typeof TABS)[number]
 
 export default function App() {
+  const state = useGame()
   const [tab, setTab] = useState<Tab>('Главная')
+  if (!state) return <div className="app"><p className="loading">Загрузка…</p></div>
+  if (state.profile === null) return <Onboarding />
   return (
     <div className="app">
       <main className="content">
