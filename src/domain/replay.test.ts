@@ -515,3 +515,29 @@ test('производительность: 120 дней по 5 заданий',
   const t = performance.now(); replay(evs, NOW);
   expect(performance.now() - t).toBeLessThan(200);
 });
+
+test('магазин: после первой покупки можно потратить ровно показанный баланс; покупка не пропадает позже', () => {
+  const earn = bigDay(1050, '2026-11-10');
+  const mkR = (id: string, price: number, h: number) => ev({ type: 'reward_created', rewardId: id, title: id, price, ts: at('2026-11-15', h) });
+  const buy = (id: string, h: number) => ev({ type: 'reward_purchased', rewardId: id, ts: at('2026-11-15', h) });
+  const first = replay([...earn, mkR('a', 10, 9), buy('a', 10)], NOW);
+  const c = first.currency;
+  expect(c).toBeGreaterThan(0);
+  const s = replay([...earn, mkR('a', 10, 9), buy('a', 10), mkR('b', c, 11), buy('b', 12)], NOW);
+  expect(s.purchases).toHaveLength(2); expect(s.currency).toBe(0);
+  expect(replay([...earn, mkR('a', 10, 9), buy('a', 10), mkR('b', c + 1, 11), buy('b', 12)], NOW).purchases).toHaveLength(1);
+  expect(replay([...earn, mkR('a', 10, 9), buy('a', 10)], at('2026-11-30')).purchases).toHaveLength(1);
+});
+
+test('weekly: title не строка — квест отбрасывается', () => {
+  const bad = { ...wq('active_days', 2), title: { x: 1 } };
+  expect(replay([weekly([bad])], NOW).weekly.quests).toEqual([]);
+  expect(replay([weekly([{ ...wq('active_days', 2), title: '' }])], NOW).weekly.quests).toEqual([]);
+  expect(replay([weekly([wq('active_days', 2)])], NOW).weekly.quests.every(x => typeof x.title === 'string')).toBe(true);
+});
+
+test('quests_issued: не массив и мусорные записи не ломают replay', () => {
+  expect(() => replay([ev({ type: 'quests_issued', date: '2026-11-17', quests: null })], NOW)).not.toThrow();
+  const s = replay([ev({ type: 'quests_issued', date: '2026-11-17', quests: [null, 5, { id: 'x' }, q('ok', '2026-11-17', 10)] })], NOW);
+  expect(s.today.quests.map(x => x.id)).toEqual(['ok']);
+});

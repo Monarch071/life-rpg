@@ -62,7 +62,7 @@ test('плохой cutoffHour → ok:false, данные не тронуты', a
 
 test('событие, ломающее replay → ok:false, данные не тронуты', async () => {
   await appendEvent(ev)
-  const bad = { id: 'b', ts: 2, deviceId: 'd', type: 'quests_issued', date: '2026-11-17', quests: null }
+  const bad = { id: 'b', ts: 2, deviceId: 'd', type: 'onboarding_completed', profile: null }
   const r = await importData(file({ events: [good, bad] }))
   expect(r).toEqual({ ok: false, error: 'Файл повреждён: не удалось восстановить игру' })
   expect(await db.events.count()).toBe(1)

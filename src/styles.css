@@ -154,8 +154,8 @@ body {
 .analytics .scale, .analytics .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .analytics .scale .btn, .analytics .chips .btn, .analytics > .btn { min-height: 44px; }
 .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.card { display: flex; flex-direction: column; gap: 4px; }
-.card b { font-size: 1.4rem; }
+.cards .card { display: flex; flex-direction: column; gap: 4px; }
+.cards .card b { font-size: 1.4rem; }
 .chart { margin: 8px 0 0; }
 .chart svg { display: block; max-width: 100%; }
 .chart-axis { display: flex; justify-content: space-between; font-size: 0.75rem; opacity: 0.7; }

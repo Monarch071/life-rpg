@@ -14,7 +14,7 @@ type DoneQuest = Quest & { done: boolean };
 const STAT_KEYS = Object.keys(STATS) as Stat[];
 const fill = (n: number) => Object.fromEntries(STAT_KEYS.map(s => [s, n])) as Record<Stat, number>;
 const WEEKLY_KINDS = ['active_days', 'stat_quests', 'steps_total', 'shadow_wins'];
-const validWeekly = (w: any): w is WeeklyQuest => !!w && typeof w.id === 'string' && WEEKLY_KINDS.includes(w.kind)
+const validWeekly = (w: any): w is WeeklyQuest => !!w && typeof w.id === 'string' && typeof w.title === 'string' && w.title.length >= 1 && w.title.length <= 120 && WEEKLY_KINDS.includes(w.kind)
   && Number.isFinite(w.target) && w.target > 0 && w.target <= 10_000_000 && Number.isFinite(w.xp) && (w.stat === null || Object.hasOwn(STATS, w.stat));
 const validStages = (st: unknown): st is string[] => Array.isArray(st) && st.length >= 2 && st.length <= 8
   && st.every(x => typeof x === 'string' && x.trim().length > 0 && x.trim().length <= 80);
@@ -88,7 +88,9 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
       case 'avatar_updated': avatar = e.params; break;
       case 'quests_issued': {
         if (issued.has(e.date)) break; // побеждает первый
-        const qs = e.quests.map(q => ({ ...q, done: false }));
+        if (!Array.isArray(e.quests)) break;
+        const qs = e.quests.filter((q: any) => !!q && typeof q === 'object' && typeof q.id === 'string' && typeof q.title === 'string'
+          && Object.hasOwn(STATS, q.stat) && Number.isFinite(q.xp)).map(q => ({ ...q, done: false }));
         issued.set(e.date, qs);
         for (const q of qs) questById.set(q.id, q);
         break;
@@ -286,7 +288,8 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
       if (e.type === 'reward_deleted') r.deleted = true;
       else {
         const pd = gameDate(e.ts, cutoffHour);
-        const bonus = ACHIEVEMENT_COINS * achs.filter(x => x.date <= pd).length;
+        // весь заработок + монеты first_purchase (если покупка уже была) − потраченное = то, что показывается в currency
+        const bonus = ACHIEVEMENT_COINS * (achs.length + (purchases.length ? 1 : 0));
         if (currency + bonus - coinsSpent >= r.price) { coinsSpent += r.price; purchases.push({ rewardId: r.id, title: r.title, price: r.price, ts: e.ts }); bump(pd, 'purchases'); }
       }
     }
