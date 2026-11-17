@@ -6,6 +6,7 @@ import { saveBackup } from '../ui/saveFile'
 import { useDialog } from '../ui/useDialog'
 import type { GameState } from '../domain/types'
 import type { SyncState } from '../useSync'
+import AiPanel from './AiPanel'
 import SyncPanel from './SyncPanel'
 
 function Confirm({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
@@ -73,10 +74,9 @@ export default function Settings({ state, sync }: { state: GameState; sync: Sync
         </label>
       </section>
       <SyncPanel state={state} sync={sync} />
+      <AiPanel />
       <section className="panel stack">
-        {['ИИ — этап 4', 'Уведомления — этап 5'].map(t => (
-          <button key={t} className="btn ghost" disabled>{t}</button>
-        ))}
+        <button className="btn ghost" disabled>Уведомления — этап 5</button>
       </section>
       <p className="muted center">Версия {__APP_VERSION__}</p>
       {file && <Confirm onYes={doImport} onNo={reset} />}
