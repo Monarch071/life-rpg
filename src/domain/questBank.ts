@@ -28,11 +28,11 @@ const H = (id: string, badHabit: string, stat: Stat, title: string): QuestTempla
 
 export const QUEST_TEMPLATES: QuestTemplate[] = [
   // Сила
-  T('pushups', 'str', 2, 20, 'раз', 'Отжаться', 0.3, { physical: true }),
-  T('squats', 'str', 2, 30, 'раз', 'Присесть', 0.25, { physical: true }),
+  T('pushups', 'str', 2, 20, ['раз', 'раза', 'раз'], 'Отжаться', 0.3, { physical: true }),
+  T('squats', 'str', 2, 30, ['раз', 'раза', 'раз'], 'Присесть', 0.25, { physical: true }),
   T('plank', 'str', 3, 60, 'сек', 'Простоять в планке', 0.1, { physical: true }),
-  T('abs', 'str', 2, 25, 'раз', 'Пресс:', 0.25, { physical: true }),
-  T('pullups', 'str', 4, 8, 'раз', 'Подтянуться', 1, { physical: true }),
+  T('abs', 'str', 2, 25, ['раз', 'раза', 'раз'], 'Пресс:', 0.25, { physical: true }),
+  T('pullups', 'str', 4, 8, ['раз', 'раза', 'раз'], 'Подтянуться', 1, { physical: true }),
   T('workout', 'str', 4, 30, 'мин', 'Силовая тренировка', 1, { physical: true }),
   // Выносливость
   { id: 'steps', stat: 'end', difficulty: 2, base: 6000, unit: 'шагов', title: n => `Пройти ${n} ${plural(n, 'шаг', 'шага', 'шагов')}`, minutes: () => 0,
@@ -40,7 +40,7 @@ export const QUEST_TEMPLATES: QuestTemplate[] = [
   T('run', 'end', 3, 20, 'мин', 'Пробежка', 1, { physical: true }),
   T('walk', 'end', 1, 30, 'мин', 'Прогулка', 1, { physical: true }),
   T('cardio', 'end', 3, 20, 'мин', 'Кардио', 1, { physical: true }),
-  T('rope', 'end', 3, 100, 'раз', 'Скакалка', 0.1, { physical: true }),
+  T('rope', 'end', 3, 100, ['раз', 'раза', 'раз'], 'Скакалка', 0.1, { physical: true }),
   T('bike', 'end', 3, 30, 'мин', 'Велосипед', 1, { physical: true }),
   T('stairs', 'end', 2, 10, ['этаж', 'этажа', 'этажей'], 'Подняться пешком на', 0.5, { physical: true }),
   // Интеллект

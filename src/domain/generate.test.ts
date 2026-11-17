@@ -90,6 +90,7 @@ describe('склонение', () => {
     const t = (id: string) => QUEST_TEMPLATES.find(x => x.id === id)!;
     expect([1, 2, 5].map(n => t('article').title(n))).toEqual(['Прочитать 1 статью', 'Прочитать 2 статьи', 'Прочитать 5 статей']);
     expect([1, 2, 5].map(n => t('compliments').title(n))).toEqual(['Сделать 1 комплимент', 'Сделать 2 комплимента', 'Сделать 5 комплиментов']);
+    expect([1, 2, 5].map(n => t('pushups').title(n))).toEqual(['Отжаться 1 раз', 'Отжаться 2 раза', 'Отжаться 5 раз']);
     expect(t('call').title(2)).toBe('Позвонить 2 близким');
   });
 });
