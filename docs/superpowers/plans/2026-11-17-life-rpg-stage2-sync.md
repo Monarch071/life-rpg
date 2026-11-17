@@ -229,7 +229,7 @@ describe('parseSyncPayload', () => {
   ```
   `src/useGame.ts`: `export async function loadState(): Promise<GameState>` (события + cutoffHour → `replay(…, now(), cutoff)`); `useGame` переиспользует ту же логику преобразования.
 - Алгоритм `syncNow`:
-  1. **Push:** `pending=1` события по `ts`, пачками по 100; поля `pending`/`seq` не отправлять; после `200` пометить `pending=0` **только отправленные id** (одна транзакция). Ошибка → остановиться, вернуть ошибку; неотправленное остаётся `pending`.
+  1. **Push:** `pending=1` события по `ts`, пачками по 40 (лимит запросов D1 на бесплатном тарифе); поля `pending`/`seq` не отправлять; после `200` пометить `pending=0` **только отправленные id** (одна транзакция). Ошибка → остановиться, вернуть ошибку; неотправленное остаётся `pending`.
   2. **Pull:** цикл `GET /events?since=<syncCursor>` пока `more`; каждую страницу в одной транзакции `bulkPut({...e, pending:0})` + `syncCursor = next`.
   3. `lastSyncAt = now()`.
   - URL: убирать хвостовой `/`. Заголовки: `Authorization: Bearer <token>`, `content-type: application/json`. Таймаут запроса 15 с (`AbortSignal.timeout`).
@@ -238,7 +238,7 @@ describe('parseSyncPayload', () => {
 - [ ] **Step 1: Write the failing tests** (`src/sync.test.ts`, `fake-indexeddb/auto` как в существующих тестах БД; `fetch` подменять `vi.stubGlobal` фейковым сервером в памяти, повторяющим контракт Task 2 — можно переиспользовать `handle` + `MemoryStore` из `worker/src`, вызывая `handle(new Request(url, init), store, [])`):
   - `enableSync` → токен 43 символа сохранён, событие из `appendEvent` после `syncNow` → на сервере, локально `pending===0`, `seq` выставлен.
   - Два «устройства» (очистить локальную БД и `joinSync` тем же токеном) → второе получает все события первого; `loadState()` даёт тот же `profile`.
-  - Review Focus 2: fetch падает на второй пачке push (250 pending событий) → первые 100 `pending=0`, остальные `1`; повторный `syncNow` досылает, на сервере ровно 250.
+  - Review Focus 2: fetch падает на второй пачке push (250 pending событий) → первые 40 `pending=0`, остальные `1`; повторный `syncNow` досылает, на сервере ровно 250.
   - Review Focus 5: на сервере 2500 событий → после `joinSync` локально 2500, `syncCursor === 2500`.
   - Review Focus 4: сервер отвечает 401 → `{ok:false, error:'Неверный токен — войди заново'}`, локальные события не удалены.
   - single‑flight: два параллельных `syncNow()` → один и тот же промис (`toBe`).
