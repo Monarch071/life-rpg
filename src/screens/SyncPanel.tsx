@@ -19,6 +19,19 @@ function ConfirmRotate({ onYes, onNo }: { onYes: () => void; onNo: () => void })
   )
 }
 
+function ConfirmOff({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
+  const dlg = useDialog<HTMLDivElement>(onNo)
+  return (
+    <div className="sheet-wrap" onClick={(e) => e.target === e.currentTarget && onNo()}>
+      <div className="sheet" ref={dlg} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="off-title">
+        <h2 id="off-title">Сначала сохрани токен (например, в Заметки) — без него не получится подключиться снова. Отключить синхронизацию на этом устройстве?</h2>
+        <button className="btn primary big" onClick={onYes}>Отключить</button>
+        <button className="btn ghost big" onClick={onNo}>Отмена</button>
+      </div>
+    </div>
+  )
+}
+
 const hhmm = (t: number) => new Date(t).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 const ago = (t: number) => {
   const m = Math.max(0, Math.floor((now() - t) / 60_000))
@@ -34,6 +47,7 @@ export default function SyncPanel({ state, sync }: { state: GameState; sync: Syn
   const [show, setShow] = useState(false)
   const [join, setJoin] = useState(false)
   const [rotate, setRotate] = useState(false)
+  const [confirmOff, setConfirmOff] = useState(false)
   const reload = () => getSyncConfig().then(setCfg)
   useEffect(() => { void reload() }, [sync.status])
   const [, tick] = useState(0)
@@ -67,6 +81,7 @@ export default function SyncPanel({ state, sync }: { state: GameState; sync: Syn
     void reload()
   }
   const off = async () => {
+    setConfirmOff(false)
     await disableSync()
     setMsg(null); setManual(null); setShow(false)
     void reload()
@@ -99,11 +114,12 @@ export default function SyncPanel({ state, sync }: { state: GameState; sync: Syn
         </p>
         <button className="btn" onClick={() => copy(loginLink(cfg, location.origin + import.meta.env.BASE_URL), 'Ссылка')}>Ссылка для входа с компьютера</button>
         <button className="btn ghost" onClick={() => setRotate(true)}>Сбросить токен</button>
-        <button className="btn ghost" onClick={off}>Отключить на этом устройстве</button>
+        <button className="btn ghost" onClick={() => setConfirmOff(true)}>Отключить на этом устройстве</button>
       </>)}
       {msg && <p role="status" className={msg.ok ? 'ok' : 'err'}>{msg.text}</p>}
       {manual && <input readOnly aria-label="Текст для ручного копирования" value={manual} onFocus={(e) => e.target.select()} />}
       {join && <JoinSync onDone={done} />}
+      {confirmOff && <ConfirmOff onYes={off} onNo={() => setConfirmOff(false)} />}
       {rotate && <ConfirmRotate onYes={doRotate} onNo={() => setRotate(false)} />}
     </section>
   )

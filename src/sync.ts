@@ -98,10 +98,11 @@ export async function enableSync(url: string): Promise<SyncResult> {
   })
   if (!r.ok) return r
   await settle()
-  await db.transaction('rw', db.settings, async () => {
+  await db.transaction('rw', db.settings, db.events, async () => {
     await setSetting('syncUrl', cfg.url)
     await setSetting('syncToken', cfg.token)
     await setSetting('syncCursor', 0)
+    await db.events.toCollection().modify({ pending: 1 }) // новый/пустой сервер получит всю историю
   })
   return syncNow()
 }
@@ -114,10 +115,11 @@ export async function joinSync(url: string, token: string): Promise<SyncResult> 
   })
   if (!r.ok) return r
   await settle()
-  await db.transaction('rw', db.settings, async () => {
+  await db.transaction('rw', db.settings, db.events, async () => {
     await setSetting('syncUrl', cfg.url)
     await setSetting('syncToken', cfg.token)
     await setSetting('syncCursor', 0)
+    await db.events.toCollection().modify({ pending: 1 }) // новый/пустой сервер получит всю историю
   })
   return syncNow()
 }
@@ -135,6 +137,8 @@ export async function rotateToken(): Promise<SyncResult> {
 }
 
 export async function disableSync(): Promise<void> {
+  const t = await getSetting<string>('syncToken', '')
+  if (t) await setSetting('syncTokenPrev', t)
   await db.settings.bulkDelete(['syncToken', 'syncCursor', 'lastSyncAt'])
 }
 

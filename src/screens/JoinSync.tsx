@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { getSetting } from '../db'
 import { DEFAULT_SYNC_URL, joinSync } from '../sync'
 import { useDialog } from '../ui/useDialog'
 
@@ -10,6 +11,13 @@ export default function JoinSync({ initial, onDone }: { initial?: { url: string;
   const [token, setToken] = useState(initial?.token ?? '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [stored, setStored] = useState('')
+  useEffect(() => {
+    void getSetting<string>('syncUrl', '').then(setStored)
+    if (!initial?.token) void getSetting<string>('syncTokenPrev', '').then((t) => t && setToken((cur) => cur || t))
+  }, [initial])
+  const u = url.trim().replace(/\/+$/, '')
+  const foreign = isHttpUrl(u) && u !== DEFAULT_SYNC_URL.replace(/\/+$/, '') && u !== stored.replace(/\/+$/, '')
   const dlg = useDialog<HTMLDivElement>(() => { if (!busy) onDone() })
 
   const go = async () => {
@@ -29,6 +37,7 @@ export default function JoinSync({ initial, onDone }: { initial?: { url: string;
         <h2 id="join-title">Подключение к синхронизации</h2>
         <label className="field">Адрес сервера<input value={url} inputMode="url" autoCapitalize="off" onChange={(e) => setUrl(e.target.value)} /></label>
         <label className="field">Токен<input value={token} autoCapitalize="off" autoComplete="off" onChange={(e) => setToken(e.target.value)} /></label>
+        {foreign && <p className="err" role="alert">Внимание: это другой сервер. Подключайся, только если ссылку создал ты сам.</p>}
         {err && <p className="err" role="alert">{err}</p>}
         {busy && <p className="muted" role="status">Подключаю…</p>}
         <button className="btn primary big" disabled={busy} onClick={go}>Подключить</button>

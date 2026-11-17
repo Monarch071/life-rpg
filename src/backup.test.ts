@@ -86,3 +86,15 @@ test('lastExportAt — локальная настройка: не экспор�
   expect(r.ok).toBe(true)
   expect(await getSetting('lastExportAt', 0)).toBe(123)
 })
+
+test('импорт сбрасывает syncCursor в 0', async () => {
+  await setSetting('syncCursor', 42)
+  expect((await importData(file({ events: [good] }))).ok).toBe(true)
+  expect(await getSetting('syncCursor', -1)).toBe(0)
+})
+
+test('событие без deviceId отклоняется', async () => {
+  const { deviceId: _d, ...noDev } = good
+  const r = await importData(file({ events: [noDev] }))
+  expect(r).toEqual({ ok: false, error: 'Резервная копия повреждена: некорректные события.' })
+})

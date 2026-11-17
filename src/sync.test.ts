@@ -184,3 +184,14 @@ test('more=true без прогресса курсора не зациклива
   vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ events: [], next: 0, more: true }), { status: 200 }))
   expect((await syncNow()).ok).toBe(true)
 })
+
+test('enableSync на новом сервере повторно отправляет уже синхронизированную историю', async () => {
+  await appendEvent(ev(1))
+  await enableSync(URL_)
+  expect((await db.events.toArray())[0].pending).toBe(0)
+  store = new MemoryStore() // сервер «стёрт»
+  await disableSync()
+  const r = await enableSync(URL_)
+  expect(r).toMatchObject({ ok: true, pushed: 1 })
+  expect(calls.filter((c) => c.path === '/events' && c.body?.events?.length).length).toBeGreaterThan(1)
+})

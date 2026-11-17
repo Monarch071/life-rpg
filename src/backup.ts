@@ -1,4 +1,4 @@
-import { db } from './db'
+import { db, setSetting } from './db'
 import { replay } from './domain/replay'
 import type { GameEvent } from './domain/types'
 
@@ -23,7 +23,7 @@ export async function importData(file: Blob): Promise<{ ok: true; events: number
   if (data.schema !== 1) return { ok: false, error: 'Неподдерживаемая версия резервной копии.' }
   if (
     !Array.isArray(data.events) ||
-    !data.events.every((e: any) => e && typeof e.id === 'string' && typeof e.ts === 'number' && typeof e.type === 'string')
+    !data.events.every((e: any) => e && typeof e.id === 'string' && typeof e.ts === 'number' && typeof e.deviceId === 'string' && typeof e.type === 'string')
   )
     return { ok: false, error: 'Резервная копия повреждена: некорректные события.' }
   const settings = (Array.isArray(data.settings) ? data.settings : []).filter(
@@ -46,6 +46,7 @@ export async function importData(file: Blob): Promise<{ ok: true; events: number
       // replace exportable settings only
       await db.settings.filter((s) => !isLocal(s.key)).delete()
       await db.settings.bulkPut(settings)
+      await setSetting('syncCursor', 0) // следующий sync заново стянет всё с сервера
     })
   } catch {
     return { ok: false, error: 'Не удалось записать данные.' }
