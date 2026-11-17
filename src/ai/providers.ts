@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { AiConfig, AiProvider } from './config'
 
 export type AiErrorKind = 'auth' | 'rate' | 'network' | 'bad_response' | 'refusal' | 'other'
@@ -47,15 +46,20 @@ async function http(url: string, init: RequestInit, ms: number): Promise<any> {
   try { r = await fetch(url, { ...init, signal: AbortSignal.timeout(ms) }) }
   catch { throw new AiError('network', 'network') }
   if (!r.ok) throw new AiError(`HTTP ${r.status}`, r.status === 401 || r.status === 403 ? 'auth' : r.status === 429 ? 'rate' : 'other')
-  try { return await r.json() } catch { throw new AiError('bad json', 'bad_response') }
+  try { return await r.json() } catch (e) { throw new AiError('bad json', e instanceof SyntaxError ? 'bad_response' : 'network') }
 }
 
 const gHeaders = (key: string) => ({ 'x-goog-api-key': key, 'content-type': 'application/json' })
 const oHeaders = (key: string) => ({ authorization: `Bearer ${key}` })
 
-const claudeClient = (key: string) => new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true })
-function mapSdk(e: unknown): never {
+// SDK грузится лениво: основной бандл без него
+async function claudeClient(key: string) {
+  const { default: Anthropic } = await import('@anthropic-ai/sdk')
+  return new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true, maxRetries: 0 })
+}
+async function mapSdk(e: unknown): Promise<never> {
   if (e instanceof AiError) throw e
+  const { default: Anthropic } = await import('@anthropic-ai/sdk')
   if (e instanceof Anthropic.AuthenticationError) throw new AiError('auth', 'auth')
   if (e instanceof Anthropic.RateLimitError) throw new AiError('rate', 'rate')
   if (e instanceof Anthropic.APIConnectionError) throw new AiError('network', 'network')
@@ -68,8 +72,9 @@ export async function listModels(provider: AiProvider, key: string): Promise<{ t
     const text: string[] = [], image: string[] = []
     for (const m of d?.models ?? []) {
       const id = String(m.name ?? '').replace(/^models\//, '')
-      if (id.includes('image')) image.push(id)
-      else if ((m.supportedGenerationMethods ?? []).includes('generateContent') && !/embedding|tts|audio/.test(id)) text.push(id)
+      if (!(m.supportedGenerationMethods ?? []).includes('generateContent')) continue
+      if (/-image/.test(id)) image.push(id)
+      else if (!/image|embedding|tts|audio/.test(id)) text.push(id)
     }
     return { text, image }
   }
@@ -78,14 +83,14 @@ export async function listModels(provider: AiProvider, key: string): Promise<{ t
     const ids: string[] = (d?.data ?? []).map((m: { id: string }) => m.id)
     return {
       image: ids.filter((id) => id.startsWith('gpt-image')),
-      text: ids.filter((id) => /^(gpt-|o)/.test(id) && !/image|audio|realtime|tts|transcribe|embedding/.test(id)),
+      text: ids.filter((id) => /^(gpt-|o\d)/.test(id) && !/instruct|moderation|image|audio|realtime|tts|transcribe|embedding|search/.test(id)),
     }
   }
   try {
     const text: string[] = []
-    for await (const m of claudeClient(key).models.list()) text.push(m.id)
+    for await (const m of (await claudeClient(key)).models.list()) text.push(m.id)
     return { text, image: [] }
-  } catch (e) { return mapSdk(e) }
+  } catch (e) { return await mapSdk(e) }
 }
 
 export async function generateJson(cfg: AiConfig, system: string, user: string, schema: object): Promise<unknown> {
@@ -112,14 +117,14 @@ export async function generateJson(cfg: AiConfig, system: string, user: string, 
     return extractJson(String(d?.choices?.[0]?.message?.content ?? ''))
   }
   try {
-    const r = await claudeClient(cfg.key).messages.create({
+    const r = await (await claudeClient(cfg.key)).messages.create({
       model: cfg.textModel, max_tokens: 16000, system,
       messages: [{ role: 'user', content: user }],
       output_config: { effort: 'low', format: { type: 'json_schema', schema: schema as Record<string, unknown> } },
     }, { timeout: TEXT_MS })
     if (r.stop_reason === 'refusal') throw new AiError('refusal', 'refusal')
     return extractJson(r.content.map((b) => (b.type === 'text' ? b.text : '')).join(''))
-  } catch (e) { return mapSdk(e) }
+  } catch (e) { return await mapSdk(e) }
 }
 
 const b64 = async (b: Blob) => {

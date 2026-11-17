@@ -49,6 +49,7 @@ test('gemini listModels', async () => {
     { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
     { name: 'models/gemini-2.5-flash-image', supportedGenerationMethods: ['generateContent'] },
     { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
+    { name: 'models/imagen-4', supportedGenerationMethods: ['predict'] },
     { name: 'models/gemini-tts', supportedGenerationMethods: ['generateContent'] },
   ] })))
   expect(await listModels('gemini', 'K')).toEqual({ text: ['gemini-2.5-flash'], image: ['gemini-2.5-flash-image'] })
@@ -72,6 +73,11 @@ test('HTTP-ошибки → kind', async () => {
   expect(await kind(generateJson(gem, 's', 'u', {}))).toBe('network')
   expect(aiErrorText(new AiError('x', 'auth'))).toBe('Ключ не подошёл')
   expect(aiErrorText(new Error('x'))).toBe('Ошибка ИИ')
+})
+
+test('таймаут при чтении тела → network', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => { throw new DOMException('t', 'TimeoutError') } })))
+  expect(await kind(generateJson(gem, 's', 'u', {}))).toBe('network')
 })
 
 test('gemini generateImage', async () => {
@@ -102,6 +108,7 @@ test('openai', async () => {
 test('openai listModels', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => json({ data: [
     { id: 'gpt-4o' }, { id: 'gpt-image-1' }, { id: 'o3' }, { id: 'gpt-4o-audio-preview' }, { id: 'whisper-1' },
+    { id: 'omni-moderation-latest' }, { id: 'gpt-3.5-turbo-instruct' }, { id: 'gpt-4o-search-preview' },
   ] })))
   expect(await listModels('openai', 'K')).toEqual({ text: ['gpt-4o', 'o3'], image: ['gpt-image-1'] })
 })

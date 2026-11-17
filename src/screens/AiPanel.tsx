@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { clearAiConfig, getAiConfig, PROVIDER_NAMES, saveAiConfig, type AiConfig, type AiProvider } from '../ai/config'
 import { aiErrorText, listModels } from '../ai/providers'
 import Confirm from '../ui/Confirm'
@@ -17,18 +17,21 @@ export default function AiPanel() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [confirmOff, setConfirmOff] = useState(false)
+  const req = useRef(0) // номер актуального запроса; смена провайдера/ключа его обнуляет
   useEffect(() => { void getAiConfig().then(setCfg) }, [])
 
   const check = async () => {
     if (!key.trim()) return setMsg({ ok: false, text: 'Введи ключ' })
+    const id = ++req.current
     setBusy(true); setMsg(null)
     try {
       const m = await listModels(provider, key.trim())
+      if (id !== req.current) return
       if (!m.text.length) throw new Error('empty')
       setModels(m)
       setText(provider === 'claude' && m.text.includes('claude-opus-5-5') ? 'claude-opus-5-5' : m.text[0])
       setImage(m.image[0] ?? '')
-    } catch (e) { setModels(null); setMsg({ ok: false, text: e instanceof Error && e.message === 'empty' ? 'Список моделей пуст' : aiErrorText(e) }) }
+    } catch (e) { if (id !== req.current) return; setModels(null); setMsg({ ok: false, text: e instanceof Error && e.message === 'empty' ? 'Список моделей пуст' : aiErrorText(e) }) }
     setBusy(false)
   }
   const save = async () => {
@@ -55,13 +58,13 @@ export default function AiPanel() {
         <div className="chips" role="group" aria-label="Провайдер ИИ">
           {PROVIDERS.map((p) => (
             <button key={p} type="button" className={`btn${provider === p ? ' primary' : ''}`} aria-pressed={provider === p}
-              onClick={() => { setProvider(p); setModels(null); setMsg(null) }}>
+              disabled={busy} onClick={() => { req.current++; setProvider(p); setModels(null); setMsg(null) }}>
               {PROVIDER_NAMES[p]}{p === 'gemini' ? ' — бесплатно, рекомендуем' : ''}
             </button>
           ))}
         </div>
         <label className="field">Ключ API
-          <input type="password" autoComplete="off" autoCapitalize="off" value={key} onChange={(e) => { setKey(e.target.value); setModels(null) }} />
+          <input type="password" autoComplete="off" autoCapitalize="off" value={key} onChange={(e) => { req.current++; setBusy(false); setKey(e.target.value); setModels(null) }} />
         </label>
         <p className="muted">Ключ хранится только на этом устройстве и отправляется только в {PROVIDER_NAMES[provider]}.</p>
         <button className="btn big" disabled={busy} onClick={check}>Проверить ключ и загрузить модели</button>
