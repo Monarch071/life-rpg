@@ -23,3 +23,7 @@ npm test
 ## Документация
 
 Инструкция по публикации и установке на iPhone: [docs/stage-1-iphone.md](docs/stage-1-iphone.md)
+
+Синхронизация iPhone и компьютера: [docs/stage-2-sync.md](docs/stage-2-sync.md)
+
+Команда «Life RPG — синк» (шаги, сон, вес из «Здоровья»): [docs/shortcuts.md](docs/shortcuts.md)
