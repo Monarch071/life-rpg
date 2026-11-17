@@ -1,10 +1,11 @@
 import { ACHIEVEMENTS, earnAchievements, type Delta } from './achievements';
 import { addDays, gameDate, weekStart } from './day';
 import { adjustMultipliers } from './difficulty';
+import { cleanAnswers, ruleStats, validAnalysis } from './interview';
 import { shadowXpForDay } from './shadow';
 import { SKILLS, skillEffects } from './skills';
 import { classFor, initialStats, isStat, STATS, tierFor } from './stats';
-import type { AvatarParams, Boss, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, Metric, Profile, Quest, Stat, WeeklyQuest } from './types';
+import type { Analysis, Answers, AvatarParams, Boss, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, Metric, Profile, Quest, Stat, WeeklyQuest } from './types';
 import { weakestStat } from './weekly';
 import { currencyFor, levelFromXp } from './xp';
 
@@ -61,6 +62,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   let profile: Profile | null = null;
   let initial: Record<Stat, number> | null = null; // поэлементный максимум по всем анкетам
   let avatar = DEFAULT_AVATAR;
+  let interview: { answers: Answers; analysis: Analysis | null; date: ISODate } | null = null;
   const avatarImages: GameState['avatarImages'] = {};
   const issued = new Map<ISODate, DoneQuest[]>();
   const questById = new Map<string, DoneQuest>();
@@ -87,6 +89,15 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
         const st = initialStats(e.profile);
         if (initial) for (const k of STAT_KEYS) initial[k] = Math.max(initial[k], st[k]);
         else initial = st;
+        break;
+      }
+      case 'interview_completed': {
+        if (!e.answers || typeof e.answers !== 'object' || Array.isArray(e.answers)) break; // из сети
+        const answers = cleanAnswers(e.answers), analysis = validAnalysis(e.analysis);
+        const st = analysis?.stats ?? ruleStats(answers);
+        if (initial) for (const k of STAT_KEYS) initial[k] = Math.max(initial[k], st[k]);
+        else initial = st;
+        interview = { answers, analysis, date: gameDate(e.ts, cutoffHour) }; // последняя валидная анкета
         break;
       }
       case 'avatar_updated': avatar = e.params; break;
@@ -335,10 +346,17 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   }
   const sleepDate = [...metrics.keys()].filter(d => d <= today && metrics.get(d)!.sleepHours !== undefined).sort().at(-1);
 
+  const className = classFor(stats);
+  const a = interview?.analysis;
+  const character: GameState['character'] = interview && {
+    archetype: a?.archetype ?? className, summary: a?.summary ?? '', strengths: a?.strengths ?? [], weaknesses: a?.weaknesses ?? [],
+    focus: a?.focus ?? [], questGuidance: a?.questGuidance ?? '', date: interview.date,
+  };
+
   return {
     profile, avatar, avatarImages, totalXp, level, xpInto: into, xpNeed: need, stats, statPoints, currency,
     streak: streakNow, shadowWinStreak: wins,
-    className: classFor(stats), tier: tierFor(level), multipliers,
+    className, tier: tierFor(level), multipliers,
     today: {
       date: today, started: !!started, work: started?.work ?? null, wakeAt: started?.wakeAt ?? null,
       quests: todayQuests, xp: sum(todayQuests.filter(q => q.done)),
@@ -346,6 +364,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
       metrics: metrics.get(today) ?? {}, checkedIn, lastEnergy, busyUntil, calendar, shadowMetrics,
       aiNote: (tunings.get(today) ?? tunings.get(addDays(today, -1)))?.note || null,
     },
+    character, interviewAnswers: interview?.answers ?? null,
     lastHealth,
     skills: { unlocked: [...unlockedAt.keys()], points: Math.max(0, baseLevel - 1 - spent) }, rewards, purchases,
     weekly: { weekStart: thisWeek, quests: weeklyNow },

@@ -23,6 +23,8 @@ export interface Quest {
 }
 export type Metric = 'steps'|'sleepHours'|'weightKg'|'screenMin'|'spend'|'mood'|'water'|'readPages'|'workoutMin';
 export interface HealthData { steps?: number; sleepHours?: number; workoutMin?: number; activeKcal?: number; restingHR?: number; weightKg?: number }
+export type Answers = Record<string, string | number | string[]>;
+export interface Analysis { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; stats: Record<Stat, number>; focus: string[]; questGuidance: string }
 export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'onboarding_completed'; profile: Profile }
   | { type: 'day_started'; date: ISODate; work: { start: HHMM; end: HHMM } | null; wakeAt: HHMM }
@@ -44,6 +46,7 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'ai_tuning'; date: ISODate; factors: Partial<Record<Stat, number>>; note: string }
   | { type: 'ai_report'; weekStart: ISODate; text: string }
   | { type: 'avatar_image'; tier: 1|2|3|4; blob: string }
+  | { type: 'interview_completed'; answers: Answers; followups: { q: string; a: string }[]; analysis: Analysis | null }
 );
 export type WeeklyKind = 'active_days' | 'stat_quests' | 'steps_total' | 'shadow_wins';
 export interface WeeklyQuest { id: string; weekStart: ISODate; kind: WeeklyKind; stat: Stat | null; target: number; title: string; xp: number }
@@ -64,6 +67,8 @@ export interface GameState {
            metrics: Partial<Record<Metric, number>>; checkedIn: boolean; lastEnergy: number|null;
            busyUntil: HHMM|null; aiNote: string|null; calendar: { title: string; start: HHMM; end: HHMM }[];
            shadowMetrics: { metric: Metric; you: number|null; target: number; lowerIsBetter: boolean }[] };
+  character: { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; focus: string[]; questGuidance: string; date: ISODate } | null;   // по последней валидной анкете
+  interviewAnswers: Answers | null;   // последние ответы анкеты (для промпта заданий)
   lastHealth: { ts: number; date: ISODate; health: HealthData } | null;
   skills: { unlocked: string[]; points: number };   // points = доступно сейчас
   rewards: { id: string; title: string; price: number }[];   // не удалённые, в порядке создания

@@ -608,3 +608,29 @@ test('avatar_image: последний по ts для тира, невалидн
   ], NOW);
   expect(s.avatarImages).toEqual({ 1: 'avatar-t1-aa', 3: 'avatar-t3-bb' });
 });
+
+const STATS7 = { str: 5, end: 6, int: 7, dis: 8, cha: 9, fin: 10, spi: 11 };
+const interview = (e: Record<string, unknown>) => ev({ type: 'interview_completed', followups: [], ...e });
+const profile = (r: number): Profile => ({ name: 'T', wake: '07:00', sleep: '23:00', workTemplates: [], goals: [], sportLevel: 0, stepsUsual: 5000, badHabits: [], goodHabits: [],
+  energy: { morning: 3, day: 3, evening: 3, night: 3 }, selfRating: { str: r, end: r, int: r, dis: r, cha: r, fin: r, spi: r } });
+
+test('анкета поднимает характеристики, но не опускает; character заполняется', () => {
+  const analysis = { archetype: 'Мечтатель', summary: 'Итог', strengths: ['а'], weaknesses: ['б'], stats: { ...STATS7, str: 12 }, focus: ['сон'], questGuidance: 'мягко' };
+  const s = replay([ev({ type: 'onboarding_completed', profile: profile(4) }), interview({ answers: { goal: 'x', n: 3 }, analysis })], NOW);
+  expect(s.stats.str).toBe(12); expect(s.stats.end).toBe(8); expect(s.stats.spi).toBe(11); // max(8, …): не опускает
+  expect(s.character).toMatchObject({ archetype: 'Мечтатель', summary: 'Итог', focus: ['сон'], questGuidance: 'мягко', date: '2026-11-17' });
+  expect(s.interviewAnswers).toEqual({ goal: 'x', n: 3 });
+});
+
+test('невалидный analysis → ruleStats; повреждённые answers не валят replay', () => {
+  const bad = { archetype: 'Х', summary: 'с', strengths: [], weaknesses: [], stats: { ...STATS7, str: 99 }, focus: [], questGuidance: '' };
+  const s = replay([interview({ answers: { pushups: 50, pullups: 15, plank: 240, evil: {}, nan: NaN }, analysis: bad })], NOW);
+  expect(s.stats.str).toBeGreaterThanOrEqual(14); expect(s.stats.str).toBeLessThanOrEqual(20);
+  expect(s.character!.archetype).toBe(s.className); expect(s.character!.strengths).toEqual([]);
+  expect(s.interviewAnswers).toEqual({ pushups: 50, pullups: 15, plank: 240 });
+  expect(() => replay([interview({ answers: 'мусор', analysis: 5 }), interview({ answers: null, analysis: null })], NOW)).not.toThrow();
+});
+
+test('без анкеты character и interviewAnswers — null', () => {
+  const s = replay([], NOW); expect(s.character).toBeNull(); expect(s.interviewAnswers).toBeNull();
+});
