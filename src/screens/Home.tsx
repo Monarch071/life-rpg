@@ -9,7 +9,11 @@ import type { GameState, Profile } from '../domain/types'
 import { hhmmNow, now } from '../now'
 import { imageNameFor } from '../ai/avatar'
 import { useBlobUrl } from '../blobs'
-import Avatar from '../ui/Avatar'
+import { Bot, Check, Coins, Flame, Hourglass, Moon, Zap } from 'lucide-react'
+import Arena from '../ui/Arena'
+import LevelBadge from '../ui/LevelBadge'
+import XpBar from '../ui/XpBar'
+import { StatIcon } from '../ui/icons'
 import { useDialog } from '../ui/useDialog'
 import { buildQuests } from './issue'
 import Checkin from './Checkin'
@@ -101,82 +105,78 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
   const hour = new Date(now()).getHours()
   const checkinOpen = allDone || hour >= 18 || hour < cutoffHour // до cutoffHour игровой день ещё вчерашний
   const leader = today.xp > today.shadowXp ? 'me' : today.xp < today.shadowXp ? 'shadow' : null
+  const share = today.xp + today.shadowXp > 0 ? (today.xp / (today.xp + today.shadowXp)) * 100 : 50
 
   return (
     <div className="home">
       <div role="status">{toast && <div className="toast" onClick={() => void dismiss()}>{toast.text}</div>}</div>
       <header className="hud">
         <div className="hud-top">
-          <span className="lvl">Ур. {state.level}</span>
-          <span className="cls">{state.className} <small className="muted">«{state.title}»</small></span>
-          <span className="coins" aria-label={`Монеты: ${state.currency}`}>🪙 {state.currency}</span>
+          <LevelBadge level={state.level} />
+          <div className="who">
+            <div className="name">{profile.name || 'Ты'}</div>
+            <div className="cls">{state.className} · <em>«{state.title}»</em></div>
+          </div>
+          <span className="coins" aria-label={`Монеты: ${state.currency}`}><span className="coin" aria-hidden="true"><Coins size={13} /></span>{state.currency}</span>
         </div>
-        <div className="xpbar" role="progressbar" aria-label="Опыт до следующего уровня"
-          aria-valuemin={0} aria-valuemax={state.xpNeed} aria-valuenow={state.xpInto}>
-          <i style={{ width: `${Math.min(100, (state.xpInto / state.xpNeed) * 100)}%` }} />
-        </div>
-        <small className="muted">{state.xpInto} / {state.xpNeed} XP</small>
+        <XpBar into={state.xpInto} need={state.xpNeed} />
+        <p className="streak"><Flame size={14} aria-hidden="true" /> серия {state.streak} дн.{state.shadowWinStreak > 0 && <small> · побед над Тенью подряд: {state.shadowWinStreak}</small>}</p>
       </header>
 
-      <section className="arena">
-        <figure className={leader === 'me' ? 'lead' : ''}>
-          <Avatar params={state.avatar} tier={state.tier} size={200} decorative image={img} />
-          <figcaption>{profile.name || 'Ты'}</figcaption>
-        </figure>
-        <span className="vs" aria-hidden="true">VS</span>
-        <figure className={`shadow-fig${leader === 'shadow' ? ' lead' : ''}`}>
-          <Avatar params={state.avatar} tier={state.tier} size={200} shadow decorative image={img} />
-          <figcaption>Тень</figcaption>
-        </figure>
-      </section>
+      <Arena state={state} image={img} />
 
-      <div className="score" aria-live="polite">
-        <span className={leader === 'me' ? 'me lead' : 'me'}>Ты {today.xp} XP</span>
-        <span className="dot">·</span>
-        <span className={leader === 'shadow' ? 'sh lead' : 'sh'}>Тень {today.shadowXp} XP</span>
-      </div>
-      {today.aiNote && <p className="muted center">🤖 {today.aiNote}</p>}
+      <section className="score" aria-label="Счёт">
+        <div className="row" aria-live="polite">
+          <span className={leader === 'me' ? 'me lead' : 'me'}>Ты {today.xp} XP</span>
+          <span className={leader === 'shadow' ? 'sh lead' : 'sh'}>Тень {today.shadowXp} XP</span>
+        </div>
+        <div className="tug"><i style={{ left: `${share}%` }} /></div>
+        {today.shadowMetrics.length > 0 && (
+          <div className="mtr" aria-label="Тень по метрикам">
+            {today.shadowMetrics.map(s => {
+              const i = METRIC_INFO[s.metric]
+              const pct = s.you === null || !(s.target > 0) ? 0 : s.lowerIsBetter ? (s.you <= s.target ? 100 : Math.max(0, s.target / s.you * 100)) : Math.min(100, s.you / s.target * 100)
+              const n = (v: number) => (Math.round(v * 10) / 10).toLocaleString('ru-RU')
+              return (
+                <div key={s.metric}>
+                  {i.label}
+                  <b>{s.you === null ? '—' : n(s.you)} / {s.lowerIsBetter ? 'не больше ' : ''}{n(s.target)}</b>
+                  <div className="mini" role="progressbar" aria-label={i.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}><i style={{ width: `${pct}%` }} /></div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
+      {today.aiNote && <p className="muted center ai-note"><Bot size={14} aria-hidden="true" /> {today.aiNote}</p>}
       {fallback && <p className="muted center" role="status">ИИ недоступен — задания по правилам</p>}
-      {today.shadowMetrics.length > 0 && (
-        <section className="shadow-metrics" aria-label="Тень по метрикам">
-          <h2>Тень по метрикам</h2>
-          {today.shadowMetrics.map(s => {
-            const i = METRIC_INFO[s.metric]
-            const pct = s.you === null || !(s.target > 0) ? 0 : s.lowerIsBetter ? (s.you <= s.target ? 100 : Math.max(0, s.target / s.you * 100)) : Math.min(100, s.you / s.target * 100)
-            const n = (v: number) => (Math.round(v * 10) / 10).toLocaleString('ru-RU')
-            return (
-              <div key={s.metric} className="sm-row">
-                <span>{i.icon} {i.label} {s.you === null ? '—' : n(s.you)} / {s.lowerIsBetter ? 'не больше ' : ''}{n(s.target)}</span>
-                <div className="xpbar" role="progressbar" aria-label={i.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}><i style={{ width: `${pct}%` }} /></div>
-              </div>
-            )
-          })}
-        </section>
-      )}
-      <p className="streak">🔥 Серия: {state.streak} {state.shadowWinStreak > 0 && <small>· побед над Тенью подряд: {state.shadowWinStreak}</small>}</p>
 
       <section className="quests" aria-label="Задания на сегодня">
-        <h2>Задания {today.busyUntil && <small className="muted">· занят до {today.busyUntil}</small>}</h2>
+        <h2>Задания дня {today.busyUntil && <small className="muted">· занят до {today.busyUntil}</small>}</h2>
         {quests.length === 0 && today.started && (
-          <button className="btn primary big" disabled={issuing} onClick={issue}>🎲 Получить задания</button>
+          <button className="btn primary big" disabled={issuing} onClick={issue}>Получить задания</button>
         )}
         {!today.started && later && (
-          <button className="btn primary big" onClick={() => setLater(false)}>☀️ Начать день</button>
+          <button className="btn primary big" onClick={() => setLater(false)}>Начать день</button>
         )}
         <ul>
-          {(today.started || !later) && quests.map(q => (
-            <li key={q.id}>
-              <button className={`quest${q.done ? ' done' : ''}`} disabled={q.done} aria-pressed={q.done}
-                onClick={() => complete(q.id, q.xp)}>
-                <span className="q-check" aria-hidden="true">{q.done ? '✔' : ''}</span>
-                <span className="q-main">
-                  <span className="q-time">{q.window ? `${q.window.start}–${q.window.end}` : 'в течение дня'}</span>
-                  <span className="q-title"><span aria-label={STATS[q.stat].name} role="img">{STATS[q.stat].icon}</span> {q.title}</span>
-                  <span className="q-meta"><span aria-label={`Сложность ${q.difficulty} из 5`}>{'★'.repeat(q.difficulty)}</span></span>
-                </span>
-                <span className="q-xp">+{q.xp} XP</span>
-                {pop?.id === q.id && <span key={pop.k} className="xp-pop" aria-hidden="true">+{pop.xp} XP</span>}
+          {(today.started || !later) && quests.map((q, i) => (
+            <li key={q.id} className={`q${q.done ? ' done' : ''}`} style={{ '--i': i } as React.CSSProperties}>
+              <StatIcon stat={q.stat} />
+              <div className="t">
+                <b>{q.title}</b>
+                <small>{STATS[q.stat].name} · {q.window ? `${q.window.start}–${q.window.end}` : 'в течение дня'}</small>
+              </div>
+              <span className="xpchip">+{q.xp}</span>
+              <button className="chk" disabled={q.done} aria-label={`Выполнить: ${q.title}`} onClick={() => complete(q.id, q.xp)}>
+                {q.done && <Check size={20} aria-hidden="true" />}
               </button>
+              {pop?.id === q.id && (
+                <span key={pop.k} className="burst" aria-hidden="true">
+                  <span className="float">+{pop.xp} XP</span>
+                  {[0, 1, 2, 3, 4].map(n => <i key={n} className="spark" />)}
+                </span>
+              )}
             </li>
           ))}
         </ul>
@@ -184,17 +184,17 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
       </section>
 
       <div className="actions">
-        <button className="btn" onClick={() => setSheet('quick')}>⚡ Быстрый ввод</button>
-        <button className="btn ghost" onClick={() => setSheet('busy')}>⏳ Занят до…</button>
+        <button className="btn" onClick={() => setSheet('quick')}><Zap size={18} aria-hidden="true" /> Быстрый ввод</button>
+        <button className="btn ghost" onClick={() => setSheet('busy')}><Hourglass size={18} aria-hidden="true" /> Занят до…</button>
         {!today.checkedIn && (
           <button className="btn primary" disabled={!checkinOpen} onClick={() => setSheet('checkin')}
             title={checkinOpen ? undefined : 'Доступен после 18:00 или когда все задания выполнены'}>
-            🌙 Чек‑ин
+            <Moon size={18} aria-hidden="true" /> Чек‑ин
           </button>
         )}
       </div>
       {!today.checkedIn && !checkinOpen && <p className="muted center">Чек‑ин откроется в 18:00 или когда выполнишь все задания</p>}
-      {today.checkedIn && <p className="ok center">Чек‑ин сделан ✔</p>}
+      {today.checkedIn && <p className="ok center"><Check size={14} aria-hidden="true" /> Чек‑ин сделан</p>}
 
       {sheet === 'quick' && <QuickInput state={state} onClose={() => setSheet(null)} />}
       {sheet === 'busy' && <BusyUntil date={today.date} onClose={() => setSheet(null)} />}
