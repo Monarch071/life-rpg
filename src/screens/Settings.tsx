@@ -75,7 +75,7 @@ export default function Settings({ state, sync }: { state: GameState; sync: Sync
         </label>
       </section>
       <SyncPanel state={state} sync={sync} />
-      <AiPanel />
+      <div id="ai-panel"><AiPanel /></div>
       <section className="panel stack">
         <button className="btn ghost" disabled><Bell size={18} aria-hidden="true" />Уведомления — этап 5</button>
       </section>

@@ -27,6 +27,13 @@ export default function App() {
   const sync = useSync()
   const [tab, setTab] = useState<Tab>('Главная')
   const [login, setLogin] = useState(() => parseLoginHash(location.hash))
+  // переход на вкладку и прокрутка к блоку; блок дорисовывается асинхронно — ждём его высоту (до ~1 с)
+  const go = (t: 'Герой' | 'Настройки', id: string) => {
+    setTab(t)
+    let n = 0
+    const tick = () => { const el = document.getElementById(id); if (el?.offsetHeight) el.scrollIntoView({ block: 'start' }); else if (n++ < 20) setTimeout(tick, 50) }
+    setTimeout(tick, 50)
+  }
   const closeLogin = () => { history.replaceState(null, '', location.pathname + location.search); setLogin(null); sync.run() }
   // dev-only витрина аватара: ?avatars
   if (import.meta.env.DEV && new URLSearchParams(location.search).has('avatars')) return (
@@ -45,9 +52,9 @@ export default function App() {
       {joinSheet}
       <Celebration state={state} />
       <main className="content">
-        {tab === 'Главная' ? <Home state={state} profile={state.profile} />
+        {tab === 'Главная' ? <Home state={state} profile={state.profile} go={go} />
           : tab === 'Задания' ? <Quests state={state} />
-          : tab === 'Герой' ? <Character state={state} />
+          : tab === 'Герой' ? <Character state={state} go={go} />
           : tab === 'Магазин' ? <Shop state={state} />
           : tab === 'Анализ' ? <Analytics state={state} />
           : <Settings state={state} sync={sync} />}

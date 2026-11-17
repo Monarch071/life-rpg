@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Image as ImageIcon } from 'lucide-react'
+import { Camera, Image as ImageIcon } from 'lucide-react'
 import { generateAvatar, PHOTO_ERROR_TEXT, PhotoError } from '../ai/avatar'
 import { getAiConfig, PROVIDER_NAMES, type AiConfig } from '../ai/config'
 import { aiErrorText } from '../ai/providers'
@@ -9,6 +9,23 @@ import Confirm from '../ui/Confirm'
 import { useWrite } from '../ui/useWrite'
 
 const TIERS = [1, 2, 3, 4] as const
+
+export type Go = (tab: 'Герой' | 'Настройки', id: string) => void
+
+/** Призыв сделать образ по фото: к блоку «Аватар от ИИ», а без ключа — к настройкам ИИ. */
+export function PhotoCta({ go }: { go: Go }) {
+  const [cfg, setCfg] = useState<AiConfig | null | undefined>(undefined)
+  useEffect(() => { let on = true; getAiConfig().then(c => { if (on) setCfg(c) }, () => { if (on) setCfg(null) }); return () => { on = false } }, [])
+  if (cfg === undefined) return null
+  const ready = !!cfg?.imageModel
+  return (
+    <section className="photo-cta" aria-label="Образ по фото">
+      <span className="ic" aria-hidden="true"><Camera size={20} /></span>
+      <div><b>Создай героя по своему фото</b><small>{ready ? 'ИИ нарисует тебя в стиле игры' : 'Сначала подключи ИИ с картинками'}</small></div>
+      <button type="button" className="btn primary" onClick={() => go(ready ? 'Герой' : 'Настройки', ready ? 'avatar-ai' : 'ai-panel')}>{ready ? 'Создать' : 'Настроить'}</button>
+    </section>
+  )
+}
 
 function Slot({ tier, name }: { tier: number; name: string | undefined }) {
   const url = useBlobUrl(name ?? null)

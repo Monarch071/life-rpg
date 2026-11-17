@@ -11,6 +11,7 @@ import { imageNameFor } from '../ai/avatar'
 import { useBlobUrl } from '../blobs'
 import { Bot, Check, Coins, Flame, Gem, Hourglass, Moon, Zap, X } from 'lucide-react'
 import Arena from '../ui/Arena'
+import { PhotoCta, type Go } from './AvatarAi'
 import LevelBadge from '../ui/LevelBadge'
 import XpBar from '../ui/XpBar'
 import { StatIcon } from '../ui/icons'
@@ -26,7 +27,7 @@ type Sheet = null | 'quick' | 'busy' | 'checkin'
 // «Позже» на «Мой день» — до перезапуска приложения (переживает переключение вкладок)
 let deferredDay = false
 
-export default function Home({ state, profile }: { state: GameState; profile: Profile }) {
+export default function Home({ state, profile, go }: { state: GameState; profile: Profile; go: Go }) {
   const { today } = state
   const img = useBlobUrl(imageNameFor(state.avatarImages, state.tier))
   const [sheet, setSheet] = useState<Sheet>(null)
@@ -124,6 +125,7 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
       </header>
 
       <Arena state={state} image={img} />
+      {!img && <PhotoCta go={go} />}
 
       <section className="score" aria-label="Счёт">
         <div className="row" aria-live="polite">

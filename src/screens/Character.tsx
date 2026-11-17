@@ -7,7 +7,8 @@ import { StatIcon } from '../ui/icons'
 import { appendEvent } from '../db'
 import { imageNameFor } from '../ai/avatar'
 import { useBlobUrl } from '../blobs'
-import AvatarAi from './AvatarAi'
+import AvatarAi, { PhotoCta, type Go } from './AvatarAi'
+import StatRadar from '../ui/StatRadar'
 import Skills from './Skills'
 import Achievements from './Achievements'
 import type { AvatarParams, GameState, Stat } from '../domain/types'
@@ -67,14 +68,17 @@ function Editor({ saved, tier }: { saved: AvatarParams; tier: 1 | 2 | 3 | 4 }) {
   )
 }
 
-export default function Character({ state }: { state: GameState }) {
+export default function Character({ state, go }: { state: GameState; go: Go }) {
   const last7 = state.history.slice(-7)
   const img = useBlobUrl(imageNameFor(state.avatarImages, state.tier))
+  const [chart, setChart] = useState(true)
+  const prev = state.statHistory.length ? state.statHistory[Math.max(0, state.statHistory.length - 7)].stats : null
   return (
     <div className="home stack">
       <section className="hero">
         <Avatar params={state.avatar} tier={state.tier} size={220} image={img} />
       </section>
+      {!img && <PhotoCta go={go} />}
       <section className="panel rating">
         <LevelBadge level={state.level} big />
         <div className="title">
@@ -84,12 +88,19 @@ export default function Character({ state }: { state: GameState }) {
         </div>
       </section>
       <section className="panel stats" aria-label="Характеристики">
-        <div className="sec"><h3>Характеристики</h3><span>за неделю</span></div>
-        {(Object.keys(STATS) as Stat[]).map(s => {
+        <div className="sec"><h3>Характеристики</h3>
+          <div className="seg-toggle" role="group" aria-label="Вид">
+            <button type="button" aria-pressed={chart} onClick={() => setChart(true)}>Диаграмма</button>
+            <button type="button" aria-pressed={!chart} onClick={() => setChart(false)}>Список</button>
+          </div>
+        </div>
+        {chart ? <>
+          <StatRadar stats={state.stats} prev={prev} />
+          {prev && <p className="muted center radar-key"><i /> неделю назад</p>}
+        </> : (Object.keys(STATS) as Stat[]).map(s => {
           const pts = state.statPoints[s] % 10
           const m = state.multipliers[s]
-          const base = state.statHistory.length ? state.statHistory[Math.max(0, state.statHistory.length - 7)].stats[s] : undefined
-          const d = base === undefined ? 0 : state.stats[s] - base
+          const d = prev ? state.stats[s] - prev[s] : 0
           return (
             <div key={s} className="stat-row">
               <div className="stat">
@@ -115,7 +126,7 @@ export default function Character({ state }: { state: GameState }) {
         )}
       </section>
       <Editor saved={state.avatar} tier={state.tier} />
-      <AvatarAi state={state} />
+      <div id="avatar-ai"><AvatarAi state={state} /></div>
     </div>
   )
 }
