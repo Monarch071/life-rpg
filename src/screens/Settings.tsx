@@ -4,6 +4,9 @@ import { getSetting, setSetting } from '../db'
 import { now } from '../now'
 import { saveBackup } from '../ui/saveFile'
 import { useDialog } from '../ui/useDialog'
+import type { GameState } from '../domain/types'
+import type { SyncState } from '../useSync'
+import SyncPanel from './SyncPanel'
 
 function Confirm({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
   const dlg = useDialog<HTMLDivElement>(onNo)
@@ -18,7 +21,7 @@ function Confirm({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
   )
 }
 
-export default function Settings() {
+export default function Settings({ state, sync }: { state: GameState; sync: SyncState }) {
   const [cutoff, setCutoff] = useState(4)
   const [file, setFile] = useState<File | null>(null)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
@@ -69,8 +72,9 @@ export default function Settings() {
           </select>
         </label>
       </section>
+      <SyncPanel state={state} sync={sync} />
       <section className="panel stack">
-        {['Синхронизация — этап 2', 'ИИ — этап 4', 'Уведомления — этап 5'].map(t => (
+        {['ИИ — этап 4', 'Уведомления — этап 5'].map(t => (
           <button key={t} className="btn ghost" disabled>{t}</button>
         ))}
       </section>

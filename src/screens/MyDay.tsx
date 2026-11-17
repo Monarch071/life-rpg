@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
 import { appendEvents } from '../db'
+import { getSyncConfig, syncNow } from '../sync'
+import { loadState } from '../useGame'
 import type { Win } from '../domain/schedule'
 import type { GameState, Profile } from '../domain/types'
 import { hhmmNow } from '../now'
@@ -24,8 +26,14 @@ export default function MyDay({ state, profile, onLater }: { state: GameState; p
     try {
       const wakeAt = hhmmNow()
       const date = state.today.date
+      // первое устройство выдаёт задания: подтянуть чужие события и смотреть уже свежее состояние
+      let cur = state
+      if (await getSyncConfig()) {
+        await Promise.race([syncNow(), new Promise((r) => setTimeout(r, 4000))])
+        cur = await loadState()
+      }
       // сначала генерация, потом одна атомарная запись — день не останется без заданий
-      const quests = state.today.quests.length === 0 ? buildQuests(state, profile, work, wakeAt) : null
+      const quests = cur.today.quests.length === 0 ? buildQuests(cur, profile, work, wakeAt) : null
       await appendEvents([
         { type: 'day_started', date, work, wakeAt },
         ...(quests ? [{ type: 'quests_issued' as const, date, quests }] : []),

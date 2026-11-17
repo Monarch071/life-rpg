@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { appendEvent } from '../db'
 import { classFor, initialStats, STATS } from '../domain/stats'
 import type { Profile, Stat } from '../domain/types'
+import JoinSync from './JoinSync'
 import { validateStep, type Draft } from './onboardingValidation'
 
 const TOTAL = 11
@@ -59,6 +60,7 @@ export default function Onboarding() {
   const [err, setErr] = useState<string | null>(null)
   const [custom, setCustom] = useState({ good: '', bad: '' })
   const [saving, setSaving] = useState(false)
+  const [join, setJoin] = useState(false)
   const [stepsText, setStepsText] = useState('5000')
   const set = (p: Partial<Draft>) => setD((o) => ({ ...o, ...p }))
   const rate = (s: Stat, n: number) => setD((o) => ({ ...o, selfRating: { ...o.selfRating, [s]: n } }))
@@ -105,6 +107,7 @@ export default function Onboarding() {
       body = (<>
         <h2>Как зовут героя?</h2>
         <input aria-label="Имя героя" value={d.name} maxLength={30} placeholder="Имя" onChange={(e) => set({ name: e.target.value })} />
+        <button type="button" className="ghost" onClick={() => setJoin(true)}>У меня уже есть прогресс — войти</button>
       </>)
       break
     case 2:
@@ -252,6 +255,7 @@ export default function Onboarding() {
         {step > 1 && <button type="button" className="ghost" onClick={back}>Назад</button>}
         <button type="button" className="primary" disabled={saving} onClick={next}>{step === TOTAL ? 'Начать' : 'Далее'}</button>
       </div>
+      {join && <JoinSync onDone={() => setJoin(false)} />}
     </div>
   )
 }

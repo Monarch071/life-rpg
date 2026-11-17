@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import { useGame } from './useGame'
+import { useSync } from './useSync'
+import { parseLoginHash } from './sync'
+import JoinSync from './screens/JoinSync'
 import Onboarding from './screens/Onboarding'
 import Home from './screens/Home'
 import Character from './screens/Character'
@@ -12,7 +15,10 @@ type Tab = (typeof TABS)[number]
 
 export default function App() {
   const state = useGame()
+  const sync = useSync()
   const [tab, setTab] = useState<Tab>('Главная')
+  const [login, setLogin] = useState(() => parseLoginHash(location.hash))
+  const closeLogin = () => { history.replaceState(null, '', location.pathname + location.search); setLogin(null); sync.run() }
   // dev-only витрина аватара: ?avatars
   if (import.meta.env.DEV && new URLSearchParams(location.search).has('avatars')) return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: 8, overflow: 'auto', height: '100%' }}>
@@ -23,16 +29,18 @@ export default function App() {
     </div>
   )
   if (!state) return <div className="app"><p className="loading">Загрузка…</p></div>
-  if (state.profile === null) return <Onboarding />
+  const joinSheet = login && <JoinSync initial={login} onDone={closeLogin} />
+  if (state.profile === null) return <>{joinSheet || <Onboarding />}</>
   return (
     <div className="app">
+      {joinSheet}
       <main className="content">
         {tab === 'Главная' ? (
           <Home state={state} profile={state.profile} />
         ) : tab === 'Персонаж' ? (
           <Character state={state} />
         ) : (
-          <Settings />
+          <Settings state={state} sync={sync} />
         )}
       </main>
       <nav className="tabbar">
