@@ -63,7 +63,7 @@ test('повторный quests_issued на ту же дату игнориру�
 test('дубль события по id не удваивает XP', () => {
   const c = done('2026-11-17', 'a', at('2026-11-17', 10));
   const s = replay([issue('2026-11-17', [q('a', '2026-11-17', 20)]), c, { ...c }, done('2026-11-17', 'a', at('2026-11-17', 11))], NOW);
-  expect(s.totalXp).toBe(20); expect(s.currency).toBe(2); expect(s.today.xp).toBe(20);
+  expect(s.totalXp).toBe(20); expect(s.currency).toBe(2 + 25); expect(s.today.xp).toBe(20);
   expect(s.today.quests[0].done).toBe(true);
 });
 
@@ -79,7 +79,7 @@ test('победа над Тенью даёт бонус и растит shadowW
   const s1 = replay([issue('2026-11-16', [q('b', '2026-11-16', 60)]), done('2026-11-16', 'b')], NOW);
   expect(s1.shadowWinStreak).toBe(1);
   expect(s1.totalXp).toBe(70); // бонус max(10, 9)
-  expect(s1.currency).toBe(6 + 1);
+  expect(s1.currency).toBe(6 + 1 + 50);
   expect(s1.history[0].xp).toBe(60); // без бонуса
   expect(s1.today.shadowXp).toBe(61); // round(60·1.02)
 });
@@ -118,7 +118,7 @@ test('totalXp, валюта, очки и характеристики', () => {
   expect(s.profile).toBe(profile);
   expect(s.statPoints.int).toBe(14);
   expect(s.stats.int).toBe(7); expect(s.stats.str).toBe(6);
-  expect(s.totalXp).toBe(145); expect(s.currency).toBe(5 + 5 + 3);
+  expect(s.totalXp).toBe(145); expect(s.currency).toBe(5 + 5 + 3 + 50);
   expect(s.level).toBe(2); expect(s.xpInto).toBe(45); expect(s.xpNeed).toBe(283);
   expect(s.className).toBe('Искатель (Интеллект)'); expect(s.tier).toBe(1);
 });
@@ -324,11 +324,11 @@ test('награды: покупка, перерасход игнорирует�
   const buy = (h: number) => ev({ type: 'reward_purchased', rewardId: 'r1', ts: at('2026-11-15', h) });
   const base = replay([...earn, created], NOW).currency;
   const s = replay([...earn, created, buy(10), buy(11)], NOW);
-  expect(s.currency).toBe(base - 100);
+  expect(s.currency).toBe(base - 100 + 25);
   expect(s.purchases).toHaveLength(1);
   // ещё покупка при нехватке
   const poor = replay([...earn, created, ...[10, 11, 12, 13, 14, 15, 16].map(buy)], NOW);
-  expect(poor.currency).toBe(base - 100); expect(poor.purchases).toHaveLength(1);
+  expect(poor.currency).toBe(base - 100 + 25); expect(poor.purchases).toHaveLength(1);
   // удалена до покупки — не покупается; удалена после — покупка остаётся
   const del = (h: number) => ev({ type: 'reward_deleted', rewardId: 'r1', ts: at('2026-11-15', h) });
   expect(replay([...earn, created, del(10), buy(11)], NOW).purchases).toEqual([]);
@@ -425,7 +425,7 @@ test('босс: невалидный игнорируется, этапы по �
   expect(s.totalXp).toBe(100 * 3 + 200);
   expect(s.bosses[0]).toMatchObject({ done: 3, defeated: true });
   expect(s.statPoints.int).toBe(15);
-  expect(s.currency).toBe(50);
+  expect(s.currency).toBe(50 + 25);
 });
 
 test('босс: брошенный скрыт, XP остаётся', () => {
@@ -453,4 +453,65 @@ test('weekly_issued: дубли id оплачиваются раз, не-пон�
 
 test('босс со stat "constructor" игнорируется', () => {
   expect(replay([ev({ type: 'boss_created', bossId: 'x', title: 'T', stat: 'constructor', stages: ['а', 'б'] })], NOW).bosses).toEqual([]);
+});
+
+// --- Task 3: достижения, история, Тень на метриках ---
+const metric = (date: string, m: string, value: number) => ev({ type: 'metric_logged', date, metric: m, value, mode: 'set' });
+
+test('достижения: первое задание, +25 монет, без дублей; без достижений — Новичок', () => {
+  expect(replay([], NOW).title).toBe('Новичок');
+  const evs = [issue('2026-11-17', [q('a', '2026-11-17', 10), q('b', '2026-11-17', 10)]), done('2026-11-17', 'a')];
+  const s = replay(evs, NOW);
+  expect(s.achievements).toEqual([{ id: 'first_quest', date: '2026-11-17' }]);
+  expect(s.currency).toBe(1 + 25);
+  const s2 = replay([...evs, done('2026-11-17', 'b')], NOW);
+  expect(s2.achievements.filter(a => a.id === 'first_quest').length).toBe(1);
+});
+
+test('streak_7 получен в дату 7-го дня, титул «Упорный»', () => {
+  const days = Array.from({ length: 7 }, (_, i) => `2026-11-${String(11 + i).padStart(2, '0')}`);
+  const evs = days.flatMap(d => [issue(d, [q(`q${d}`, d, 10)]), done(d, `q${d}`)]);
+  const s = replay(evs, NOW);
+  expect(s.achievements.find(a => a.id === 'streak_7')).toEqual({ id: 'streak_7', date: '2026-11-17' });
+  expect(s.title).toBe('Упорный');
+});
+
+test('достижения на монеты можно потратить, баланс не уходит в минус', () => {
+  const evs = [issue('2026-11-17', [q('a', '2026-11-17', 10)]), done('2026-11-17', 'a'),
+    ev({ type: 'reward_created', rewardId: 'r', title: 'Чай', price: 26 }),
+    ev({ type: 'reward_purchased', rewardId: 'r', ts: at('2026-11-17', 21) })];
+  const s = replay(evs, NOW);
+  expect(s.purchases.length).toBe(1);
+  expect(s.achievements.map(a => a.id)).toContain('first_purchase');
+  expect(s.currency).toBe(1 + 25 + 25 - 26);
+});
+
+test('statHistory: по числу финализированных дней, не убывает', () => {
+  const days = ['2026-11-10', '2026-11-11', '2026-11-12'];
+  const evs = days.flatMap(d => [issue(d, [q(`q${d}`, d, 10, 'str', 3)]), done(d, `q${d}`)]);
+  const s = replay(evs, NOW);
+  expect(s.statHistory.length).toBe(s.history.length);
+  expect(s.statHistory.map(h => h.stats.str)).toEqual([1, 1, 1]);
+});
+
+test('shadowMetrics: цель по шагам, нет при 2 днях, screenMin — меньше лучше', () => {
+  const five = ['2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15', '2026-11-16'].map(d => metric(d, 'steps', 8000));
+  const s = replay([...five, metric('2026-11-17', 'steps', 5000)], NOW);
+  expect(s.today.shadowMetrics).toEqual([{ metric: 'steps', you: 5000, target: 8400, lowerIsBetter: false }]);
+  expect(replay([metric('2026-11-15', 'steps', 8000), metric('2026-11-16', 'steps', 8000)], NOW).today.shadowMetrics).toEqual([]);
+  const scr = replay(['2026-11-14', '2026-11-15', '2026-11-16'].map(d => metric(d, 'screenMin', 120)), NOW);
+  expect(scr.today.shadowMetrics).toEqual([{ metric: 'screenMin', you: null, target: 114, lowerIsBetter: true }]);
+  expect(s.metricHistory.at(-1)).toEqual({ date: '2026-11-17', metrics: { steps: 5000 } });
+  expect(s.genInputs.bestSteps7).toBe(8000);
+});
+
+test('производительность: 120 дней по 5 заданий', () => {
+  const evs: GameEvent[] = [];
+  for (let i = 120; i >= 1; i--) {
+    const d = new Date(2026, 10, 17 - i), date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const qs = [1, 2, 3, 4, 5].map(k => q(`${date}-${k}`, date, 20));
+    evs.push(issue(date, qs), ...qs.slice(0, 3).map(x => done(date, x.id)), metric(date, 'steps', 7000 + i));
+  }
+  const t = performance.now(); replay(evs, NOW);
+  expect(performance.now() - t).toBeLessThan(200);
 });

@@ -58,7 +58,8 @@ export interface GameState {
   today: { date: ISODate; started: boolean; work: {start:HHMM;end:HHMM}|null; wakeAt: HHMM|null;
            quests: (Quest & { done: boolean })[]; xp: number; shadowXp: number;
            metrics: Partial<Record<Metric, number>>; checkedIn: boolean; lastEnergy: number|null;
-           busyUntil: HHMM|null; calendar: { title: string; start: HHMM; end: HHMM }[] };
+           busyUntil: HHMM|null; calendar: { title: string; start: HHMM; end: HHMM }[];
+           shadowMetrics: { metric: Metric; you: number|null; target: number; lowerIsBetter: boolean }[] };
   lastHealth: { ts: number; date: ISODate; health: HealthData } | null;
   skills: { unlocked: string[]; points: number };   // points = доступно сейчас
   rewards: { id: string; title: string; price: number }[];   // не удалённые, в порядке создания
@@ -67,6 +68,10 @@ export interface GameState {
   bosses: Boss[];         // кроме брошенных
   genWeekly: WeeklyCtx;   // контекст для generateWeeklyQuests текущей недели
   history: DayResult[];   // финализированные дни, по возрастанию
+  achievements: { id: string; date: ISODate }[];   // в порядке получения
+  title: string;          // titleReward последнего достижения с титулом, иначе 'Новичок'
+  statHistory: { date: ISODate; stats: Record<Stat, number> }[];   // на конец каждого финализированного дня
+  metricHistory: { date: ISODate; metrics: Partial<Record<Metric, number>> }[];   // даты ≤ сегодня с метриками, по возрастанию
   genInputs: { bestSteps7: number|null; lastSleepHours: number|null; recentTemplateIds: string[] };
     // для generateDailyQuests: лучший 7‑дневный средний по шагам (из metric_logged steps), сон за последний день с данными, templateId заданий за 2 прошлых дня
 }

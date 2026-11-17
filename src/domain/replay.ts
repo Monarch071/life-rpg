@@ -1,3 +1,4 @@
+import { ACHIEVEMENTS, earnAchievements, type Delta } from './achievements';
 import { addDays, gameDate, weekStart } from './day';
 import { adjustMultipliers } from './difficulty';
 import { shadowXpForDay } from './shadow';
@@ -27,16 +28,18 @@ function normalize(events: GameEvent[]): GameEvent[] {
     .filter(e => !seen.has(e.id) && !!seen.add(e.id));
 }
 
-/** Лучшее среднее шагов по 7‑дневным окнам за 28 дней до сегодня; окно считается при ≥3 значениях, иначе null. */
-function bestSteps7(metrics: Map<ISODate, Partial<Record<Metric, number>>>, today: ISODate): number | null {
-  const vals = Array.from({ length: 28 }, (_, i) => metrics.get(addDays(today, i - 28))?.steps);
+/** Лучшее (максимум или минимум при lower) среднее по 7‑дневным окнам за 28 дней до сегодня; окно считается при ≥3 значениях, иначе null. */
+function best7(metrics: Map<ISODate, Partial<Record<Metric, number>>>, today: ISODate, metric: Metric, lower = false): number | null {
+  const vals = Array.from({ length: 28 }, (_, i) => metrics.get(addDays(today, i - 28))?.[metric]);
   let best: number | null = null;
   for (let i = 0; i + 7 <= vals.length; i++) {
     const w = vals.slice(i, i + 7).filter((v): v is number => v !== undefined);
-    if (w.length >= 3) best = Math.max(best ?? -Infinity, w.reduce((a, b) => a + b, 0) / w.length);
+    if (w.length >= 3) { const avg = w.reduce((a, b) => a + b, 0) / w.length; best = best === null ? avg : lower ? Math.min(best, avg) : Math.max(best, avg); }
   }
   return best;
 }
+const SHADOW_METRICS: [Metric, boolean][] = [['steps', false], ['sleepHours', false], ['readPages', false], ['water', false], ['screenMin', true]];
+const ACHIEVEMENT_COINS = 25;
 
 const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
@@ -68,6 +71,10 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   const weeklyIssued = new Map<ISODate, WeeklyQuest[]>();
   const bossEvents: Extract<GameEvent, { type: 'boss_created' | 'boss_stage_done' | 'boss_abandoned' }>[] = [];
   const shopEvents: Extract<GameEvent, { type: 'reward_created' | 'reward_deleted' | 'reward_purchased' }>[] = [];
+  const days = new Map<ISODate, Delta>(); // счётчики достижений по игровым датам
+  const dayOf = (d: ISODate) => { const x = days.get(d) ?? {}; days.set(d, x); return x; };
+  const bump = (d: ISODate, k: Exclude<keyof Delta, 'steps' | 'streak' | 'shadowWinStreak'>, n = 1) => { const x = dayOf(d); x[k] = (x[k] ?? 0) + n; };
+  const checkinDates = new Set<ISODate>(), bossPts: { date: ISODate; stat: Stat }[] = [];
 
   for (const e of normalize(events)) {
     switch (e.type) {
@@ -116,7 +123,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
       case 'busy_until': if (e.date === today) busyUntil = e.until; break;
       case 'checkin':
         if (e.date === today) checkedIn = true;
-        if (e.date <= today) lastEnergy = e.energy;
+        if (e.date <= today) { lastEnergy = e.energy; if (!checkinDates.has(e.date)) { checkinDates.add(e.date); bump(e.date, 'checkins'); } }
         break;
       case 'skill_unlocked': skillEvents.push({ skillId: e.skillId, ts: e.ts }); break;
       case 'weekly_issued': {
@@ -156,13 +163,16 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   const statPoints = fill(0);
   for (const q of questById.values()) if (q.done) {
     totalXp += q.xp; currency += coins(q.xp, q.date); statPoints[q.stat] += q.difficulty;
+    bump(q.date, 'xp', q.xp); bump(q.date, 'questsDone');
   }
+  for (const d of unlockedAt.values()) bump(d, 'skills');
 
   const todayQuests = issued.get(today) ?? [];
 
   // Финализация прошлых дней — ровно один раз, по порядку.
   const history: DayResult[] = [];
   const finalized: { stat: Stat; done: boolean }[][] = [];
+  const dayPoints: { date: ISODate; pts: Record<Stat, number> }[] = [], cumPts = fill(0);
   let streak = 0, wins = 0, multipliers = fill(1);
   // одна формула и для финализации, и для живого счёта сегодня: показанное = записанному
   const shadowOf = (qs: DoneQuest[], date: ISODate) => shadowXpForDay(history.slice(-14).map(h => h.xp), wins)
@@ -183,9 +193,14 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
     if (won) {
       const bonus = Math.max(10, Math.round(0.15 * xp));
       totalXp += bonus; currency += currencyFor(bonus); wins++;
+      bump(d, 'xp', bonus); bump(d, 'shadowWins');
     } else wins = 0;
     const completed = qs.filter(q => q.done).length;
     if (completed) streak++; else if (!frozen(d)) streak = 0;
+    for (const q of qs) if (q.done) cumPts[q.stat] += q.difficulty;
+    dayPoints.push({ date: d, pts: { ...cumPts } });
+    const dd = dayOf(d); dd.streak = streak; dd.shadowWinStreak = wins;
+    if (qs.length >= 3 && completed === qs.length) bump(d, 'perfectDays');
     history.push({ date: d, xp, shadowXp, completed, issued: qs.length, won });
     finalized.push(qs.map(q => ({ stat: q.stat, done: q.done })));
     multipliers = adjustMultipliers(multipliers, finalized.slice(-7).flat());
@@ -206,7 +221,9 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
     else if (e.stage === b.done) {
       b.done++; b.defeated = b.done === b.stages.length;
       const xp = 100 + (b.defeated ? 200 : 0);
-      totalXp += xp; currency += coins(xp, gameDate(e.ts, cutoffHour)); statPoints[b.stat] += 5;
+      const bd = gameDate(e.ts, cutoffHour);
+      totalXp += xp; currency += coins(xp, bd); statPoints[b.stat] += 5;
+      bump(bd, 'xp', xp); bossPts.push({ date: bd, stat: b.stat }); if (b.defeated) bump(bd, 'bossesDefeated');
     }
   }
 
@@ -231,7 +248,10 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   const weeklyNow: GameState['weekly']['quests'] = [];
   for (const [ws, qs] of weeklyIssued) for (const w of qs) {
     const progress = weekProgress({ ...w, weekStart: ws }), done = progress >= w.target;
-    if (done) { totalXp += w.xp; currency += coins(w.xp, ws === thisWeek ? today : addDays(ws, 6)); }
+    if (done) {
+      const wd = ws === thisWeek ? today : addDays(ws, 6);
+      totalXp += w.xp; currency += coins(w.xp, wd); bump(wd, 'xp', w.xp); bump(wd, 'weeklyDone');
+    }
     if (ws === thisWeek) weeklyNow.push({ ...w, weekStart: ws, progress, done });
   }
   const prev = addDays(thisWeek, -7), weak = weakestStat(stats);
@@ -240,6 +260,15 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
     const dq = issued.get(addDays(prev, i))?.filter(q => q.done) ?? [];
     prevActiveDays += dq.length ? 1 : 0; prevStatQuests += dq.filter(q => q.stat === weak).length;
   }
+
+  // Сегодня: серия и Тень на текущий момент; шаги по всем датам.
+  const streakNow = streak + (todayQuests.some(q => q.done) ? 1 : 0);
+  const td = dayOf(today); td.streak = streakNow; td.shadowWinStreak = wins;
+  if (todayQuests.length >= 3 && todayQuests.every(q => q.done)) bump(today, 'perfectDays');
+  for (const [d, m] of metrics) if (m.steps !== undefined) dayOf(d).steps = m.steps;
+  // Монеты за достижения учитываются при покупках по дате покупки; first_purchase зависит от покупок, поэтому считаем дважды
+  // (монеты самого first_purchase на проверку покупок не влияют — баланс не уходит в минус).
+  let achs = earnAchievements(days, today);
 
   // Магазин: покупки — после финализации, когда известен весь заработок.
   const shop = new Map<string, { id: string; title: string; price: number; deleted: boolean }>();
@@ -255,33 +284,52 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
       const r = shop.get(e.rewardId);
       if (!r || r.deleted) continue;
       if (e.type === 'reward_deleted') r.deleted = true;
-      else if (currency - coinsSpent >= r.price) { coinsSpent += r.price; purchases.push({ rewardId: r.id, title: r.title, price: r.price, ts: e.ts }); }
+      else {
+        const pd = gameDate(e.ts, cutoffHour);
+        const bonus = ACHIEVEMENT_COINS * achs.filter(x => x.date <= pd).length;
+        if (currency + bonus - coinsSpent >= r.price) { coinsSpent += r.price; purchases.push({ rewardId: r.id, title: r.title, price: r.price, ts: e.ts }); bump(pd, 'purchases'); }
+      }
     }
   }
-  currency -= coinsSpent;
+  achs = earnAchievements(days, today);
+  currency += ACHIEVEMENT_COINS * achs.length - coinsSpent;
+  const title = achs.map(x => ACHIEVEMENTS.find(d => d.id === x.id)!.titleReward).filter((t): t is string => !!t).at(-1) ?? 'Новичок';
 
   const { level, into, need } = levelFromXp(totalXp);
   const rewards = [...shop.values()].filter(r => !r.deleted).map(({ id, title, price }) => ({ id, title, price }));
+  const statHistory = dayPoints.map(({ date, pts }) => {
+    const p = { ...pts };
+    for (const b of bossPts) if (b.date <= date) p[b.stat] += 5;
+    return { date, stats: Object.fromEntries(STAT_KEYS.map(k => [k, initial![k] + Math.floor(p[k] / 10)])) as Record<Stat, number> };
+  });
+  const metricHistory = [...metrics].filter(([d]) => d <= today).sort(([a], [b]) => (a < b ? -1 : 1)).map(([date, m]) => ({ date, metrics: { ...m } }));
+  const shadowMetrics: GameState['today']['shadowMetrics'] = [];
+  for (const [metric, lowerIsBetter] of SHADOW_METRICS) {
+    const best = best7(metrics, today, metric, lowerIsBetter);
+    if (best === null) continue;
+    const t = best * (lowerIsBetter ? 0.95 : 1.05);
+    shadowMetrics.push({ metric, you: metrics.get(today)?.[metric] ?? null, target: metric === 'steps' ? Math.round(t) : Math.round(t * 10) / 10, lowerIsBetter });
+  }
   const sleepDate = [...metrics.keys()].filter(d => d <= today && metrics.get(d)!.sleepHours !== undefined).sort().at(-1);
 
   return {
     profile, avatar, totalXp, level, xpInto: into, xpNeed: need, stats, statPoints, currency,
-    streak: streak + (todayQuests.some(q => q.done) ? 1 : 0), shadowWinStreak: wins,
+    streak: streakNow, shadowWinStreak: wins,
     className: classFor(stats), tier: tierFor(level), multipliers,
     today: {
       date: today, started: !!started, work: started?.work ?? null, wakeAt: started?.wakeAt ?? null,
       quests: todayQuests, xp: sum(todayQuests.filter(q => q.done)),
       shadowXp: shadowOf(todayQuests, today),
-      metrics: metrics.get(today) ?? {}, checkedIn, lastEnergy, busyUntil, calendar,
+      metrics: metrics.get(today) ?? {}, checkedIn, lastEnergy, busyUntil, calendar, shadowMetrics,
     },
     lastHealth,
     skills: { unlocked: [...unlockedAt.keys()], points: Math.max(0, baseLevel - 1 - spent) }, rewards, purchases,
     weekly: { weekStart: thisWeek, quests: weeklyNow },
     bosses: [...bossMap.values()].filter(b => !b.abandoned),
-    genWeekly: { weekStart: thisWeek, stats, multipliers, prevActiveDays, prevStatQuests, bestSteps7: bestSteps7(metrics, today) },
-    history,
+    genWeekly: { weekStart: thisWeek, stats, multipliers, prevActiveDays, prevStatQuests, bestSteps7: best7(metrics, today, 'steps') },
+    history, achievements: achs, title, statHistory, metricHistory,
     genInputs: {
-      bestSteps7: bestSteps7(metrics, today),
+      bestSteps7: best7(metrics, today, 'steps'),
       lastSleepHours: sleepDate ? metrics.get(sleepDate)!.sleepHours! : null,
       recentTemplateIds: [addDays(today, -2), addDays(today, -1)].flatMap(d => issued.get(d)?.map(q => q.templateId) ?? []),
     },
