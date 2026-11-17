@@ -1,7 +1,7 @@
 import { db, getSetting, setSetting, type StoredEvent } from './db'
 import { now } from './now'
 
-export const DEFAULT_SYNC_URL = '' // заполняется при деплое воркера
+export const DEFAULT_SYNC_URL = 'https://life-rpg-sync.edikgavrilyak.workers.dev' // заполняется при деплое воркера
 
 export interface SyncConfig { url: string; token: string }
 export type SyncResult = { ok: true; pushed: number; pulled: number } | { ok: false; error: string }

@@ -8,5 +8,5 @@ ALLOWED_ORIGINS = "https://monarch071.github.io,http://localhost:5173,http://loc
 [[d1_databases]]
 binding = "DB"
 database_name = "life-rpg"
-database_id = "REPLACE_AT_DEPLOY"
+database_id = "ce9c7937-1550-4244-b489-e9148b663cd1"
 migrations_dir = "migrations"
