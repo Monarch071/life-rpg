@@ -9,6 +9,7 @@ import Character from './screens/Character'
 import Settings from './screens/Settings'
 import Quests from './screens/Quests'
 import Shop from './screens/Shop'
+import Analytics from './screens/Analytics'
 import Avatar, { EYE_OPTIONS, HAIR_OPTIONS } from './ui/Avatar'
 import { DEFAULT_AVATAR } from './domain/replay'
 
@@ -45,7 +46,7 @@ export default function App() {
           : tab === 'Задания' ? <Quests state={state} />
           : tab === 'Герой' ? <Character state={state} />
           : tab === 'Магазин' ? <Shop state={state} />
-          : tab === 'Анализ' ? <section className="panel center"><h1>Анализ</h1><p className="muted">Скоро</p></section>
+          : tab === 'Анализ' ? <Analytics state={state} />
           : <Settings state={state} sync={sync} />}
       </main>
       <nav className="tabbar">

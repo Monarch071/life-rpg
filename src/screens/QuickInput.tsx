@@ -1,16 +1,14 @@
 import { useState } from 'react'
 import { appendEvent } from '../db'
 import { useDialog } from '../ui/useDialog'
+import { METRIC_INFO } from '../domain/metricInfo'
 import type { GameState, Metric } from '../domain/types'
 
 type Field = { metric: Metric; icon: string; label: string; unit: string; mode: 'set' | 'add'; max: number }
+const F = (metric: Metric, mode: 'set' | 'add', max: number): Field => ({ metric, ...METRIC_INFO[metric], mode, max })
 const FIELDS: Field[] = [
-  { metric: 'screenMin', icon: '📱', label: 'Экранное время', unit: 'мин', mode: 'set', max: 1440 },
-  { metric: 'spend', icon: '💸', label: 'Траты', unit: '₽', mode: 'add', max: 10_000_000 },
-  { metric: 'readPages', icon: '📖', label: 'Чтение', unit: 'стр', mode: 'add', max: 2000 },
-  { metric: 'workoutMin', icon: '🏋️', label: 'Тренировка', unit: 'мин', mode: 'add', max: 1440 },
-  { metric: 'sleepHours', icon: '😴', label: 'Сон', unit: 'ч', mode: 'set', max: 24 },
-  { metric: 'weightKg', icon: '⚖️', label: 'Вес', unit: 'кг', mode: 'set', max: 500 },
+  F('screenMin', 'set', 1440), F('spend', 'add', 10_000_000), F('readPages', 'add', 2000),
+  F('workoutMin', 'add', 1440), F('sleepHours', 'set', 24), F('weightKg', 'set', 500),
 ]
 
 /** Число из поля: запятая как разделитель, без NaN/отрицательных/сверх максимума; для add — строго > 0. */

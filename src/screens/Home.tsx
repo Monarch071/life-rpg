@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { appendEvent, getSetting, setSetting } from '../db'
 import { ACHIEVEMENTS } from '../domain/achievements'
 import { fromMin, gameDate, toMin } from '../domain/day'
+import { METRIC_INFO } from '../domain/metricInfo'
 import { STATS } from '../domain/stats'
 import type { GameState, Profile } from '../domain/types'
 import { hhmmNow, now } from '../now'
@@ -129,6 +130,22 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
         <span className="dot">·</span>
         <span className={leader === 'shadow' ? 'sh lead' : 'sh'}>Тень {today.shadowXp} XP</span>
       </div>
+      {today.shadowMetrics.length > 0 && (
+        <section className="shadow-metrics" aria-label="Тень по метрикам">
+          <h2>Тень по метрикам</h2>
+          {today.shadowMetrics.map(s => {
+            const i = METRIC_INFO[s.metric]
+            const pct = s.you === null ? 0 : s.lowerIsBetter ? (s.you <= s.target ? 100 : Math.max(0, s.target / s.you * 100)) : Math.min(100, s.you / s.target * 100)
+            const n = (v: number) => (Math.round(v * 10) / 10).toLocaleString('ru-RU')
+            return (
+              <div key={s.metric} className="sm-row">
+                <span>{i.icon} {i.label} {s.you === null ? '—' : n(s.you)} / {s.lowerIsBetter ? 'не больше ' : ''}{n(s.target)}</span>
+                <div className="xpbar" role="progressbar" aria-label={i.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}><i style={{ width: `${pct}%` }} /></div>
+              </div>
+            )
+          })}
+        </section>
+      )}
       <p className="streak">🔥 Серия: {state.streak} {state.shadowWinStreak > 0 && <small>· побед над Тенью подряд: {state.shadowWinStreak}</small>}</p>
 
       <section className="quests" aria-label="Задания на сегодня">
