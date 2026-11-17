@@ -203,7 +203,27 @@ h1, h2, h3 { font-family: Unbounded, Manrope, sans-serif; font-weight: 700; }
   .burst { display: none; }
 }
 
-.toast { position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 20; max-width: calc(100% - 32px); padding: 12px 16px; border-radius: 12px; background: var(--card2); border: 1px solid var(--fire); color: var(--fire2); font-weight: 700; box-shadow: 0 0 16px #ff5b1455; }
+.toast { position: fixed; bottom: calc(76px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); z-index: 20; width: max-content; max-width: calc(100% - 32px); display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); font: 800 13px Unbounded, sans-serif; box-shadow: 0 10px 30px #000a; animation: toast-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) backwards; }
+.toast svg { flex: none; color: var(--shadow2); filter: drop-shadow(0 0 8px var(--shadow)); }
+.toast small { display: block; font: 700 10px Manrope, sans-serif; letter-spacing: 2px; color: var(--gold); }
+@keyframes toast-in { from { transform: translate(-50%, 60px); opacity: 0; } }
+.lvlup { position: fixed; inset: 0; z-index: 50; overflow: hidden; background: radial-gradient(circle at 50% 42%, #ff5b1455, #000000ee 65%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; }
+.rays { position: absolute; top: 42%; left: 50%; width: 720px; height: 720px; transform: translate(-50%, -50%); background: repeating-conic-gradient(#ff8a3d22 0 6deg, transparent 6deg 18deg); animation: spin 18s linear infinite; mask: radial-gradient(circle, #000 20%, transparent 60%); }
+@keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+.lvlup .k { font: 800 13px Unbounded, sans-serif; letter-spacing: 4px; color: var(--fire2); position: relative; animation: in 0.5s 0.1s backwards; }
+.lvlup .huge { position: relative; width: 170px; height: 170px; background: linear-gradient(160deg, var(--fire2), var(--fire)); clip-path: polygon(16% 0, 100% 0, 84% 100%, 0 100%); display: grid; place-items: center; animation: slam 0.7s cubic-bezier(0.2, 1.8, 0.4, 1) 0.2s backwards; }
+.lvlup .huge b { font: 900 96px/1 Unbounded, sans-serif; color: #1a0a02; }
+@keyframes slam { 0% { transform: scale(2.4) rotate(-12deg); opacity: 0; } 100% { transform: none; } }
+.lvlup h2 { position: relative; margin: 0; font: 900 26px Unbounded, sans-serif; text-align: center; animation: in 0.5s 0.5s backwards; }
+.lvlup p { position: relative; margin: 0; color: var(--muted); text-align: center; font-size: 14px; animation: in 0.5s 0.6s backwards; }
+.rew { position: relative; display: flex; gap: 8px; animation: in 0.5s 0.75s backwards; }
+.rew span { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; font: 800 12px Unbounded, sans-serif; }
+.rew .g { color: var(--gold); } .rew .p { color: var(--shadow2); }
+.btn3d { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; max-width: 360px; height: 56px; margin-top: 10px; border: 0; border-radius: 14px; background: linear-gradient(var(--fire2), var(--fire)); color: #1a0a02; font: 800 15px Unbounded, sans-serif; box-shadow: 0 5px 0 var(--fire-deep), 0 10px 24px #ff5b1444; transition: transform 0.12s, box-shadow 0.12s; animation: in 0.5s 0.9s backwards; }
+.btn3d:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--fire-deep); }
+.conf { position: absolute; width: 8px; height: 14px; top: -20px; border-radius: 2px; animation: fall 3s linear infinite; }
+@keyframes fall { to { transform: translateY(900px) rotate(720deg); } }
+@media (prefers-reduced-motion: reduce) { .rays, .conf { display: none; } }
 .card ol, .card b, .card small, .card span { overflow-wrap: anywhere; }
 
 /* analytics + shadow metrics */

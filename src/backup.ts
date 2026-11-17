@@ -3,7 +3,7 @@ import { replay } from './domain/replay'
 import type { GameEvent } from './domain/types'
 
 // device-local settings: never exported, never overwritten by import
-const isLocal = (key: string) => key === 'deviceId' || key === 'lastExportAt' || key === 'lastSyncAt' || key === 'seenAchievements' || key.startsWith('sync') || key.startsWith('ai')
+const isLocal = (key: string) => key === 'deviceId' || key === 'lastExportAt' || key === 'lastSyncAt' || key.startsWith('seen') || key.startsWith('sync') || key.startsWith('ai')
 
 export async function exportData(): Promise<Blob> {
   const events = await db.events.orderBy('ts').toArray()

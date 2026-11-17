@@ -10,6 +10,7 @@ import Settings from './screens/Settings'
 import Quests from './screens/Quests'
 import Shop from './screens/Shop'
 import Analytics from './screens/Analytics'
+import Celebration from './ui/Celebration'
 import Avatar, { EYE_OPTIONS, HAIR_OPTIONS } from './ui/Avatar'
 import { DEFAULT_AVATAR } from './domain/replay'
 import { House, Swords, User, ChartLine, ShoppingBag, Settings as SettingsIcon } from 'lucide-react'
@@ -42,6 +43,7 @@ export default function App() {
   return (
     <div className="app">
       {joinSheet}
+      <Celebration state={state} />
       <main className="content">
         {tab === 'Главная' ? <Home state={state} profile={state.profile} />
           : tab === 'Задания' ? <Quests state={state} />

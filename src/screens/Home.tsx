@@ -9,7 +9,7 @@ import type { GameState, Profile } from '../domain/types'
 import { hhmmNow, now } from '../now'
 import { imageNameFor } from '../ai/avatar'
 import { useBlobUrl } from '../blobs'
-import { Bot, Check, Coins, Flame, Hourglass, Moon, Zap } from 'lucide-react'
+import { Bot, Check, Coins, Flame, Gem, Hourglass, Moon, Zap } from 'lucide-react'
 import Arena from '../ui/Arena'
 import LevelBadge from '../ui/LevelBadge'
 import XpBar from '../ui/XpBar'
@@ -49,7 +49,7 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
       const seen = await getSetting<string[]>('seenAchievements', [])
       const fresh = state.achievements.filter(a => a.date === today.date && !seen.includes(a.id))
       if (off || !fresh.length) return
-      const text = fresh.map(a => `🏆 ${ACHIEVEMENTS.find(d => d.id === a.id)?.title ?? a.id}`).join(' · ')
+      const text = fresh.map(a => ACHIEVEMENTS.find(d => d.id === a.id)?.title ?? a.id).join(' · ')
       setToast(prev => prev?.text === text ? prev : { text, ids: fresh.map(a => a.id) })
     })().catch(() => {})
     return () => { off = true }
@@ -109,7 +109,7 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
 
   return (
     <div className="home">
-      <div role="status">{toast && <div className="toast" onClick={() => void dismiss()}>{toast.text}</div>}</div>
+      <div role="status">{toast && <div className="toast" onClick={() => void dismiss()}><Gem size={22} aria-hidden="true" /><span><small>ДОСТИЖЕНИЕ</small>{toast.text}</span></div>}</div>
       <header className="hud">
         <div className="hud-top">
           <LevelBadge level={state.level} />
