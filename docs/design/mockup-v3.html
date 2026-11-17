@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Life RPG — макет нового интерфейса</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0c0c0f; --bg2:#141419; --card:#1b1b22; --card2:#23232c; --line:#2e2e3a;
+  --text:#f4f2ee; --muted:#9a98a6;
+  --fire:#ff5b14; --fire2:#ff8a3d; --fire-deep:#a8360a;
+  --shadow:#9b5cff; --shadow2:#c79bff;
+  --up:#3ee07a; --gold:#ffcc4d;
+  --str:#ff4d6d; --end:#3ee07a; --int:#9b8cff; --dis:#4da3ff; --cha:#ff9f43; --fin:#ffcc4d; --spi:#4de1d2;
+  --r:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#050507;color:var(--text);font-family:Manrope,system-ui,sans-serif;display:flex;flex-wrap:wrap;gap:28px;justify-content:center;padding:28px 12px}
+h1.page{width:100%;text-align:center;font:900 20px Unbounded;letter-spacing:.5px}
+p.lead{width:100%;text-align:center;color:var(--muted);font-size:14px;margin-top:-18px}
+.phone{width:390px;height:844px;border-radius:44px;background:var(--bg);border:10px solid #000;box-shadow:0 0 0 2px #26262e,0 30px 80px #000;overflow:hidden;position:relative;display:flex;flex-direction:column}
+.cap{width:100%;text-align:center;color:var(--muted);font:600 12px Manrope;margin-top:8px}
+.scr{flex:1;overflow:hidden;padding:52px 16px 0;position:relative;
+  background:radial-gradient(120% 60% at 50% 0%,#24140c 0%,transparent 60%),radial-gradient(80% 50% at 85% 35%,#1d1030 0%,transparent 60%),var(--bg)}
+/* ---------- header ---------- */
+.top{display:flex;align-items:center;gap:12px}
+.lvl{position:relative;width:74px;height:64px;background:linear-gradient(160deg,var(--fire2),var(--fire));clip-path:polygon(14% 0,100% 0,86% 100%,0 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 0 24px #ff5b1455}
+.lvl b{font:900 28px/1 Unbounded;color:#1a0a02}
+.lvl small{font:800 8px Unbounded;letter-spacing:1.5px;color:#3b1504}
+.who{flex:1;min-width:0}
+.who .name{font:700 16px Unbounded}
+.who .cls{font:600 12px Manrope;color:var(--muted)}
+.who .cls em{color:var(--shadow2);font-style:normal}
+.coins{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 10px 6px 6px;font:800 14px Unbounded;color:var(--gold)}
+.coin{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3b0,var(--gold) 45%,#b07a00);box-shadow:0 0 10px #ffcc4d66;display:grid;place-items:center;font:900 11px Unbounded;color:#7a5200}
+/* segmented xp bar */
+.xp{margin-top:12px}
+.xp .bar{display:grid;grid-template-columns:repeat(30,1fr);gap:3px;height:12px}
+.xp .bar i{border-radius:2px;background:#2a2a33}
+.xp .bar i.on{background:linear-gradient(var(--fire2),var(--fire));box-shadow:0 0 6px #ff5b1488;animation:seg .5s backwards}
+.xp .meta{display:flex;justify-content:space-between;margin-top:6px;font:600 11px Manrope;color:var(--muted)}
+.xp .meta b{color:var(--text)}
+@keyframes seg{from{transform:scaleY(.2);opacity:0}}
+/* ---------- arena ---------- */
+.arena{margin-top:14px;height:230px;border-radius:22px;position:relative;overflow:hidden;
+  background:linear-gradient(180deg,#1a1320 0%,#0f0f14 100%);border:1px solid var(--line)}
+.arena:before{content:"";position:absolute;inset:auto 0 0 0;height:60px;background:repeating-linear-gradient(90deg,#ffffff08 0 1px,transparent 1px 28px),linear-gradient(transparent,#00000088)}
+.fig{position:absolute;bottom:16px;width:150px;height:200px;display:flex;justify-content:center}
+.fig.me{left:14px}.fig.sh{right:14px}
+.aura{position:absolute;bottom:0;width:130px;height:40px;border-radius:50%;filter:blur(10px)}
+.me .aura{background:#ff5b1477;animation:pulse 2.6s ease-in-out infinite}
+.sh .aura{background:#9b5cff88;animation:pulse 2.6s ease-in-out infinite reverse}
+@keyframes pulse{50%{transform:scale(1.25);opacity:.6}}
+.fig svg{position:relative;height:190px;animation:idle 3.2s ease-in-out infinite}
+.sh svg{filter:brightness(.35) saturate(0) drop-shadow(0 0 10px var(--shadow));animation-delay:-1.6s}
+@keyframes idle{50%{transform:translateY(-5px)}}
+.vs{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%) skewX(-10deg);font:900 22px Unbounded;color:var(--text);text-shadow:0 0 18px var(--fire),2px 2px 0 var(--fire-deep)}
+.tag{position:absolute;top:10px;font:800 10px Unbounded;letter-spacing:1.5px;padding:4px 8px;border-radius:6px}
+.tag.l{left:10px;background:#ff5b1422;color:var(--fire2)} .tag.r{right:10px;background:#9b5cff22;color:var(--shadow2)}
+/* score */
+.score{margin-top:12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.score .row{display:flex;justify-content:space-between;font:800 13px Unbounded}
+.score .row .s{color:var(--shadow2)}
+.tug{margin-top:8px;height:10px;border-radius:99px;background:linear-gradient(90deg,var(--fire) 0 58%,var(--shadow) 58%);position:relative;box-shadow:inset 0 0 0 1px #0006}
+.tug:after{content:"";position:absolute;left:58%;top:-4px;width:4px;height:18px;border-radius:2px;background:#fff;box-shadow:0 0 10px #fff;transform:translateX(-50%);animation:tug 2s ease-in-out infinite}
+@keyframes tug{50%{left:61%}}
+.mtr{display:flex;gap:8px;margin-top:10px}
+.mtr div{flex:1;background:var(--bg2);border-radius:10px;padding:8px;font:600 11px Manrope;color:var(--muted)}
+.mtr b{display:block;font:800 13px Unbounded;color:var(--text)}
+.mini{height:4px;border-radius:2px;background:#2a2a33;margin-top:6px;overflow:hidden}.mini i{display:block;height:100%;background:var(--up)}
+/* quests */
+.sec{display:flex;justify-content:space-between;align-items:baseline;margin:16px 2px 8px}
+.sec h3{font:700 15px Unbounded}.sec span{font:600 12px Manrope;color:var(--muted)}
+.q{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px;margin-bottom:8px;animation:in .45s cubic-bezier(.2,1.4,.4,1) backwards}
+.q:nth-child(2){animation-delay:.05s}.q:nth-child(3){animation-delay:.1s}.q:nth-child(4){animation-delay:.15s}
+@keyframes in{from{opacity:0;transform:translateY(14px) scale(.96)}}
+.ico{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--c);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c) 40%,transparent)}
+.ico svg{width:22px;height:22px}
+.q .t{flex:1;min-width:0}.q .t b{display:block;font:700 14px Manrope}.q .t small{font:600 11px Manrope;color:var(--muted)}
+.xpchip{font:800 11px Unbounded;color:var(--fire2)}
+.chk{width:44px;height:44px;border-radius:12px;border:2px solid var(--line);display:grid;place-items:center;background:var(--bg2)}
+.q.done{opacity:.55}.q.done .chk{background:var(--up);border-color:var(--up);color:#062a12}
+.q.done .t b{text-decoration:line-through}
+.q.pop{position:relative;opacity:1}
+.q.pop .chk{animation:chk .5s cubic-bezier(.2,1.6,.4,1)}
+@keyframes chk{0%{transform:scale(.6)}60%{transform:scale(1.15)}}
+.float{position:absolute;right:58px;top:-6px;font:900 16px Unbounded;color:var(--fire2);text-shadow:0 0 12px var(--fire);animation:float 1.6s ease-out infinite}
+@keyframes float{0%{transform:translateY(10px);opacity:0}20%{opacity:1}100%{transform:translateY(-26px);opacity:0}}
+.spark{position:absolute;right:20px;top:50%;width:6px;height:6px;border-radius:50%;background:var(--gold);animation:spark 1.6s ease-out infinite}
+.spark:nth-child(2){--dx:-24px;--dy:-22px}.spark:nth-child(3){--dx:18px;--dy:-26px;background:var(--fire2)}.spark:nth-child(4){--dx:26px;--dy:12px}.spark:nth-child(5){--dx:-20px;--dy:18px;background:var(--up)}
+@keyframes spark{0%{transform:translate(0,0) scale(1);opacity:1}70%{opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(0);opacity:0}}
+/* 3D button like Life Reset */
+.btn3d{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:56px;border:0;border-radius:14px;background:linear-gradient(var(--fire2),var(--fire));color:#1a0a02;font:800 15px Unbounded;box-shadow:0 5px 0 var(--fire-deep),0 10px 24px #ff5b1444;transition:transform .12s,box-shadow .12s}
+.btn3d:active{transform:translateY(4px);box-shadow:0 1px 0 var(--fire-deep)}
+.btn3d.ghost{background:var(--card2);color:var(--text);box-shadow:0 5px 0 #0b0b0f}
+/* tab bar */
+.tabs{height:84px;background:#0b0b0eee;backdrop-filter:blur(16px);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(6,1fr);padding:8px 6px 22px}
+.tab{display:flex;flex-direction:column;align-items:center;gap:4px;font:700 10px Manrope;color:var(--muted)}
+.tab svg{width:24px;height:24px}
+.tab.on{color:var(--fire)}.tab.on svg{filter:drop-shadow(0 0 6px var(--fire))}
+.tab.on:after{content:"";width:18px;height:3px;border-radius:2px;background:var(--fire);box-shadow:0 0 8px var(--fire)}
+/* ---------- hero screen ---------- */
+.rating{display:flex;gap:12px;align-items:stretch;margin-top:6px}
+.bigl{width:120px;height:120px;background:linear-gradient(160deg,var(--fire2),var(--fire));clip-path:polygon(16% 0,100% 0,84% 100%,0 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;filter:drop-shadow(0 0 20px #ff5b1466)}
+.bigl b{font:900 56px/1 Unbounded;color:#1a0a02}.bigl small{font:800 10px Unbounded;letter-spacing:2px;color:#3b1504}
+.title{flex:1;display:flex;flex-direction:column;justify-content:center;gap:6px}
+.title .rank{font:900 18px Unbounded}
+.title .ttl{display:inline-flex;align-self:flex-start;gap:6px;align-items:center;font:800 11px Unbounded;letter-spacing:1px;padding:6px 10px;border-radius:8px;background:#9b5cff22;color:var(--shadow2);box-shadow:inset 0 0 0 1px #9b5cff55}
+.stat{display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid #ffffff0d;animation:in .45s cubic-bezier(.2,1.4,.4,1) backwards}
+.stat:nth-child(2){animation-delay:.04s}.stat:nth-child(3){animation-delay:.08s}.stat:nth-child(4){animation-delay:.12s}.stat:nth-child(5){animation-delay:.16s}.stat:nth-child(6){animation-delay:.2s}.stat:nth-child(7){animation-delay:.24s}
+.stat .ico{width:36px;height:36px;border-radius:10px}.stat .ico svg{width:19px;height:19px}
+.stat .n{flex:1;font:700 15px Manrope}
+.stat .d{font:800 12px Unbounded;color:var(--up)}
+.stat .v{font:900 30px Unbounded;min-width:58px;text-align:right}
+.gems{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:8px}
+.gem{aspect-ratio:1;display:grid;place-items:center;position:relative}
+.gem .hex{width:64px;height:72px;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);background:linear-gradient(150deg,var(--g1),var(--g2));display:grid;place-items:center;box-shadow:0 0 0 2px #fff2;filter:drop-shadow(0 0 12px var(--g1));animation:gem 3s ease-in-out infinite}
+.gem .hex svg{width:26px;height:26px;color:#fff;filter:drop-shadow(0 2px 2px #0006)}
+.gem.off .hex{background:#25252e;filter:none;animation:none}.gem.off .hex svg{color:#55556a}
+@keyframes gem{50%{transform:translateY(-3px) rotate(2deg)}}
+/* ---------- level up overlay ---------- */
+.lvlup{position:absolute;inset:0;background:radial-gradient(circle at 50% 42%,#ff5b1455,#000000ee 65%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px}
+.rays{position:absolute;top:42%;left:50%;width:720px;height:720px;transform:translate(-50%,-50%);background:repeating-conic-gradient(#ff8a3d22 0 6deg,transparent 6deg 18deg);animation:spin 18s linear infinite;mask:radial-gradient(circle,#000 20%,transparent 60%)}
+@keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+.lvlup .k{font:800 13px Unbounded;letter-spacing:4px;color:var(--fire2);position:relative;animation:in .5s .1s backwards}
+.lvlup .huge{position:relative;width:170px;height:170px;background:linear-gradient(160deg,var(--fire2),var(--fire));clip-path:polygon(16% 0,100% 0,84% 100%,0 100%);display:grid;place-items:center;animation:slam .7s cubic-bezier(.2,1.8,.4,1) .2s backwards;filter:drop-shadow(0 0 40px var(--fire))}
+.lvlup .huge b{font:900 96px/1 Unbounded;color:#1a0a02}
+@keyframes slam{0%{transform:scale(2.4) rotate(-12deg);opacity:0}100%{transform:none}}
+.lvlup h2{position:relative;font:900 26px Unbounded;text-align:center;animation:in .5s .5s backwards}
+.lvlup p{position:relative;color:var(--muted);text-align:center;font-size:14px;animation:in .5s .6s backwards}
+.rew{position:relative;display:flex;gap:8px;animation:in .5s .75s backwards}
+.rew span{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;font:800 12px Unbounded}
+.rew .g{color:var(--gold)}.rew .p{color:var(--shadow2)}
+.lvlup .btn3d{position:relative;margin-top:10px;animation:in .5s .9s backwards}
+.conf{position:absolute;width:8px;height:14px;top:-20px;border-radius:2px;animation:fall 3s linear infinite}
+@keyframes fall{to{transform:translateY(900px) rotate(720deg)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<h1 class="page">Life RPG — новый интерфейс (макет)</h1>
+<p class="lead">Чёрный фон + огненный оранжевый как у Life Reset, фиолетовая Тень, широкий шрифт Unbounded, контурные иконки, анимации. Анимации на макете играют сами.</p>
+
+<!-- SVG icon sprite (Lucide-style, stroke) -->
+<svg width="0" height="0" style="position:absolute">
+ <defs>
+  <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-sword" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"/></symbol>
+  <symbol id="i-bag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l1 14H5zM9 7V5a3 3 0 0 1 6 0v2"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-dumbbell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/></symbol>
+  <symbol id="i-run" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="14" cy="4" r="2"/><path d="m6 21 3-6 3 2v5M9 15l1.5-6L15 11l3 2M10.5 9 7 10l-2 3"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2zM20 19v2H6"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12z"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9.5a3 3 0 0 0-3-1.5c-1.7 0-3 .9-3 2s1.3 1.6 3 2 3 .9 3 2-1.3 2-3 2a3 3 0 0 1-3-1.5M12 6v2M12 16v2"/></symbol>
+  <symbol id="i-lotus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20c-4 0-8-2-9-6 3 0 6 1 9 4 3-3 6-4 9-4-1 4-5 6-9 6zM12 18c-2-3-2-8 0-12 2 4 2 9 0 12z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c4 0 7-3 7-7 0-4-3-6-4-9-1 3-3 4-4 4 0-3-1-5-3-7 0 5-4 7-4 12 0 4 3 7 8 7z"/></symbol>
+  <symbol id="i-crown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 7 4 4 5-7 5 7 4-4-2 12H5z"/></symbol>
+  <symbol id="i-skull" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a8 8 0 0 0-8 8c0 3 1.5 5 3 6v3h10v-3c1.5-1 3-3 3-6a8 8 0 0 0-8-8z"/><circle cx="9" cy="11" r="1.5"/><circle cx="15" cy="11" r="1.5"/><path d="M10 20v-2M14 20v-2"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <!-- simplified anime hero silhouette for the mockup (the real app keeps the current anime avatar / AI image) -->
+  <symbol id="hero" viewBox="0 0 120 200">
+   <path d="M30 42 Q28 8 60 6 Q92 8 90 42 L96 30 L88 58 L32 58 L24 30z" fill="#2b1d14"/>
+   <ellipse cx="60" cy="46" rx="22" ry="24" fill="#f6d7c3"/>
+   <path d="M38 40 Q40 14 60 12 Q80 14 82 40 L76 30 L70 40 L64 26 L58 40 L50 28 L44 40z" fill="#3a271b"/>
+   <path d="M47 46 q4-5 8 0 q-4 5-8 0zM65 46 q4-5 8 0 q-4 5-8 0z" fill="#1b1b2a"/>
+   <circle cx="52" cy="46" r="1.6" fill="#ffb27a"/><circle cx="70" cy="46" r="1.6" fill="#ffb27a"/>
+   <path d="M56 58 q4 2 8 0" stroke="#b5655a" stroke-width="1.5" fill="none"/>
+   <path d="M30 76 Q60 64 90 76 L96 140 L24 140z" fill="#ff5b14"/>
+   <path d="M60 70 L60 140" stroke="#a8360a" stroke-width="3"/>
+   <path d="M30 78 L14 132 L24 136 L38 92z M90 78 L106 132 L96 136 L82 92z" fill="#f6d7c3"/>
+   <path d="M36 140 L40 196 L56 196 L58 146 L62 146 L64 196 L80 196 L84 140z" fill="#1d1d26"/>
+   <path d="M36 196 h22 v-6 h-22z M62 196 h22 v-6 h-22z" fill="#ffcc4d"/>
+  </symbol>
+ </defs>
+</svg>
+
+<!-- =============== 1. HOME =============== -->
+<div>
+<div class="phone"><div class="scr">
+  <div class="top">
+    <div class="lvl"><b>7</b><small>LEVEL</small></div>
+    <div class="who"><div class="name">Эдик</div><div class="cls">Воин · <em>«Упорный»</em></div></div>
+    <div class="coins"><span class="coin">₽</span>340</div>
+  </div>
+  <div class="xp">
+    <div class="bar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="meta"><span><b>1 120</b> / 1 852 XP</span><span>🔥 серия 12 дней</span></div>
+  </div>
+  <div class="arena">
+    <span class="tag l">ТЫ</span><span class="tag r">ТЕНЬ</span>
+    <div class="fig me"><div class="aura"></div><svg viewBox="0 0 120 200"><use href="#hero"/></svg></div>
+    <div class="fig sh"><div class="aura"></div><svg viewBox="0 0 120 200" style="transform:scaleX(-1)"><use href="#hero"/></svg></div>
+    <div class="vs">VS</div>
+  </div>
+  <div class="score">
+    <div class="row"><span>Ты 145 XP</span><span class="s">Тень 105 XP</span></div>
+    <div class="tug"></div>
+    <div class="mtr"><div>Шаги<b>5 820 / 8 400</b><div class="mini"><i style="width:69%"></i></div></div><div>Сон<b>7.2 / 7.0 ч</b><div class="mini"><i style="width:100%"></i></div></div></div>
+  </div>
+  <div class="sec"><h3>Задания дня</h3><span>3 из 5</span></div>
+  <div>
+    <div class="q done pop" style="--c:var(--end)"><div class="ico"><svg><use href="#i-run"/></svg></div><div class="t"><b>Пробежка 20 мин</b><small>Выносливость · 10:30–10:50</small></div><span class="xpchip">+30</span><div class="chk"><svg width="20" height="20"><use href="#i-check"/></svg></div>
+      <span class="float">+30 XP</span><i class="spark"></i><i class="spark"></i><i class="spark"></i><i class="spark"></i><i class="spark"></i></div>
+    <div class="q" style="--c:var(--int)"><div class="ico"><svg><use href="#i-book"/></svg></div><div class="t"><b>Прочитать 15 страниц</b><small>Интеллект · 13:10–13:40</small></div><span class="xpchip">+25</span><div class="chk"></div></div>
+    <div class="q" style="--c:var(--dis)"><div class="ico"><svg><use href="#i-target"/></svg></div><div class="t"><b>Без игр до 20:00</b><small>Дисциплина · весь день</small></div><span class="xpchip">+40</span><div class="chk"></div></div>
+  </div>
+</div>
+<nav class="tabs">
+  <div class="tab on"><svg><use href="#i-home"/></svg>Главная</div>
+  <div class="tab"><svg><use href="#i-sword"/></svg>Задания</div>
+  <div class="tab"><svg><use href="#i-user"/></svg>Герой</div>
+  <div class="tab"><svg><use href="#i-chart"/></svg>Анализ</div>
+  <div class="tab"><svg><use href="#i-bag"/></svg>Магазин</div>
+  <div class="tab"><svg><use href="#i-gear"/></svg>&nbsp;</div>
+</nav></div>
+<div class="cap">Главная: скошенный бейдж уровня, полоса XP из делений, «арена» Ты VS Тень, канат счёта, задания с иконками. Выполненное: галочка «пружинит», вылетает +XP и искры.</div>
+</div>
+
+<!-- =============== 2. HERO =============== -->
+<div>
+<div class="phone"><div class="scr">
+  <div class="rating">
+    <div class="bigl"><b>7</b><small>LEVEL</small></div>
+    <div class="title"><div class="rank">Воин</div><span class="ttl"><svg width="14" height="14"><use href="#i-crown"/></svg>УПОРНЫЙ</span><span style="font:600 12px Manrope;color:var(--muted)">Очки навыков: 3</span></div>
+  </div>
+  <div class="sec"><h3>Характеристики</h3><span>за неделю</span></div>
+  <div>
+    <div class="stat" style="--c:var(--str)"><div class="ico"><svg><use href="#i-dumbbell"/></svg></div><span class="n">Сила</span><span class="d">▲2</span><span class="v">14</span></div>
+    <div class="stat" style="--c:var(--end)"><div class="ico"><svg><use href="#i-run"/></svg></div><span class="n">Выносливость</span><span class="d">▲3</span><span class="v">17</span></div>
+    <div class="stat" style="--c:var(--int)"><div class="ico"><svg><use href="#i-book"/></svg></div><span class="n">Интеллект</span><span class="d">▲1</span><span class="v">12</span></div>
+    <div class="stat" style="--c:var(--dis)"><div class="ico"><svg><use href="#i-target"/></svg></div><span class="n">Дисциплина</span><span class="d">▲4</span><span class="v">19</span></div>
+    <div class="stat" style="--c:var(--cha)"><div class="ico"><svg><use href="#i-chat"/></svg></div><span class="n">Харизма</span><span class="d"></span><span class="v">8</span></div>
+    <div class="stat" style="--c:var(--fin)"><div class="ico"><svg><use href="#i-coin"/></svg></div><span class="n">Финансы</span><span class="d">▲1</span><span class="v">10</span></div>
+    <div class="stat" style="--c:var(--spi)"><div class="ico"><svg><use href="#i-lotus"/></svg></div><span class="n">Дух</span><span class="d">▲2</span><span class="v">13</span></div>
+  </div>
+  <div class="sec"><h3>Достижения</h3><span>9 / 23</span></div>
+  <div class="gems">
+    <div class="gem" style="--g1:#ff5b14;--g2:#ffcc4d"><div class="hex"><svg><use href="#i-flame"/></svg></div></div>
+    <div class="gem" style="--g1:#9b5cff;--g2:#4a1d9e"><div class="hex"><svg><use href="#i-skull"/></svg></div></div>
+    <div class="gem" style="--g1:#3ee07a;--g2:#0f6b3a"><div class="hex"><svg><use href="#i-bolt"/></svg></div></div>
+    <div class="gem off"><div class="hex"><svg><use href="#i-lock"/></svg></div></div>
+  </div>
+</div>
+<nav class="tabs">
+  <div class="tab"><svg><use href="#i-home"/></svg>Главная</div>
+  <div class="tab"><svg><use href="#i-sword"/></svg>Задания</div>
+  <div class="tab on"><svg><use href="#i-user"/></svg>Герой</div>
+  <div class="tab"><svg><use href="#i-chart"/></svg>Анализ</div>
+  <div class="tab"><svg><use href="#i-bag"/></svg>Магазин</div>
+  <div class="tab"><svg><use href="#i-gear"/></svg>&nbsp;</div>
+</nav></div>
+<div class="cap">Герой: огромный бейдж уровня, титул, характеристики крупными цифрами с ▲ ростом за неделю и цветными иконками; достижения — светящиеся кристаллы (как кристалл в Life Reset).</div>
+</div>
+
+<!-- =============== 3. LEVEL UP =============== -->
+<div>
+<div class="phone"><div class="scr" style="padding:0">
+  <div class="lvlup">
+    <div class="rays"></div>
+    <i class="conf" style="left:10%;background:#ff5b14;animation-delay:-.2s"></i><i class="conf" style="left:25%;background:#ffcc4d;animation-delay:-1.1s"></i><i class="conf" style="left:42%;background:#9b5cff;animation-delay:-2s"></i><i class="conf" style="left:60%;background:#3ee07a;animation-delay:-.6s"></i><i class="conf" style="left:78%;background:#ff8a3d;animation-delay:-1.6s"></i><i class="conf" style="left:90%;background:#4da3ff;animation-delay:-2.4s"></i>
+    <div class="k">НОВЫЙ УРОВЕНЬ</div>
+    <div class="huge"><b>8</b></div>
+    <h2>Тень отступает</h2>
+    <p>Ты стал сильнее вчерашнего себя.<br>Получено очко навыка.</p>
+    <div class="rew"><span class="g">+50 монет</span><span class="p">+1 навык</span></div>
+    <button class="btn3d">Продолжить</button>
+  </div>
+</div></div>
+<div class="cap">Повышение уровня: бейдж «падает» с вращением, лучи крутятся, конфетти. Такие же вспышки — на достижение и победу над Тенью.</div>
+</div>
+</body>
+</html>
