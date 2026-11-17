@@ -13,6 +13,8 @@ export function replanAfterBusy(
   const rel = (h: HHMM) => (toMin(h) - toMin(wakeAt) + 1440) % 1440
   const from = rel(nowAt) > rel(busyUntil) ? nowAt : busyUntil
   const movable = quests.filter(q => !q.done && q.window)
+  // занят до отбоя или позже — сегодня окон уже нет (иначе freeWindows развернётся на следующие сутки)
+  if (rel(from) >= rel(profile.sleep)) return quests.map(q => (!q.done && q.window ? { ...q, window: null } : q))
   const placed = placeQuests(movable, freeWindows(from, profile.sleep, work ? [work] : []), profile.energy, from)
   const byId = new Map(placed.map(q => [q.id, q.window]))
   return quests.map(q => (byId.has(q.id) ? { ...q, window: byId.get(q.id)! } : q))

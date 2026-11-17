@@ -1,10 +1,13 @@
-import { useMemo, useRef, useState } from 'react'
-import { appendEvent } from '../db'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { appendEvent, getSetting } from '../db'
 import { fromMin, toMin } from '../domain/day'
 import { STATS } from '../domain/stats'
 import type { GameState, Profile } from '../domain/types'
 import { hhmmNow, now } from '../now'
 import Avatar from '../ui/Avatar'
+import { useDialog } from '../ui/useDialog'
+import { buildQuests } from './issue'
 import Checkin from './Checkin'
 import MyDay from './MyDay'
 import QuickInput from './QuickInput'
@@ -18,6 +21,24 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
   const [pop, setPop] = useState<{ id: string; xp: number; k: number } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const pending = useRef(new Set<string>())
+  const [issuing, setIssuing] = useState(false)
+  const cutoffHour = useLiveQuery(() => getSetting<number>('cutoffHour', 4)) ?? 4
+  useEffect(() => { pending.current.clear() }, [today.date])
+
+  // запасной путь: день начат, а заданий нет
+  const issue = async () => {
+    if (issuing) return
+    setIssuing(true)
+    setErr(null)
+    try {
+      const quests = buildQuests(state, profile, today.work, today.wakeAt ?? hhmmNow())
+      await appendEvent({ type: 'quests_issued', date: today.date, quests })
+    } catch {
+      setErr('Не удалось получить задания, попробуй ещё раз')
+    } finally {
+      setIssuing(false)
+    }
+  }
 
   const quests = useMemo(() => {
     const qs = today.busyUntil && today.wakeAt
@@ -43,7 +64,7 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
 
   const allDone = today.quests.length > 0 && today.quests.every(q => q.done)
   const hour = new Date(now()).getHours()
-  const checkinOpen = allDone || hour >= 18 || hour < 4 // до 4:00 игровой день ещё вчерашний
+  const checkinOpen = allDone || hour >= 18 || hour < cutoffHour // до cutoffHour игровой день ещё вчерашний
   const leader = today.xp > today.shadowXp ? 'me' : today.xp < today.shadowXp ? 'shadow' : null
 
   return (
@@ -63,12 +84,12 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
 
       <section className="arena">
         <figure className={leader === 'me' ? 'lead' : ''}>
-          <Avatar params={state.avatar} tier={state.tier} size={200} />
+          <Avatar params={state.avatar} tier={state.tier} size={200} decorative />
           <figcaption>{profile.name || 'Ты'}</figcaption>
         </figure>
         <span className="vs" aria-hidden="true">VS</span>
         <figure className={`shadow-fig${leader === 'shadow' ? ' lead' : ''}`}>
-          <Avatar params={state.avatar} tier={state.tier} size={200} shadow />
+          <Avatar params={state.avatar} tier={state.tier} size={200} shadow decorative />
           <figcaption>Тень</figcaption>
         </figure>
       </section>
@@ -82,7 +103,9 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
 
       <section className="quests" aria-label="Задания на сегодня">
         <h2>Задания {today.busyUntil && <small className="muted">· занят до {today.busyUntil}</small>}</h2>
-        {quests.length === 0 && today.started && <p className="muted">Заданий на сегодня нет.</p>}
+        {quests.length === 0 && today.started && (
+          <button className="btn primary big" disabled={issuing} onClick={issue}>🎲 Получить задания</button>
+        )}
         <ul>
           {quests.map(q => (
             <li key={q.id}>
@@ -128,6 +151,7 @@ function BusyUntil({ date, onClose }: { date: string; onClose: () => void }) {
   const [until, setUntil] = useState(() => fromMin(Math.ceil((toMin(hhmmNow()) + 60) / 15) * 15))
   const [err, setErr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const dlg = useDialog<HTMLDivElement>(onClose)
   const save = async () => {
     if (!/^\d\d:\d\d$/.test(until)) return setErr('Укажи время')
     setSaving(true)
@@ -141,7 +165,7 @@ function BusyUntil({ date, onClose }: { date: string; onClose: () => void }) {
   }
   return (
     <div className="sheet-wrap" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="busy-title">
+      <div className="sheet" ref={dlg} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="busy-title">
         <div className="sheet-head">
           <h2 id="busy-title">Занят до…</h2>
           <button className="icon-btn" aria-label="Закрыть" onClick={onClose}>✕</button>

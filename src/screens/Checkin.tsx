@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { appendEvent } from '../db'
+import { useDialog } from '../ui/useDialog'
 
 /** Вечерний чек‑ин: что получилось / что нет / энергия 1–10. */
 export default function Checkin({ date, onClose }: { date: string; onClose: () => void }) {
@@ -7,6 +8,7 @@ export default function Checkin({ date, onClose }: { date: string; onClose: () =
   const [notWent, setNotWent] = useState('')
   const [energy, setEnergy] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
+  const dlg = useDialog<HTMLDivElement>(onClose)
   const [err, setErr] = useState<string | null>(null)
   const lock = useRef(false)
 
@@ -27,7 +29,7 @@ export default function Checkin({ date, onClose }: { date: string; onClose: () =
 
   return (
     <div className="sheet-wrap" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="ci-title">
+      <div className="sheet" ref={dlg} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="ci-title">
         <div className="sheet-head">
           <h2 id="ci-title">Чек‑ин дня</h2>
           <button className="icon-btn" aria-label="Закрыть" onClick={onClose}>✕</button>

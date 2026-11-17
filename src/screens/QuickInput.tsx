@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { appendEvent } from '../db'
+import { useDialog } from '../ui/useDialog'
 import type { GameState, Metric } from '../domain/types'
 
 type Field = { metric: Metric; icon: string; label: string; unit: string; mode: 'set' | 'add'; max: number }
@@ -25,6 +26,7 @@ export default function QuickInput({ state, onClose }: { state: GameState; onClo
   const [vals, setVals] = useState<Partial<Record<Metric, string>>>({})
   const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(null)
   const [saving, setSaving] = useState(false)
+  const dlg = useDialog<HTMLDivElement>(onClose)
 
   const log = async (metric: Metric, value: number, mode: 'set' | 'add', label: string) => {
     if (saving) return
@@ -48,7 +50,7 @@ export default function QuickInput({ state, onClose }: { state: GameState; onClo
 
   return (
     <div className="sheet-wrap" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="qi-title">
+      <div className="sheet" ref={dlg} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="qi-title">
         <div className="sheet-head">
           <h2 id="qi-title">Быстрый ввод</h2>
           <button className="icon-btn" aria-label="Закрыть" onClick={onClose}>✕</button>
@@ -71,7 +73,7 @@ export default function QuickInput({ state, onClose }: { state: GameState; onClo
               <span>{f.icon} {f.label}{f.mode === 'add' ? ' +' : ''} <small>({f.unit}){metrics[f.metric] !== undefined ? ` · сейчас ${metrics[f.metric]}` : ''}</small></span>
               <input inputMode="decimal" placeholder="0" value={vals[f.metric] ?? ''} onChange={e => setVals(v => ({ ...v, [f.metric]: e.target.value }))} />
             </label>
-            <button className="btn primary" disabled={saving} aria-label={`Сохранить: ${f.label}`}>{f.mode === 'add' ? '+' : 'OK'}</button>
+            <button className="btn primary" disabled={saving} aria-label={`Сохранить: ${f.label}`}>Сохранить</button>
           </form>
         ))}
         {msg && <p className={msg.err ? 'err' : 'ok'} role="status">{msg.text}</p>}

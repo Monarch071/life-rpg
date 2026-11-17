@@ -133,7 +133,9 @@ body {
 .sheet p { margin: 0; }
 .sheet-head { display: flex; justify-content: space-between; align-items: center; }
 .qi-row { display: flex; align-items: flex-end; gap: 8px; }
-.qi-row .btn { flex: none; width: 56px; }
+.qi-row .btn { flex: none; }
+.sheet .scale .btn { flex: 1 0 calc(20% - 8px); min-width: 44px; padding: 0; }
+.sheet:focus { outline: none; }
 @media (prefers-reduced-motion: reduce) {
   .xp-pop { animation: none; transform: translateY(-20px); }
   .aura { animation: none; }

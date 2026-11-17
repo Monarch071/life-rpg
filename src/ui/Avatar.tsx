@@ -29,10 +29,10 @@ const EYE: Record<string, { shape: string; lid: string; brow: string }> = {
   calm: { shape: 'M-10 -1 Q0 -7 10 -1 Q8 7 0 7 Q-8 7 -10 -1Z', lid: 'M-11 -1 Q0 -8 11 -1', brow: 'M-8 -16 Q0 -18 8 -16' },
 }
 
-interface Props { params: AvatarParams; tier: 1 | 2 | 3 | 4; shadow?: boolean; size?: number }
+interface Props { params: AvatarParams; tier: 1 | 2 | 3 | 4; shadow?: boolean; size?: number; decorative?: boolean }
 
 /** Оригинальный аниме‑персонаж в полный рост. Одежда и аура растут с тиром; shadow — тёмная копия‑Тень. */
-export default function Avatar({ params, tier, shadow = false, size = 220 }: Props) {
+export default function Avatar({ params, tier, shadow = false, size = 220, decorative = false }: Props) {
   const uid = useId().replace(/:/g, '')
   const hair = HAIR_BACK[params.hair] ? params.hair : 'short'
   const eye = EYE[params.eyes] ?? EYE.round
@@ -66,8 +66,7 @@ export default function Avatar({ params, tier, shadow = false, size = 220 }: Pro
       viewBox="0 0 200 340"
       width={(size * 200) / 340}
       height={size}
-      role="img"
-      aria-label={shadow ? 'Тень' : 'Твой персонаж'}
+      {...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': shadow ? 'Тень' : 'Твой персонаж' })}
     >
       <defs>
         <clipPath id={`${uid}e`}><path d={eye.shape} /></clipPath>

@@ -25,4 +25,10 @@ describe('replanAfterBusy', () => {
     expect(toMin(a.start) >= toMin('18:00') || toMin(a.end) <= toMin('15:00')).toBe(true)
     expect(r.find(x => x.id === 'huge')!.window).toBeNull()
   })
+  it.each([['23:00', '23:30'], ['01:00', '01:30']])('sleep %s, busy until %s → pending timed quests become all-day', (sleep, until) => {
+    const qs = [q('a', '09:00', 30), q('done', '09:00', 30, true), q('allday', null, 0)]
+    const r = replanAfterBusy(qs, '20:00', until, '07:00', { ...profile, sleep }, null)
+    expect(r.find(x => x.id === 'a')!.window).toBeNull()
+    expect(r.find(x => x.id === 'done')).toBe(qs[1])
+  })
 })

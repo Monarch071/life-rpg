@@ -29,9 +29,19 @@ async function getDeviceId(): Promise<string> {
   })
 }
 
-export async function appendEvent(e: DistributiveOmit<GameEvent, 'id' | 'ts' | 'deviceId'>): Promise<void> {
+type NewEvent = DistributiveOmit<GameEvent, 'id' | 'ts' | 'deviceId'>
+
+export async function appendEvent(e: NewEvent): Promise<void> {
+  await appendEvents([e])
+}
+
+/** Несколько событий атомарно: либо все записаны, либо ни одного. */
+export async function appendEvents(es: NewEvent[]): Promise<void> {
   const deviceId = await getDeviceId()
-  await db.events.add({ ...e, id: crypto.randomUUID(), ts: now(), deviceId, pending: 1 } as StoredEvent)
+  const ts = now()
+  await db.transaction('rw', db.events, async () => {
+    for (const e of es) await db.events.add({ ...e, id: crypto.randomUUID(), ts, deviceId, pending: 1 } as StoredEvent)
+  })
 }
 
 export function initStorage(): void {
