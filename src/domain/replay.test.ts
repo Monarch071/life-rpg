@@ -376,3 +376,59 @@ test('freeze: возобновляется в новой неделе и не т
     issue('2026-11-11', [q('i2', '2026-11-11', 10)])];
   expect(replay(idle, at('2026-11-12')).streak).toBe(1);
 });
+
+// ---- недельные и боссы ----
+const W = '2026-11-16';
+const wq = (kind: string, target: number, stat: string | null = null, xp = 150) =>
+  ({ id: `${W}:w:${kind}`, weekStart: W, kind, stat, target, title: kind, xp });
+const weekly = (quests: unknown[], ts = at(W, 7), id?: string) => ev({ type: 'weekly_issued', weekStart: W, quests, ts, ...(id ? { id } : {}) });
+
+test('weekly: active_days и stat_quests, XP +150 ровно один раз', () => {
+  const evs = [weekly([wq('active_days', 2), wq('stat_quests', 2, 'str')]),
+    issue(W, [q('a', W, 10)]), done(W, 'a'), issue('2026-11-17', [q('b', '2026-11-17', 10), q('c', '2026-11-17', 10)]), done('2026-11-17', 'b')];
+  const s = replay(evs, NOW);
+  expect(s.weekly.quests.map(x => [x.kind, x.progress, x.done])).toEqual([['active_days', 2, true], ['stat_quests', 2, true]]);
+  expect(s.totalXp).toBe(20 + 300);
+  const more = replay([...evs, done('2026-11-17', 'c')], NOW);
+  expect(more.totalXp).toBe(30 + 300);
+});
+
+test('weekly: два устройства — побеждает меньший ts; нет выдачи — пусто', () => {
+  const s = replay([weekly([wq('shadow_wins', 3)], at(W, 9), 'z1'), weekly([wq('active_days', 3)], at(W, 8), 'z2')], NOW);
+  expect(s.weekly.quests.map(x => x.kind)).toEqual(['active_days']);
+  expect(replay([], NOW).weekly).toEqual({ weekStart: W, quests: [] });
+});
+
+test('weekly: steps_total суммирует шаги недели, прошлая неделя засчитывается', () => {
+  const m = (date: string, value: number) => ev({ type: 'metric_logged', date, metric: 'steps', value, mode: 'set' });
+  const s = replay([weekly([wq('steps_total', 5000)]), m(W, 3000), m('2026-11-17', 2500), m('2026-11-15', 9999)], NOW);
+  expect(s.weekly.quests[0]).toMatchObject({ progress: 5500, done: true });
+  expect(s.totalXp).toBe(150);
+  const later = replay([weekly([wq('steps_total', 5000)]), m(W, 6000)], at('2026-11-25'));
+  expect(later.totalXp).toBe(150); expect(later.weekly.quests).toEqual([]);
+});
+
+test('weekly: монеты за выполненное и genWeekly из прошлой недели', () => {
+  const P = '2026-11-09';
+  const s = replay([issue(P, [q('p1', P, 10)]), done(P, 'p1'), issue('2026-11-10', [q('p2', '2026-11-10', 10)]), done('2026-11-10', 'p2')], NOW);
+  expect(s.genWeekly).toMatchObject({ weekStart: W, prevActiveDays: 2 });
+  expect(s.genWeekly.prevStatQuests).toBeGreaterThanOrEqual(0);
+});
+
+const boss = (stages: unknown, id = 'b1', title = 'Босс') => ev({ type: 'boss_created', bossId: id, title, stat: 'int', stages });
+const stage = (n: number, id = 'b1') => ev({ type: 'boss_stage_done', bossId: id, stage: n });
+
+test('босс: невалидный игнорируется, этапы по порядку, XP 100×n+200', () => {
+  expect(replay([boss(['один'])], NOW).bosses).toEqual([]);
+  expect(replay([boss(['а', 'б']), stage(1)], NOW).totalXp).toBe(0);
+  const s = replay([boss(['а', 'б', 'в']), stage(0), stage(0), stage(1), stage(2), stage(2)], NOW);
+  expect(s.totalXp).toBe(100 * 3 + 200);
+  expect(s.bosses[0]).toMatchObject({ done: 3, defeated: true });
+  expect(s.statPoints.int).toBe(15);
+  expect(s.currency).toBe(50);
+});
+
+test('босс: брошенный скрыт, XP остаётся', () => {
+  const s = replay([boss(['а', 'б']), stage(0), ev({ type: 'boss_abandoned', bossId: 'b1' }), stage(1)], NOW);
+  expect(s.bosses).toEqual([]); expect(s.totalXp).toBe(100);
+});

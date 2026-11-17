@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { addDays, fromMin, gameDate, toMin } from './day';
+import { addDays, fromMin, gameDate, toMin, weekStart } from './day';
 
 describe('day', () => {
   test('до 04:00 — ещё вчера', () => {
@@ -15,5 +15,13 @@ describe('day', () => {
     expect(fromMin(570)).toBe('09:30');
     expect(fromMin(1440 + 5)).toBe('00:05');
     expect(fromMin(-60)).toBe('23:00');
+  });
+});
+
+describe('weekStart', () => {
+  test('понедельник недели, в т.ч. через смену месяца и года', () => {
+    expect(weekStart('2026-11-17')).toBe('2026-11-16');
+    expect(weekStart('2026-11-16')).toBe('2026-11-16');
+    expect(weekStart('2027-01-01')).toBe('2026-12-28');
   });
 });

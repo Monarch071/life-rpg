@@ -3,7 +3,8 @@ import { adjustMultipliers } from './difficulty';
 import { shadowXpForDay } from './shadow';
 import { SKILLS, skillEffects } from './skills';
 import { classFor, initialStats, STATS, tierFor } from './stats';
-import type { AvatarParams, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, Metric, Profile, Quest, Stat } from './types';
+import type { AvatarParams, Boss, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, Metric, Profile, Quest, Stat, WeeklyQuest } from './types';
+import { weakestStat } from './weekly';
 import { currencyFor, levelFromXp } from './xp';
 
 export const DEFAULT_AVATAR: AvatarParams = { hair: 'short', hairColor: '#2b1d14', outfitColor: '#4f46e5', eyes: 'round' };
@@ -11,6 +12,11 @@ export const DEFAULT_AVATAR: AvatarParams = { hair: 'short', hairColor: '#2b1d14
 type DoneQuest = Quest & { done: boolean };
 const STAT_KEYS = Object.keys(STATS) as Stat[];
 const fill = (n: number) => Object.fromEntries(STAT_KEYS.map(s => [s, n])) as Record<Stat, number>;
+const WEEKLY_KINDS = ['active_days', 'stat_quests', 'steps_total', 'shadow_wins'];
+const validWeekly = (w: any): w is WeeklyQuest => !!w && typeof w.id === 'string' && WEEKLY_KINDS.includes(w.kind)
+  && Number.isFinite(w.target) && w.target > 0 && Number.isFinite(w.xp) && w.xp >= 0 && (w.stat === null || w.stat in STATS);
+const validStages = (st: unknown): st is string[] => Array.isArray(st) && st.length >= 2 && st.length <= 8
+  && st.every(x => typeof x === 'string' && x.trim().length > 0 && x.trim().length <= 80);
 const sum = (qs: DoneQuest[]) => qs.reduce((a, q) => a + q.xp, 0);
 
 /** Сортировка по (ts, id) и отбрасывание дублей id — результат не зависит от порядка входного массива. */
@@ -59,6 +65,8 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   let lastHealth: GameState['lastHealth'] = null, calendar: GameState['today']['calendar'] = [];
   let busyUntil: HHMM | null = null, checkedIn = false, lastEnergy: number | null = null;
   const skillEvents: { skillId: string; ts: number }[] = [];
+  const weeklyIssued = new Map<ISODate, WeeklyQuest[]>();
+  const bossEvents: Extract<GameEvent, { type: 'boss_created' | 'boss_stage_done' | 'boss_abandoned' }>[] = [];
   const shopEvents: Extract<GameEvent, { type: 'reward_created' | 'reward_deleted' | 'reward_purchased' }>[] = [];
 
   for (const e of normalize(events)) {
@@ -111,6 +119,12 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
         if (e.date <= today) lastEnergy = e.energy;
         break;
       case 'skill_unlocked': skillEvents.push({ skillId: e.skillId, ts: e.ts }); break;
+      case 'weekly_issued': {
+        const qs = Array.isArray(e.quests) ? e.quests.filter(validWeekly) : [];
+        if (typeof e.weekStart === 'string' && qs.length && !weeklyIssued.has(e.weekStart)) weeklyIssued.set(e.weekStart, qs); // побеждает первый
+        break;
+      }
+      case 'boss_created': case 'boss_stage_done': case 'boss_abandoned': bossEvents.push(e); break;
       case 'reward_created': case 'reward_deleted': case 'reward_purchased': shopEvents.push(e); break;
       // неизвестные типы игнорируются (совместимость вперёд)
     }
@@ -134,11 +148,14 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   const effectsAt = (date: ISODate) => skillEffects([...unlockedAt].filter(([, d]) => d <= date).map(([id]) => id));
   for (const q of questById.values()) q.xp = Math.round(q.xp * (1 + effectsAt(q.date).xpBonus[q.stat]));
 
+  const coins = (xp: number, date: ISODate) => Math.floor(currencyFor(xp) * (1 + effectsAt(date).coinBonus));
   let totalXp = 0, currency = 0;
   const statPoints = fill(0);
   for (const q of questById.values()) if (q.done) {
-    totalXp += q.xp; currency += Math.floor(currencyFor(q.xp) * (1 + effectsAt(q.date).coinBonus)); statPoints[q.stat] += q.difficulty;
+    totalXp += q.xp; currency += coins(q.xp, q.date); statPoints[q.stat] += q.difficulty;
   }
+
+  const todayQuests = issued.get(today) ?? [];
 
   // Финализация прошлых дней — ровно один раз, по порядку.
   const history: DayResult[] = [];
@@ -171,6 +188,55 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
     multipliers = adjustMultipliers(multipliers, finalized.slice(-7).flat());
   }
 
+  // Боссы: этапы строго по порядку; XP и очки характеристики — как у обычных заданий.
+  const bossMap = new Map<string, Boss>();
+  for (const e of bossEvents) {
+    if (e.type === 'boss_created') {
+      const title = typeof e.title === 'string' ? e.title.trim() : '';
+      if (!bossMap.has(e.bossId) && title.length > 0 && title.length <= 80 && e.stat in STATS && validStages(e.stages))
+        bossMap.set(e.bossId, { id: e.bossId, title, stat: e.stat, stages: e.stages.map(x => x.trim()), done: 0, defeated: false, abandoned: false });
+      continue;
+    }
+    const b = bossMap.get(e.bossId);
+    if (!b || b.defeated || b.abandoned) continue;
+    if (e.type === 'boss_abandoned') b.abandoned = true;
+    else if (e.stage === b.done) {
+      b.done++; b.defeated = b.done === b.stages.length;
+      const xp = 100 + (b.defeated ? 200 : 0);
+      totalXp += xp; currency += coins(xp, today); statPoints[b.stat] += 5;
+    }
+  }
+
+  initial ??= fill(1);
+  const stats = fill(0);
+  for (const s of STAT_KEYS) stats[s] = initial[s] + Math.floor(statPoints[s] / 10);
+
+  // Недельные: прогресс за 7 дней недели; XP и монеты — один раз за выполненное, в том числе за прошлые недели.
+  const weekProgress = (w: WeeklyQuest) => {
+    let n = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(w.weekStart, i), dq = issued.get(d)?.filter(q => q.done) ?? [];
+      if (w.kind === 'active_days') n += dq.length ? 1 : 0;
+      else if (w.kind === 'stat_quests') n += dq.filter(q => q.stat === w.stat).length;
+      else if (w.kind === 'steps_total') n += metrics.get(d)?.steps ?? 0;
+      else n += history.some(h => h.date === d && h.won) || (d === today && sum(todayQuests.filter(q => q.done)) > shadowOf(todayQuests, today)) ? 1 : 0;
+    }
+    return n;
+  };
+  const thisWeek = weekStart(today);
+  const weeklyNow: GameState['weekly']['quests'] = [];
+  for (const [ws, qs] of weeklyIssued) for (const w of qs) {
+    const progress = weekProgress({ ...w, weekStart: ws }), done = progress >= w.target;
+    if (done) { totalXp += w.xp; currency += coins(w.xp, today); }
+    if (ws === thisWeek) weeklyNow.push({ ...w, weekStart: ws, progress, done });
+  }
+  const prev = addDays(thisWeek, -7), weak = weakestStat(stats);
+  let prevActiveDays = 0, prevStatQuests = 0;
+  for (let i = 0; i < 7; i++) {
+    const dq = issued.get(addDays(prev, i))?.filter(q => q.done) ?? [];
+    prevActiveDays += dq.length ? 1 : 0; prevStatQuests += dq.filter(q => q.stat === weak).length;
+  }
+
   // Магазин: покупки — после финализации, когда известен весь заработок.
   const shop = new Map<string, { id: string; title: string; price: number; deleted: boolean }>();
   const purchases: GameState['purchases'] = [];
@@ -190,10 +256,6 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   }
   currency -= coinsSpent;
 
-  const todayQuests = issued.get(today) ?? [];
-  initial ??= fill(1);
-  const stats = fill(0);
-  for (const s of STAT_KEYS) stats[s] = initial[s] + Math.floor(statPoints[s] / 10);
   const { level, into, need } = levelFromXp(totalXp);
   const rewards = [...shop.values()].filter(r => !r.deleted).map(({ id, title, price }) => ({ id, title, price }));
   const sleepDate = [...metrics.keys()].filter(d => d <= today && metrics.get(d)!.sleepHours !== undefined).sort().at(-1);
@@ -210,6 +272,9 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
     },
     lastHealth,
     skills: { unlocked: [...unlockedAt.keys()], points: Math.max(0, baseLevel - 1 - spent) }, rewards, purchases,
+    weekly: { weekStart: thisWeek, quests: weeklyNow },
+    bosses: [...bossMap.values()].filter(b => !b.abandoned),
+    genWeekly: { weekStart: thisWeek, stats, multipliers, prevActiveDays, prevStatQuests, bestSteps7: bestSteps7(metrics, today) },
     history,
     genInputs: {
       bestSteps7: bestSteps7(metrics, today),

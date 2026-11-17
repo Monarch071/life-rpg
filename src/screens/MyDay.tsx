@@ -6,6 +6,7 @@ import type { Win } from '../domain/schedule'
 import type { GameState, Profile } from '../domain/types'
 import { hhmmNow } from '../now'
 import { useDialog } from '../ui/useDialog'
+import { generateWeeklyQuests } from '../domain/weekly'
 import { buildQuests } from './issue'
 
 /** Модальное «Мой день»: выбор режима дня → day_started, затем выдача заданий (если их ещё нет). */
@@ -40,6 +41,8 @@ export default function MyDay({ state, profile, onLater }: { state: GameState; p
       const quests = cur.today.quests.length === 0 ? buildQuests(cur, profile, work, wakeAt) : null
       await appendEvents([
         { type: 'day_started', date, work, wakeAt },
+        ...(cur.weekly.quests.length === 0
+          ? [{ type: 'weekly_issued' as const, weekStart: cur.weekly.weekStart, quests: generateWeeklyQuests(cur.genWeekly) }] : []),
         ...(quests ? [{ type: 'quests_issued' as const, date, quests }] : []),
       ])
     } catch {

@@ -37,7 +37,15 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'reward_deleted'; rewardId: string }
   | { type: 'reward_purchased'; rewardId: string }
   | { type: 'skill_unlocked'; skillId: string }
+  | { type: 'weekly_issued'; weekStart: ISODate; quests: WeeklyQuest[] }
+  | { type: 'boss_created'; bossId: string; title: string; stat: Stat; stages: string[] }
+  | { type: 'boss_stage_done'; bossId: string; stage: number }
+  | { type: 'boss_abandoned'; bossId: string }
 );
+export type WeeklyKind = 'active_days' | 'stat_quests' | 'steps_total' | 'shadow_wins';
+export interface WeeklyQuest { id: string; weekStart: ISODate; kind: WeeklyKind; stat: Stat | null; target: number; title: string; xp: number }
+export interface Boss { id: string; title: string; stat: Stat; stages: string[]; done: number; defeated: boolean; abandoned: boolean }
+export interface WeeklyCtx { weekStart: ISODate; stats: Record<Stat, number>; multipliers: Record<Stat, number>; prevActiveDays: number; prevStatQuests: number; bestSteps7: number | null }
 export interface AvatarParams { hair: string; hairColor: string; outfitColor: string; eyes: string }
 export interface DayResult { date: ISODate; xp: number; shadowXp: number; completed: number; issued: number; won: boolean }
 export interface GameState {
@@ -55,6 +63,9 @@ export interface GameState {
   skills: { unlocked: string[]; points: number };   // points = доступно сейчас
   rewards: { id: string; title: string; price: number }[];   // не удалённые, в порядке создания
   purchases: { rewardId: string; title: string; price: number; ts: number }[];
+  weekly: { weekStart: ISODate; quests: (WeeklyQuest & { progress: number; done: boolean })[] };   // неделя сегодняшней игровой даты; без выдачи — []
+  bosses: Boss[];         // кроме брошенных
+  genWeekly: WeeklyCtx;   // контекст для generateWeeklyQuests текущей недели
   history: DayResult[];   // финализированные дни, по возрастанию
   genInputs: { bestSteps7: number|null; lastSleepHours: number|null; recentTemplateIds: string[] };
     // для generateDailyQuests: лучший 7‑дневный средний по шагам (из metric_logged steps), сон за последний день с данными, templateId заданий за 2 прошлых дня
