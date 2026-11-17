@@ -7,11 +7,17 @@ import Onboarding from './screens/Onboarding'
 import Home from './screens/Home'
 import Character from './screens/Character'
 import Settings from './screens/Settings'
+import Quests from './screens/Quests'
+import Shop from './screens/Shop'
 import Avatar, { EYE_OPTIONS, HAIR_OPTIONS } from './ui/Avatar'
 import { DEFAULT_AVATAR } from './domain/replay'
 
-const TABS = ['Главная', 'Персонаж', 'Настройки'] as const
-type Tab = (typeof TABS)[number]
+const TABS = [
+  { id: 'Главная', icon: '🏠', label: 'Главная' }, { id: 'Задания', icon: '⚔️', label: 'Задания' },
+  { id: 'Герой', icon: '🧍', label: 'Герой' }, { id: 'Анализ', icon: '📈', label: 'Анализ' },
+  { id: 'Магазин', icon: '🪙', label: 'Магазин' }, { id: 'Настройки', icon: '⚙️', label: '' },
+] as const
+type Tab = (typeof TABS)[number]['id']
 
 export default function App() {
   const state = useGame()
@@ -35,18 +41,17 @@ export default function App() {
     <div className="app">
       {joinSheet}
       <main className="content">
-        {tab === 'Главная' ? (
-          <Home state={state} profile={state.profile} />
-        ) : tab === 'Персонаж' ? (
-          <Character state={state} />
-        ) : (
-          <Settings state={state} sync={sync} />
-        )}
+        {tab === 'Главная' ? <Home state={state} profile={state.profile} />
+          : tab === 'Задания' ? <Quests state={state} />
+          : tab === 'Герой' ? <Character state={state} />
+          : tab === 'Магазин' ? <Shop state={state} />
+          : tab === 'Анализ' ? <section className="panel center"><h1>Анализ</h1><p className="muted">Скоро</p></section>
+          : <Settings state={state} sync={sync} />}
       </main>
       <nav className="tabbar">
         {TABS.map((t) => (
-          <button key={t} className={t === tab ? 'active' : ''} onClick={() => setTab(t)}>
-            {t}
+          <button key={t.id} className={t.id === tab ? 'active' : ''} aria-label={t.id} aria-current={t.id === tab ? 'page' : undefined} onClick={() => setTab(t.id)}>
+            <span aria-hidden="true">{t.icon}</span><small aria-hidden="true">{t.label}</small>
           </button>
         ))}
       </nav>

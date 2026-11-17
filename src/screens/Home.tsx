@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { appendEvent, getSetting } from '../db'
+import { appendEvent, getSetting, setSetting } from '../db'
+import { ACHIEVEMENTS } from '../domain/achievements'
 import { fromMin, gameDate, toMin } from '../domain/day'
 import { STATS } from '../domain/stats'
 import type { GameState, Profile } from '../domain/types'
@@ -29,6 +30,21 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
   const setLater = (v: boolean) => { deferredDay = v; setLaterState(v) }
   const cutoffHour = useLiveQuery(() => getSetting<number>('cutoffHour', 4)) ?? 4
   useEffect(() => { pending.current.clear() }, [today.date])
+
+  // новое достижение: полученное сегодня и ещё не показанное на этом устройстве
+  const [toast, setToast] = useState<string | null>(null)
+  useEffect(() => {
+    let off = false
+    void (async () => {
+      const seen = await getSetting<string[]>('seenAchievements', [])
+      const fresh = state.achievements.filter(a => a.date === today.date && !seen.includes(a.id))
+      if (off || !fresh.length) return
+      setToast(fresh.map(a => `🏆 ${ACHIEVEMENTS.find(d => d.id === a.id)?.title ?? a.id}`).join(' · '))
+      await setSetting('seenAchievements', [...seen, ...fresh.map(a => a.id)])
+    })().catch(() => {})
+    return () => { off = true }
+  }, [state.achievements, today.date])
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 4000); return () => clearTimeout(t) }, [toast])
 
   // запасной путь: день начат, а заданий нет
   const issue = async () => {
@@ -76,10 +92,11 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
 
   return (
     <div className="home">
+      {toast && <div className="toast" role="status">{toast}</div>}
       <header className="hud">
         <div className="hud-top">
           <span className="lvl">Ур. {state.level}</span>
-          <span className="cls">{state.className}</span>
+          <span className="cls">{state.className} <small className="muted">«{state.title}»</small></span>
           <span className="coins" aria-label={`Монеты: ${state.currency}`}>🪙 {state.currency}</span>
         </div>
         <div className="xpbar" role="progressbar" aria-label="Опыт до следующего уровня"

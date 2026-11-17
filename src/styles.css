@@ -33,13 +33,17 @@ body {
 }
 .tabbar button {
   flex: 1;
-  padding: 14px 0;
+  min-width: 0;
+  min-height: 52px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  padding: 6px 0;
   background: none;
   border: 0;
   color: var(--text);
-  font-size: 15px;
+  font-size: 20px;
   opacity: 0.6;
 }
+.tabbar button small { font-size: 11px; }
 .tabbar button.active { color: var(--accent); opacity: 1; text-shadow: 0 0 8px var(--accent); }
 
 /* onboarding */
@@ -141,3 +145,6 @@ body {
   .aura { animation: none; }
   .xpbar i, .arena figure { transition: none; }
 }
+
+.toast { position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 20; max-width: calc(100% - 32px); padding: 12px 16px; border-radius: 12px; background: var(--panel); border: 1px solid var(--gold); color: var(--gold); font-weight: 700; box-shadow: 0 0 16px var(--gold); }
+.card ol, .card b, .card small, .card span { overflow-wrap: anywhere; }

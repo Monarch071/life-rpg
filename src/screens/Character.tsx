@@ -2,6 +2,8 @@ import { useState } from 'react'
 import Avatar, { EYE_OPTIONS, HAIR_OPTIONS } from '../ui/Avatar'
 import { STATS } from '../domain/stats'
 import { appendEvent } from '../db'
+import Skills from './Skills'
+import Achievements from './Achievements'
 import type { AvatarParams, GameState, Stat } from '../domain/types'
 
 const HAIR_NAMES: Record<string, string> = { short: 'Короткая', spiky: 'Колючая', long: 'Длинная', ponytail: 'Хвост' }
@@ -62,6 +64,7 @@ export default function Character({ state }: { state: GameState }) {
       <section className="hero">
         <Avatar params={state.avatar} tier={state.tier} size={220} />
         <div className="cls">{state.className}</div>
+        <div className="muted">«{state.title}»</div>
         <div className="muted">Уровень {state.level} · Тир {state.tier}</div>
       </section>
       <section className="panel stack" aria-label="Характеристики">
@@ -80,6 +83,8 @@ export default function Character({ state }: { state: GameState }) {
           )
         })}
       </section>
+      <Skills state={state} />
+      <Achievements state={state} />
       <section className="panel stack" aria-label="История">
         <h2>Последние дни</h2>
         {last7.length === 0 ? <p className="muted">Пока нет завершённых дней.</p> : (
