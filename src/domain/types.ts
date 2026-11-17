@@ -33,6 +33,10 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'checkin'; date: ISODate; went: string; notWent: string; energy: number }
   | { type: 'health_packet'; date: ISODate; kind: 'morning'|'evening'|'other'; health: HealthData; calendar: { title: string; start: string; end: string }[] }
   | { type: 'avatar_updated'; params: AvatarParams }
+  | { type: 'reward_created'; rewardId: string; title: string; price: number }
+  | { type: 'reward_deleted'; rewardId: string }
+  | { type: 'reward_purchased'; rewardId: string }
+  | { type: 'skill_unlocked'; skillId: string }
 );
 export interface AvatarParams { hair: string; hairColor: string; outfitColor: string; eyes: string }
 export interface DayResult { date: ISODate; xp: number; shadowXp: number; completed: number; issued: number; won: boolean }
@@ -48,6 +52,9 @@ export interface GameState {
            metrics: Partial<Record<Metric, number>>; checkedIn: boolean; lastEnergy: number|null;
            busyUntil: HHMM|null; calendar: { title: string; start: HHMM; end: HHMM }[] };
   lastHealth: { ts: number; date: ISODate; health: HealthData } | null;
+  skills: { unlocked: string[]; points: number };   // points = доступно сейчас
+  rewards: { id: string; title: string; price: number }[];   // не удалённые, в порядке создания
+  purchases: { rewardId: string; title: string; price: number; ts: number }[];
   history: DayResult[];   // финализированные дни, по возрастанию
   genInputs: { bestSteps7: number|null; lastSleepHours: number|null; recentTemplateIds: string[] };
     // для generateDailyQuests: лучший 7‑дневный средний по шагам (из metric_logged steps), сон за последний день с данными, templateId заданий за 2 прошлых дня

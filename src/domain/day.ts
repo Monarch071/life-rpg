@@ -14,6 +14,12 @@ export function addDays(d: ISODate, n: number): ISODate {
   return `${r.getFullYear()}-${p2(r.getMonth() + 1)}-${p2(r.getDate())}`;
 }
 
+/** Понедельник недели (пн–вс), в которую попадает игровая дата. */
+export function weekStart(date: ISODate): ISODate {
+  const [y, m, d] = date.split('-').map(Number);
+  return addDays(date, -((new Date(y, m - 1, d).getDay() + 6) % 7));
+}
+
 export const toMin = (h: HHMM): number => { const [a, b] = h.split(':').map(Number); return a * 60 + b; };
 
 export function fromMin(m: number): HHMM {

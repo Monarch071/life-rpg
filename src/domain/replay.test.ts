@@ -271,3 +271,73 @@ test('quests_issued с разных устройств: побеждает ме�
   const early = ev({ type: 'quests_issued', date: '2026-11-17', quests: [q('early', '2026-11-17', 20)], ts: at('2026-11-17', 8), deviceId: 'd1' });
   expect(replay([late, early], NOW).today.quests.map(x => x.id)).toEqual(['early']);
 });
+
+// ---- магазин и навыки ----
+const unlock = (skillId: string, ts: number) => ev({ type: 'skill_unlocked', skillId, ts });
+const bigDay = (xp: number, date = '2026-11-01', stat: Stat = 'str') =>
+  [issue(date, [q(`big${xp}${date}`, date, xp, stat)]), done(date, `big${xp}${date}`)];
+
+test('навык: при уровне 1 игнорируется', () => {
+  const s = replay([unlock('str1', at('2026-11-17', 9))], NOW);
+  expect(s.skills).toEqual({ unlocked: [], points: 0 });
+});
+
+test('навык: str1 принимается, str2 без str1 — нет; дубль списывает очки один раз', () => {
+  const evs = [...bigDay(400), unlock('str2', at('2026-11-05', 9)), unlock('str1', at('2026-11-05', 10)), unlock('str1', at('2026-11-05', 11))];
+  const s = replay(evs, NOW);
+  expect(s.skills.unlocked).toEqual(['str1']);
+  expect(s.skills.points).toBe(s.level - 1 - 1);
+});
+
+test('навык: +10% XP только с даты открытия', () => {
+  const evs = [
+    ...bigDay(100, '2026-11-01'),
+    unlock('str1', at('2026-11-12', 9)),
+    issue('2026-11-11', [q('a', '2026-11-11', 20)]), done('2026-11-11', 'a'),
+    issue('2026-11-13', [q('b', '2026-11-13', 20)]), done('2026-11-13', 'b'),
+  ];
+  const s = replay(evs, NOW);
+  expect(s.history.find(h => h.date === '2026-11-11')!.xp).toBe(20);
+  expect(s.history.find(h => h.date === '2026-11-13')!.xp).toBe(22);
+});
+
+test('freeze: один пустой день в неделю не обнуляет серию, второй — обнуляет', () => {
+  const evs = [
+    ...bigDay(2000, '2026-11-01'), unlock('dis1', at('2026-11-02', 9)), unlock('freeze', at('2026-11-02', 10)),
+    ...bigDay(10, '2026-11-09'),
+    issue('2026-11-10', [q('m1', '2026-11-10', 10)]), issue('2026-11-11', [q('m2', '2026-11-11', 10)]),
+  ];
+  expect(replay(evs, at('2026-11-11')).streak).toBe(1);
+  expect(replay(evs, at('2026-11-12')).streak).toBe(0);
+});
+
+test('calm: штраф Тени 25% вместо 50%', () => {
+  const base = [...bigDay(2000, '2026-11-01'), issue('2026-11-10', [q('m', '2026-11-10', 40)])];
+  const calm = [...base, unlock('spi1', at('2026-11-02', 9)), unlock('calm', at('2026-11-02', 10))];
+  const sh = (evs: GameEvent[]) => replay(evs, NOW).history.find(h => h.date === '2026-11-10')!.shadowXp;
+  expect(sh(base) - sh(calm)).toBe(10);
+});
+
+test('награды: покупка, перерасход игнорируется, удаление, невалидные', () => {
+  const earn = bigDay(1050, '2026-11-10');
+  const created = ev({ type: 'reward_created', rewardId: 'r1', title: 'Кино', price: 100, ts: at('2026-11-15', 9) });
+  const buy = (h: number) => ev({ type: 'reward_purchased', rewardId: 'r1', ts: at('2026-11-15', h) });
+  const base = replay([...earn, created], NOW).currency;
+  const s = replay([...earn, created, buy(10), buy(11)], NOW);
+  expect(s.currency).toBe(base - 100);
+  expect(s.purchases).toHaveLength(1);
+  // ещё покупка при нехватке
+  const poor = replay([...earn, created, ...[10, 11, 12, 13, 14, 15, 16].map(buy)], NOW);
+  expect(poor.currency).toBeGreaterThanOrEqual(0);
+  // удалена до покупки — не покупается; удалена после — покупка остаётся
+  const del = (h: number) => ev({ type: 'reward_deleted', rewardId: 'r1', ts: at('2026-11-15', h) });
+  expect(replay([...earn, created, del(10), buy(11)], NOW).purchases).toEqual([]);
+  const after = replay([...earn, created, buy(10), del(11)], NOW);
+  expect(after.rewards).toEqual([]);
+  expect(after.purchases).toMatchObject([{ rewardId: 'r1', title: 'Кино', price: 100 }]);
+  const bad = replay([
+    ev({ type: 'reward_created', rewardId: 'x', title: 'a', price: -5 }),
+    ev({ type: 'reward_created', rewardId: 'y', title: '', price: 5 }),
+  ], NOW);
+  expect(bad.rewards).toEqual([]);
+});

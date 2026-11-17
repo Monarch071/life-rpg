@@ -1,6 +1,7 @@
-import { addDays, gameDate } from './day';
+import { addDays, gameDate, weekStart } from './day';
 import { adjustMultipliers } from './difficulty';
 import { shadowXpForDay } from './shadow';
+import { SKILLS, skillEffects } from './skills';
 import { classFor, initialStats, STATS, tierFor } from './stats';
 import type { AvatarParams, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, Metric, Profile, Quest, Stat } from './types';
 import { currencyFor, levelFromXp } from './xp';
@@ -57,6 +58,8 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   let started: { work: { start: HHMM; end: HHMM } | null; wakeAt: HHMM } | null = null;
   let lastHealth: GameState['lastHealth'] = null, calendar: GameState['today']['calendar'] = [];
   let busyUntil: HHMM | null = null, checkedIn = false, lastEnergy: number | null = null;
+  const skillEvents: { skillId: string; ts: number }[] = [];
+  const shopEvents: Extract<GameEvent, { type: 'reward_created' | 'reward_deleted' | 'reward_purchased' }>[] = [];
 
   for (const e of normalize(events)) {
     switch (e.type) {
@@ -107,6 +110,8 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
         if (e.date === today) checkedIn = true;
         if (e.date <= today) lastEnergy = e.energy;
         break;
+      case 'skill_unlocked': skillEvents.push({ skillId: e.skillId, ts: e.ts }); break;
+      case 'reward_created': case 'reward_deleted': case 'reward_purchased': shopEvents.push(e); break;
       // неизвестные типы игнорируются (совместимость вперёд)
     }
   }
@@ -117,10 +122,22 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
     if (q.auto && v !== undefined && (q.auto.op === '>=' ? v >= q.auto.value : v <= q.auto.value)) q.done = true;
   }
 
+  // Навыки: валидность — по базовому уровню (XP без бонусов), иначе круг «навык → XP → уровень → навык».
+  const baseLevel = levelFromXp([...questById.values()].reduce((a, q) => a + (q.done ? q.xp : 0), 0)).level;
+  const unlockedAt = new Map<string, ISODate>(); // skillId → игровая дата открытия
+  let spent = 0;
+  for (const { skillId, ts } of skillEvents) {
+    const n = SKILLS.find(k => k.id === skillId);
+    if (!n || unlockedAt.has(skillId) || (n.requires && !unlockedAt.has(n.requires)) || n.cost > baseLevel - 1 - spent) continue;
+    unlockedAt.set(skillId, gameDate(ts, cutoffHour)); spent += n.cost;
+  }
+  const effectsAt = (date: ISODate) => skillEffects([...unlockedAt].filter(([, d]) => d <= date).map(([id]) => id));
+  for (const q of questById.values()) q.xp = Math.round(q.xp * (1 + effectsAt(q.date).xpBonus[q.stat]));
+
   let totalXp = 0, currency = 0;
   const statPoints = fill(0);
   for (const q of questById.values()) if (q.done) {
-    totalXp += q.xp; currency += currencyFor(q.xp); statPoints[q.stat] += q.difficulty;
+    totalXp += q.xp; currency += Math.floor(currencyFor(q.xp) * (1 + effectsAt(q.date).coinBonus)); statPoints[q.stat] += q.difficulty;
   }
 
   // Финализация прошлых дней — ровно один раз, по порядку.
@@ -128,30 +145,56 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   const finalized: { stat: Stat; done: boolean }[][] = [];
   let streak = 0, wins = 0, multipliers = fill(1);
   // одна формула и для финализации, и для живого счёта сегодня: показанное = записанному
-  const shadowOf = (qs: DoneQuest[]) => shadowXpForDay(history.slice(-14).map(h => h.xp), wins) + Math.round(0.5 * sum(qs.filter(q => !q.done)));
+  const shadowOf = (qs: DoneQuest[], date: ISODate) => shadowXpForDay(history.slice(-14).map(h => h.xp), wins)
+    + Math.round((effectsAt(date).calmShadow ? 0.25 : 0.5) * sum(qs.filter(q => !q.done)));
   const firstDate = [...issued.keys()].sort()[0];
+  const freezeWeeks = new Set<ISODate>(); // недели, где заморозка уже сработала
+  /** Заморозка: пустой день не обнуляет серию, раз в календарную неделю. */
+  const frozen = (d: ISODate) => {
+    if (!effectsAt(d).streakFreeze || freezeWeeks.has(weekStart(d))) return false;
+    freezeWeeks.add(weekStart(d)); return true;
+  };
   for (let d = firstDate; d !== undefined && d < today; d = addDays(d, 1)) {
     const qs = issued.get(d);
-    if (!qs) { streak = 0; wins = 0; continue; }
+    if (!qs) { if (!frozen(d)) streak = 0; wins = 0; continue; }
     const xp = sum(qs.filter(q => q.done));
-    const shadowXp = shadowOf(qs);
+    const shadowXp = shadowOf(qs, d);
     const won = xp > shadowXp;
     if (won) {
       const bonus = Math.max(10, Math.round(0.15 * xp));
       totalXp += bonus; currency += currencyFor(bonus); wins++;
     } else wins = 0;
     const completed = qs.filter(q => q.done).length;
-    streak = completed ? streak + 1 : 0;
+    if (completed) streak++; else if (!frozen(d)) streak = 0;
     history.push({ date: d, xp, shadowXp, completed, issued: qs.length, won });
     finalized.push(qs.map(q => ({ stat: q.stat, done: q.done })));
     multipliers = adjustMultipliers(multipliers, finalized.slice(-7).flat());
   }
+
+  // Магазин: покупки — после финализации, когда известен весь заработок.
+  const shop = new Map<string, { id: string; title: string; price: number; deleted: boolean }>();
+  const purchases: GameState['purchases'] = [];
+  let coinsSpent = 0;
+  for (const e of shopEvents) {
+    if (e.type === 'reward_created') {
+      if (!shop.has(e.rewardId) && typeof e.title === 'string' && e.title.length > 0 && e.title.length <= 60
+        && Number.isInteger(e.price) && e.price >= 1 && e.price <= 100000)
+        shop.set(e.rewardId, { id: e.rewardId, title: e.title, price: e.price, deleted: false });
+    } else {
+      const r = shop.get(e.rewardId);
+      if (!r || r.deleted) continue;
+      if (e.type === 'reward_deleted') r.deleted = true;
+      else if (currency - coinsSpent >= r.price) { coinsSpent += r.price; purchases.push({ rewardId: r.id, title: r.title, price: r.price, ts: e.ts }); }
+    }
+  }
+  currency -= coinsSpent;
 
   const todayQuests = issued.get(today) ?? [];
   initial ??= fill(1);
   const stats = fill(0);
   for (const s of STAT_KEYS) stats[s] = initial[s] + Math.floor(statPoints[s] / 10);
   const { level, into, need } = levelFromXp(totalXp);
+  const rewards = [...shop.values()].filter(r => !r.deleted).map(({ id, title, price }) => ({ id, title, price }));
   const sleepDate = [...metrics.keys()].filter(d => d <= today && metrics.get(d)!.sleepHours !== undefined).sort().at(-1);
 
   return {
@@ -161,10 +204,11 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
     today: {
       date: today, started: !!started, work: started?.work ?? null, wakeAt: started?.wakeAt ?? null,
       quests: todayQuests, xp: sum(todayQuests.filter(q => q.done)),
-      shadowXp: shadowOf(todayQuests),
+      shadowXp: shadowOf(todayQuests, today),
       metrics: metrics.get(today) ?? {}, checkedIn, lastEnergy, busyUntil, calendar,
     },
     lastHealth,
+    skills: { unlocked: [...unlockedAt.keys()], points: Math.max(0, level - 1 - spent) }, rewards, purchases,
     history,
     genInputs: {
       bestSteps7: bestSteps7(metrics, today),
