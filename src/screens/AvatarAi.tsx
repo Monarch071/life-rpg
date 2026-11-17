@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { generateAvatar } from '../ai/avatar'
+import { generateAvatar, PHOTO_ERROR_TEXT, PhotoError } from '../ai/avatar'
 import { getAiConfig, PROVIDER_NAMES, type AiConfig } from '../ai/config'
 import { aiErrorText } from '../ai/providers'
 import { saveBlob, useBlobUrl } from '../blobs'
@@ -28,6 +28,7 @@ export default function AvatarAi({ state }: { state: GameState }) {
   const [result, setResult] = useState<Blob | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const alive = useRef(true)
+  const saveLock = useRef(false)
   const { write, busy: saving, msg } = useWrite()
   useEffect(() => { alive.current = true; void getAiConfig().then(c => { if (alive.current) setCfg(c) }); return () => { alive.current = false } }, [])
   const [url, setUrl] = useState<string | null>(null)
@@ -53,11 +54,15 @@ export default function AvatarAi({ state }: { state: GameState }) {
     try {
       const b = await generateAvatar(cfg, photo, state.avatar, state.tier, state.profile?.name ?? '')
       if (alive.current) setResult(b)
-    } catch (e) { if (alive.current) setErr(aiErrorText(e)) }
+    } catch (e) { if (alive.current) setErr(e instanceof PhotoError ? PHOTO_ERROR_TEXT : aiErrorText(e)) }
     if (alive.current) setBusy(false)
   }
   const save = async () => {
-    if (!result) return
+    if (!result || saveLock.current) return
+    saveLock.current = true
+    try { await doSave(result) } finally { saveLock.current = false }
+  }
+  const doSave = async (result: Blob) => {
     const rnd = Array.from(crypto.getRandomValues(new Uint8Array(4)), b => b.toString(16).padStart(2, '0')).join('')
     const name = `avatar-t${state.tier}-${rnd}`
     try { await saveBlob(name, result) } catch { setErr('Не удалось сохранить, попробуй ещё раз'); return }

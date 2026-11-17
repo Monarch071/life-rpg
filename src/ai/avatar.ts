@@ -17,6 +17,9 @@ export function avatarPrompt(params: AvatarParams, tier: Tier, _name: string): s
     + `Dark neon background, vertical 2:3, single character, no text, no watermark, safe for work.`
 }
 
+export class PhotoError extends Error {}
+export const PHOTO_ERROR_TEXT = 'Не удалось прочитать фото. Выбери фото в формате JPEG или PNG.'
+
 const MAX_BYTES = 600 * 1024
 
 /** Следующее качество для повторного сжатия или null, если размер уже подходит / качество на минимуме. */
@@ -31,26 +34,28 @@ async function encode(c: OffscreenCanvas | HTMLCanvasElement, type: string, q: n
 }
 
 export async function shrinkImage(blob: Blob, maxSide = 768): Promise<Blob> {
-  const bmp = await createImageBitmap(blob)
-  const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height))
-  const w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k))
-  const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h })
-  canvas.getContext('2d')!.drawImage(bmp, 0, 0, w, h)
-  bmp.close()
-  let type = 'image/webp'
-  let q = 0.85
-  let out = await encode(canvas, type, q)
-  if (!out || out.type !== type) { type = 'image/jpeg'; out = await encode(canvas, type, q) } // Safari без webp отдаёт png
-  for (let n = out && nextQuality(out.size, q); out && n !== null; n = nextQuality(out.size, q)) {
-    q = n
-    out = (await encode(canvas, type, q)) ?? out
-  }
-  if (!out) throw new Error('shrink failed')
-  return out
+  const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' }).catch(() => createImageBitmap(blob))
+  try {
+    const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height))
+    const w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k))
+    const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h })
+    canvas.getContext('2d')!.drawImage(bmp, 0, 0, w, h)
+    let type = 'image/webp'
+    let q = 0.85
+    let out = await encode(canvas, type, q)
+    if (!out || out.type !== type) { type = 'image/jpeg'; out = await encode(canvas, type, q) } // Safari без webp отдаёт png
+    for (let n = out && nextQuality(out.size, q); out && n !== null; n = nextQuality(out.size, q)) {
+      q = n
+      out = (await encode(canvas, type, q)) ?? out
+    }
+    if (!out) throw new Error('shrink failed')
+    return out
+  } finally { bmp.close() }
 }
 
 export async function generateAvatar(cfg: AiConfig, photo: Blob, params: AvatarParams, tier: Tier, name: string, shrink = shrinkImage): Promise<Blob> {
-  const raw = await generateImage(cfg, await shrink(photo, 1024), avatarPrompt(params, tier, name))
+  const small = await shrink(photo, 1024).catch(() => { throw new PhotoError('photo') })
+  const raw = await generateImage(cfg, small, avatarPrompt(params, tier, name))
   return shrink(raw)
 }
 
