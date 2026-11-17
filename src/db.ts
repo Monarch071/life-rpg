@@ -7,8 +7,10 @@ export type StoredEvent = GameEvent & { pending: 1 | 0; seq?: number }
 export const db = new Dexie('life-rpg') as Dexie & {
   events: Table<StoredEvent, string>
   settings: Table<{ key: string; value: unknown }, string>
+  blobs: Table<{ name: string; blob: Blob; uploaded: 0 | 1 }, string>
 }
 db.version(1).stores({ events: 'id, ts, pending, seq', settings: 'key' })
+db.version(2).stores({ events: 'id, ts, pending, seq', settings: 'key', blobs: 'name' })
 
 export async function getSetting<T>(key: string, fallback: T): Promise<T> {
   const row = await db.settings.get(key)

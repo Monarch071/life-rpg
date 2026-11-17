@@ -118,3 +118,34 @@ describe('CORS', () => {
     expect(ok.headers.get('access-control-allow-origin')).toBe('https://monarch071.github.io')
   })
 })
+
+describe('blob', () => {
+  const put = (name: string, bytes: Uint8Array | string, type = 'image/png', token: string | null = TOKEN) => {
+    const headers: Record<string, string> = { 'content-type': type }
+    if (token) headers.authorization = `Bearer ${token}`
+    return handle(new Request('http://x/blob/' + name, { method: 'PUT', headers, body: bytes }), store, ORIGINS)
+  }
+  it('PUT/GET: те же байты и content-type', async () => {
+    const bytes = new Uint8Array([0, 1, 2, 3, 250, 251, 252, 253, 254, 255])
+    expect((await put('av-1', bytes)).status).toBe(200)
+    const r = await call('/blob/av-1')
+    expect(r.status).toBe(200)
+    expect(r.headers.get('content-type')).toBe('image/png')
+    expect(r.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
+    expect(new Uint8Array(await r.arrayBuffer())).toEqual(bytes)
+  })
+  it('1.1 МБ — 413, плохое имя и тип — 400, нет файла — 404, без токена — 401', async () => {
+    expect((await put('big', new Uint8Array(1.1 * 1024 * 1024))).status).toBe(413)
+    expect((await put('..%2Fx', new Uint8Array(3))).status).toBe(400)
+    expect((await put('ok', new Uint8Array(3), 'text/html')).status).toBe(400)
+    const r = await call('/blob/none')
+    expect(r.status).toBe(404)
+    expect(await r.json()).toEqual({ ok: false, error: 'Нет такого файла' })
+    expect((await put('ok', new Uint8Array(3), 'image/png', null)).status).toBe(401)
+    expect((await call('/blob/none', { token: null })).status).toBe(401)
+  })
+  it('preflight разрешает PUT', async () => {
+    const r = await call('/blob/x', { method: 'OPTIONS', token: null, origin: 'https://monarch071.github.io' })
+    expect(r.headers.get('access-control-allow-methods')).toContain('PUT')
+  })
+})

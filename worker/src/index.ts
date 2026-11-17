@@ -7,6 +7,16 @@ const SYNC_MAX = 256 * 1024
 const EVENTS_MAX = 1024 * 1024
 const SMALL_MAX = 4 * 1024
 const PAGE = 1000
+const BLOB_MAX = 1024 * 1024
+const BLOB_TYPES = ['image/webp', 'image/jpeg', 'image/png']
+const BLOB_NAME = /^[a-z0-9-]{1,64}$/
+
+function toB64(b: Uint8Array): string {
+  let s = ''
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000))
+  return btoa(s)
+}
+const fromB64 = (s: string): Uint8Array => Uint8Array.from(atob(s), c => c.charCodeAt(0))
 
 class HttpError extends Error { constructor(public status: number, message: string) { super(message) } }
 
@@ -37,7 +47,9 @@ async function authorize(req: Request, store: Store): Promise<void> {
   if (!m || !stored || !safeEqual(await sha256Hex(m[1]), stored)) throw new HttpError(401, 'Неверный токен')
 }
 
-async function route(req: Request, store: Store): Promise<{ status: number; body: unknown }> {
+type Out = { status: number; body: unknown; mime?: string }
+
+async function route(req: Request, store: Store): Promise<Out> {
   const url = new URL(req.url)
   const key = `${req.method} ${url.pathname}`
 
@@ -46,6 +58,25 @@ async function route(req: Request, store: Store): Promise<{ status: number; body
     if (!isTokenString(b?.token)) throw new HttpError(400, 'Токен должен быть строкой от 32 до 200 символов')
     if (!(await store.setTokenHashIfAbsent(await sha256Hex(b.token)))) throw new HttpError(409, 'Сервер уже привязан')
     return { status: 201, body: { ok: true } }
+  }
+
+  const bm = /^\/blob\/([^/]*)$/.exec(url.pathname)
+  if (bm && (req.method === 'GET' || req.method === 'PUT')) {
+    await authorize(req, store)
+    const name = bm[1]
+    if (!BLOB_NAME.test(name)) throw new HttpError(400, 'Некорректное имя файла')
+    if (req.method === 'GET') {
+      const r = await store.getBlob(name)
+      if (!r) throw new HttpError(404, 'Нет такого файла')
+      return { status: 200, body: fromB64(r.data), mime: r.mime }
+    }
+    const mime = (req.headers.get('content-type') ?? '').split(';')[0].trim()
+    if (!BLOB_TYPES.includes(mime)) throw new HttpError(400, 'Допустимы только webp, jpeg и png')
+    if (Number(req.headers.get('content-length')) > BLOB_MAX) throw new HttpError(413, 'Файл больше 1 МБ')
+    const bytes = new Uint8Array(await req.arrayBuffer())
+    if (bytes.length > BLOB_MAX) throw new HttpError(413, 'Файл больше 1 МБ')
+    await store.putBlob(name, mime, toB64(bytes))
+    return { status: 200, body: { ok: true } }
   }
 
   if (!['POST /token', 'POST /sync', 'POST /events', 'GET /events', 'GET /ping'].includes(key)) throw new HttpError(404, 'Не найдено')
@@ -105,18 +136,19 @@ export async function handle(req: Request, store: Store, allowedOrigins: string[
       'access-control-allow-origin': origin,
       vary: 'Origin',
       'access-control-allow-headers': 'authorization, content-type',
-      'access-control-allow-methods': 'GET, POST, OPTIONS',
+      'access-control-allow-methods': 'GET, POST, PUT, OPTIONS',
     })
   }
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers })
 
-  let status: number, body: unknown
+  let status: number, body: unknown, mime: string | undefined
   try {
-    ({ status, body } = await route(req, store))
+    ({ status, body, mime } = await route(req, store))
   } catch (e) {
     if (e instanceof HttpError) { status = e.status; body = { ok: false, error: e.message } }
     else { status = 500; body = { ok: false, error: 'Внутренняя ошибка' } }
   }
+  if (mime) return new Response(body as Uint8Array, { status, headers: { ...headers, 'content-type': mime, 'cache-control': 'private, max-age=31536000, immutable' } })
   return new Response(JSON.stringify(body), { status, headers })
 }
 

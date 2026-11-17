@@ -1,5 +1,6 @@
 import { db, getSetting, setSetting, type StoredEvent } from './db'
 import { now } from './now'
+import { uploadPendingBlobs } from './blobs'
 
 export const DEFAULT_SYNC_URL = 'https://life-rpg-sync.edikgavrilyak.workers.dev' // заполняется при деплое воркера
 
@@ -78,6 +79,7 @@ async function run(): Promise<SyncResult> {
       more = page.more === true && page.next > since // иначе зациклимся
     }
     await setSetting('lastSyncAt', now())
+    void uploadPendingBlobs()
     return { ok: true, pushed, pulled }
   })
 }

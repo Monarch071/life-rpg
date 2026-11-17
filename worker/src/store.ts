@@ -5,6 +5,8 @@ export interface Store {
   insertEvents(evs: { id: string; ts: number; type: string; body: string }[]): Promise<number>
   eventsSince(seq: number, limit: number): Promise<{ seq: number; body: string }[]>
   lastHealthAt(): Promise<number | null>
+  putBlob(name: string, mime: string, dataB64: string): Promise<void>
+  getBlob(name: string): Promise<{ mime: string; data: string } | null>
 }
 
 export interface D1Stmt {
@@ -47,5 +49,11 @@ export class D1Store implements Store {
   async lastHealthAt() {
     const r = await this.db.prepare("SELECT MAX(ts) AS t FROM events WHERE type='health_packet'").first<{ t: number | null }>()
     return r?.t ?? null
+  }
+  async putBlob(name: string, mime: string, dataB64: string) {
+    await this.db.prepare('INSERT OR REPLACE INTO blobs (name, mime, data, ts) VALUES (?, ?, ?, ?)').bind(name, mime, dataB64, Date.now()).run()
+  }
+  async getBlob(name: string) {
+    return this.db.prepare('SELECT mime, data FROM blobs WHERE name = ?').bind(name).first<{ mime: string; data: string }>()
   }
 }

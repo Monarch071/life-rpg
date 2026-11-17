@@ -5,6 +5,7 @@ export class MemoryStore implements Store {
   hash: string | null = null
   rows: { seq: number; id: string; ts: number; type: string; body: string }[] = []
   private seq = 0
+  blobs = new Map<string, { mime: string; data: string }>()
 
   async getTokenHash() { return this.hash }
   async setTokenHashIfAbsent(h: string) { if (this.hash !== null) return false; this.hash = h; return true }
@@ -25,4 +26,6 @@ export class MemoryStore implements Store {
     const ts = this.rows.filter(r => r.type === 'health_packet').map(r => r.ts)
     return ts.length ? Math.max(...ts) : null
   }
+  async putBlob(name: string, mime: string, data: string) { this.blobs.set(name, { mime, data }) }
+  async getBlob(name: string) { return this.blobs.get(name) ?? null }
 }
