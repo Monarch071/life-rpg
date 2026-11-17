@@ -12,6 +12,21 @@ const statLine = (s: Stat, st: GameState) => `${STATS[s].name} ${st.stats[s]} (�
 const windowsFor = (state: GameState, profile: Profile, work: Win | null, wakeAt: HHMM) =>
   freeWindows(wakeAt, profile.sleep, [...(work ? [work] : []), ...state.today.calendar.map(({ start, end }) => ({ start, end }))])
 
+// Ключевые ответы анкеты для портрета: id → короткая подпись.
+const KEY_ANSWERS: [string, string][] = [['weight', 'Вес, кг'], ['weight_goal', 'Комфортный вес, кг'], ['income', 'Доход в месяц, ₽'], ['savings', 'Накопления, ₽'],
+  ['money_goal', 'Финансовая цель'], ['money_goal_months', 'Срок цели, мес'], ['motivators', 'Мотивация'], ['limits', 'Ограничения здоровья'], ['games_hours', 'Игры, ч/день'],
+  ['screen_hours', 'Телефон, ч/день'], ['year_goal', 'Главная цель года'], ['goal_hours', 'Часов в неделю на цели'], ['blockers', 'Что мешало'], ['sleep_hours', 'Сон, ч'], ['stress', 'Напряжение 1–5']]
+
+function portrait(state: GameState): string[] {
+  const c = state.character
+  if (!c) return []
+  const a = state.interviewAnswers ?? {}
+  const key = KEY_ANSWERS.filter(([id]) => a[id] !== undefined && a[id] !== '' && !(Array.isArray(a[id]) && !(a[id] as string[]).length))
+    .map(([id, label]) => `${label}: ${Array.isArray(a[id]) ? (a[id] as string[]).join(', ') : a[id]}`)
+  return ['Портрет героя:', `Архетип: ${c.archetype}`, `О герое: ${c.summary}`, `Зоны роста: ${c.focus.join('; ')}`, `Как давать задания: ${c.questGuidance}`,
+    ...(key.length ? [`Ключевые ответы: ${key.join('; ')}`] : [])]
+}
+
 /** Компактный русский контекст для ИИ. */
 export function questContext(state: GameState, profile: Profile, work: Win | null, wakeAt: HHMM): string {
   const m7: string[] = []
@@ -32,6 +47,7 @@ export function questContext(state: GameState, profile: Profile, work: Win | nul
     `Сон: ${state.genInputs.lastSleepHours ?? 'неизвестно'} ч`,
     `Свободные окна: ${windowsFor(state, profile, work, wakeAt).map(w => `${w.start}–${w.end}`).join(', ') || 'нет'}`,
     `Привычки: хорошие ${profile.goodHabits.join(', ') || 'нет'}; вредные ${profile.badHabits.join(', ') || 'нет'}`,
+    ...portrait(state),
   ].join('\n')
 }
 
@@ -59,7 +75,7 @@ export function validateAiQuests(raw: unknown, ctx: { date: ISODate; multipliers
 }
 
 const QUESTS_SYSTEM = `Ты — наставник в приложении-игре по прокачке личных характеристик. Составь задания на сегодня, по-русски.
-Правила: заданий 3–7. Минимум одно — на самую слабую характеристику. Задания должны влезать в свободные окна. Сложность следует текущему уровню и вчерашнему выполнению и растёт постепенно. Никаких медицинских рисков и экстремальных нагрузок; при низкой энергии или сне меньше 6 часов — задания легче. Задания конкретные и измеримые («Прочитать 15 страниц», а не «Почитать»). Для заданий «в течение дня» ставь allDay=true.
+Правила: заданий 3–7. Минимум одно — на самую слабую характеристику. Задания должны влезать в свободные окна. Сложность следует текущему уровню и вчерашнему выполнению и растёт постепенно. Никаких медицинских рисков и экстремальных нагрузок; при низкой энергии или сне меньше 6 часов — задания легче. Если в данных есть «Портрет героя» — каждое задание должно помогать одной из зон роста или закрывать слабость из портрета и учитывать «Как давать задания». Задания конкретные и измеримые («Прочитать 15 страниц», а не «Почитать»). Для заданий «в течение дня» ставь allDay=true.
 Характеристики: ${STAT_KEYS.map(s => `${s} — ${STATS[s].name}`).join(', ')}.`
 const QUESTS_SCHEMA = {
   type: 'object', required: ['quests'],

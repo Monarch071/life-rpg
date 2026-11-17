@@ -2,7 +2,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 
 vi.mock('./providers', async (orig) => ({ ...(await orig<typeof import('./providers')>()), generateJson: vi.fn() }))
 import { AiError, generateJson } from './providers'
-import { aiDailyQuests, aiTuning, aiWeeklyReport, validateAiQuests } from './tasks'
+import { aiDailyQuests, aiTuning, aiWeeklyReport, questContext, validateAiQuests } from './tasks'
 import { replay } from '../domain/replay'
 import type { GameEvent, Profile } from '../domain/types'
 import type { AiConfig } from './config'
@@ -69,4 +69,13 @@ test('validateAiQuests: stat-массив [\x27int\x27] отбрасываетс
   const ctx = { date: '2026-11-17', multipliers: { str: 1, end: 1, int: 1, dis: 1, cha: 1, fin: 1, spi: 1 }, windows: [{ start: '10:00', end: '22:00' }], energy: { morning: 3, day: 3, evening: 3, night: 3 }, wakeAt: '10:00' }
   const r = validateAiQuests({ quests: [q(['int'], 'Читать 10 страниц'), q('int', 'Прочитать статью'), q('str', 'Отжаться 20 раз'), q('spi', 'Медитация 5 минут')] }, ctx as any)
   expect(r.map(x => x.stat)).toEqual(['int', 'str', 'spi'])
+})
+
+test('questContext: портрет героя только при наличии character', () => {
+  expect(questContext(state, profile, null, '08:00')).not.toContain('Портрет героя')
+  const withC = { ...state, character: { archetype: 'Тихий стратег', summary: 'Ты спокойный', strengths: [], weaknesses: [], focus: ['Дисциплина'], questGuidance: 'Мягкий темп', date: '2026-11-17' },
+    interviewAnswers: { weight: 80, year_goal: 'Выучить английский', motivators: ['Свобода'] } }
+  const t = questContext(withC, profile, null, '08:00')
+  expect(t).toContain('Тихий стратег'); expect(t).toContain('Дисциплина'); expect(t).toContain('Мягкий темп')
+  expect(t).toContain('Вес, кг: 80'); expect(t).toContain('Свобода')
 })
