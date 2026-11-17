@@ -142,3 +142,45 @@ test('exportData не содержит ключей синхронизации',
   const t = await (await exportData()).text()
   for (const k of ['syncToken', 'syncUrl', 'syncCursor', 'lastSyncAt']) expect(t).not.toContain(k)
 })
+
+test('joinSync ждёт старый syncNow: курсор от нового сервера', async () => {
+  await enableSync(URL_)
+  const storeB = new MemoryStore()
+  const tokenB = newToken()
+  await handle(new Request('https://b.test/register', { method: 'POST', body: JSON.stringify({ token: tokenB }) }), storeB, [])
+  await handle(new Request('https://b.test/events', { method: 'POST', headers: { authorization: `Bearer ${tokenB}` }, body: JSON.stringify({ events: [1, 2, 3].map((i) => ({ id: `b${i}`, ts: i, type: 'busy_until', deviceId: 'd', date: '2026-11-17', until: '1' })) }) }), storeB, [])
+  let release!: () => void
+  const gate = new Promise<void>((r) => (release = r))
+  const base = fetch
+  vi.stubGlobal('fetch', async (url: string, init: any) => {
+    if (url.startsWith(URL_)) await gate
+    else return handle(new Request(url, init), storeB, [])
+    return base(url, init)
+  })
+  const a = syncNow()
+  const j = joinSync('https://b.test', tokenB)
+  await new Promise((r) => setTimeout(r, 20))
+  release()
+  await a
+  expect(await j).toMatchObject({ ok: true, pulled: 3 })
+  expect(await getSetting('syncCursor', 0)).toBe(3)
+  expect(await db.events.where('id').startsWith('b').count()).toBe(3)
+})
+
+test('200 с HTML вместо JSON → ok:false, без исключения', async () => {
+  await enableSync(URL_)
+  vi.stubGlobal('fetch', async () => new Response('<html>', { status: 200 }))
+  expect(await syncNow()).toEqual({ ok: false, error: 'Ошибка сервера (200)' })
+})
+
+test('parseLoginHash отвергает не-http(s) url', () => {
+  const t = newToken()
+  expect(parseLoginHash(`#sync=${t}&url=${encodeURIComponent('javascript:alert(1)')}`)).toBeNull()
+  expect(parseLoginHash(`#sync=${t}&url=${encodeURIComponent('ftp://x')}`)).toBeNull()
+})
+
+test('more=true без прогресса курсора не зацикливает pull', async () => {
+  await enableSync(URL_)
+  vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ events: [], next: 0, more: true }), { status: 200 }))
+  expect((await syncNow()).ok).toBe(true)
+})

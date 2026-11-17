@@ -37,7 +37,11 @@ async function call(cfg: SyncConfig, method: string, path: string, body?: unknow
   if (res.status === 401) throw new SyncError('Неверный токен — войди заново')
   if (res.status === 409) throw new SyncError('Этот сервер уже привязан. Подключись по ссылке с первого устройства')
   if (!res.ok) throw new SyncError(`Ошибка сервера (${res.status})`)
-  return res.json()
+  try {
+    return await res.json()
+  } catch (e) {
+    throw new SyncError(e instanceof Error && /Abort|Timeout/.test(e.name) ? 'Нет связи с сервером' : `Ошибка сервера (${res.status})`)
+  }
 }
 
 const guard = async (f: () => Promise<SyncResult>): Promise<SyncResult> => {
@@ -65,12 +69,13 @@ async function run(): Promise<SyncResult> {
     for (let more = true; more; ) {
       const since = await getSetting<number>('syncCursor', 0)
       const page = await call(cfg, 'GET', `/events?since=${since}`)
+      if (!Array.isArray(page?.events) || typeof page.next !== 'number') throw new SyncError('Ошибка сервера (200)')
       await db.transaction('rw', db.events, db.settings, async () => {
         await db.events.bulkPut(page.events.map((e: StoredEvent) => ({ ...e, pending: 0 })))
         await setSetting('syncCursor', page.next)
       })
       pulled += page.events.length
-      more = page.more
+      more = page.more === true && page.next > since // иначе зациклимся
     }
     await setSetting('lastSyncAt', now())
     return { ok: true, pushed, pulled }
@@ -82,6 +87,9 @@ export function syncNow(): Promise<SyncResult> {
   return (inflight ??= run().finally(() => { inflight = null }))
 }
 
+// старый прогон не должен перезаписать курсор после смены сервера/токена
+const settle = () => inflight?.catch(() => {})
+
 export async function enableSync(url: string): Promise<SyncResult> {
   const cfg = { url: url.replace(/\/+$/, ''), token: newToken() }
   const r = await guard(async () => {
@@ -89,6 +97,7 @@ export async function enableSync(url: string): Promise<SyncResult> {
     return { ok: true, pushed: 0, pulled: 0 }
   })
   if (!r.ok) return r
+  await settle()
   await db.transaction('rw', db.settings, async () => {
     await setSetting('syncUrl', cfg.url)
     await setSetting('syncToken', cfg.token)
@@ -104,6 +113,7 @@ export async function joinSync(url: string, token: string): Promise<SyncResult> 
     return { ok: true, pushed: 0, pulled: 0 }
   })
   if (!r.ok) return r
+  await settle()
   await db.transaction('rw', db.settings, async () => {
     await setSetting('syncUrl', cfg.url)
     await setSetting('syncToken', cfg.token)
@@ -118,6 +128,7 @@ export async function rotateToken(): Promise<SyncResult> {
   const token = newToken()
   return guard(async () => {
     await call(cfg, 'POST', '/token', { token })
+    await settle()
     await setSetting('syncToken', token)
     return { ok: true, pushed: 0, pulled: 0 }
   })
@@ -133,5 +144,10 @@ export function parseLoginHash(hash: string): SyncConfig | null {
   const p = new URLSearchParams(hash.replace(/^#/, ''))
   const token = p.get('sync')
   const url = p.get('url')
-  return token && url ? { url, token } : null
+  if (!token || !url) return null
+  try {
+    return /^https?:$/.test(new URL(url).protocol) ? { url, token } : null
+  } catch {
+    return null
+  }
 }
