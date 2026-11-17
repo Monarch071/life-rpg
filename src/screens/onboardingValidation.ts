@@ -20,7 +20,7 @@ export function validateStep(step: number, d: Draft): string | null {
   if (step === 2 && (!d.wake || !d.sleep)) return 'Укажи время подъёма и отбоя'
   if (step === 3 && !d.noWork) {
     if (d.templates.length < 1) return 'Добавь рабочие часы или отметь «Не работаю»'
-    if (d.templates.some((t) => !t.start || !t.end)) return 'У каждого шаблона нужны начало и конец'
+    if (d.templates.some((t) => !t.start || !t.end)) return 'Укажи начало и конец рабочих часов'
   }
   return null
 }

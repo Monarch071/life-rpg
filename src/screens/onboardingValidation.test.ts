@@ -22,7 +22,8 @@ describe('validateStep', () => {
     expect(validateStep(3, { ...base, templates: [], noWork: true })).toBeNull()
   })
   it('template needs start and end', () => {
-    expect(validateStep(3, { ...base, templates: [{ label: 'x', start: '09:00', end: '' }] })).not.toBeNull()
+    expect(validateStep(3, { ...base, templates: [{ label: 'x', start: '09:00', end: '' }] })).toBe('Укажи начало и конец рабочих часов')
+    expect(validateStep(3, { ...base, templates: [{ label: 'x', start: '', end: '18:00' }] })).toBe('Укажи начало и конец рабочих часов')
     expect(validateStep(3, base)).toBeNull()
   })
 })
