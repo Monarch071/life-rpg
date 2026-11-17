@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type { AvatarParams } from '../domain/types'
 
 export const HAIR_OPTIONS = ['short', 'spiky', 'long', 'ponytail'] as const
@@ -29,10 +29,12 @@ const EYE: Record<string, { shape: string; lid: string; brow: string }> = {
   calm: { shape: 'M-10 -1 Q0 -7 10 -1 Q8 7 0 7 Q-8 7 -10 -1Z', lid: 'M-11 -1 Q0 -8 11 -1', brow: 'M-8 -16 Q0 -18 8 -16' },
 }
 
-interface Props { params: AvatarParams; tier: 1 | 2 | 3 | 4; shadow?: boolean; size?: number; decorative?: boolean }
+interface Props { params: AvatarParams; tier: 1 | 2 | 3 | 4; shadow?: boolean; size?: number; decorative?: boolean; image?: string | null }
 
 /** Оригинальный аниме‑персонаж в полный рост. Одежда и аура растут с тиром; shadow — тёмная копия‑Тень. */
-export default function Avatar({ params, tier, shadow = false, size = 220, decorative = false }: Props) {
+export default function Avatar({ params, tier, shadow = false, size = 220, decorative = false, image = null }: Props) {
+  const [bad, setBad] = useState(false)
+  useEffect(() => setBad(false), [image])
   const uid = useId().replace(/:/g, '')
   const hair = HAIR_BACK[params.hair] ? params.hair : 'short'
   const eye = EYE[params.eyes] ?? EYE.round
@@ -59,6 +61,14 @@ export default function Avatar({ params, tier, shadow = false, size = 220, decor
       <path d={eye.lid} stroke={INK} strokeWidth={2.6} strokeLinecap="round" fill="none" />
     </g>
   )
+
+  if (image && !bad) {
+    return (
+      <span className={`avatar-img${shadow ? ' avatar-img-shadow' : ''}`} style={{ width: (size * 2) / 3, height: size }}>
+        <img src={image} alt={decorative ? '' : shadow ? 'Тень' : 'Твой персонаж'} onError={() => setBad(true)} />
+      </span>
+    )
+  }
 
   return (
     <svg

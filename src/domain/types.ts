@@ -43,6 +43,7 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'boss_abandoned'; bossId: string }
   | { type: 'ai_tuning'; date: ISODate; factors: Partial<Record<Stat, number>>; note: string }
   | { type: 'ai_report'; weekStart: ISODate; text: string }
+  | { type: 'avatar_image'; tier: 1|2|3|4; blob: string }
 );
 export type WeeklyKind = 'active_days' | 'stat_quests' | 'steps_total' | 'shadow_wins';
 export interface WeeklyQuest { id: string; weekStart: ISODate; kind: WeeklyKind; stat: Stat | null; target: number; title: string; xp: number }
@@ -52,6 +53,7 @@ export interface AvatarParams { hair: string; hairColor: string; outfitColor: st
 export interface DayResult { date: ISODate; xp: number; shadowXp: number; completed: number; issued: number; won: boolean }
 export interface GameState {
   profile: Profile | null; avatar: AvatarParams;
+  avatarImages: Partial<Record<1|2|3|4, string>>;   // имя блоба аватара по тирам
   totalXp: number; level: number; xpInto: number; xpNeed: number;
   stats: Record<Stat, number>; statPoints: Record<Stat, number>;
   currency: number; streak: number; shadowWinStreak: number;

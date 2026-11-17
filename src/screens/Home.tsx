@@ -7,6 +7,8 @@ import { METRIC_INFO } from '../domain/metricInfo'
 import { STATS } from '../domain/stats'
 import type { GameState, Profile } from '../domain/types'
 import { hhmmNow, now } from '../now'
+import { imageNameFor } from '../ai/avatar'
+import { useBlobUrl } from '../blobs'
 import Avatar from '../ui/Avatar'
 import { useDialog } from '../ui/useDialog'
 import { buildQuests } from './issue'
@@ -22,6 +24,7 @@ let deferredDay = false
 
 export default function Home({ state, profile }: { state: GameState; profile: Profile }) {
   const { today } = state
+  const img = useBlobUrl(imageNameFor(state.avatarImages, state.tier))
   const [sheet, setSheet] = useState<Sheet>(null)
   const [pop, setPop] = useState<{ id: string; xp: number; k: number } | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -117,12 +120,12 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
 
       <section className="arena">
         <figure className={leader === 'me' ? 'lead' : ''}>
-          <Avatar params={state.avatar} tier={state.tier} size={200} decorative />
+          <Avatar params={state.avatar} tier={state.tier} size={200} decorative image={img} />
           <figcaption>{profile.name || 'Ты'}</figcaption>
         </figure>
         <span className="vs" aria-hidden="true">VS</span>
         <figure className={`shadow-fig${leader === 'shadow' ? ' lead' : ''}`}>
-          <Avatar params={state.avatar} tier={state.tier} size={200} shadow decorative />
+          <Avatar params={state.avatar} tier={state.tier} size={200} shadow decorative image={img} />
           <figcaption>Тень</figcaption>
         </figure>
       </section>

@@ -61,6 +61,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   let profile: Profile | null = null;
   let initial: Record<Stat, number> | null = null; // поэлементный максимум по всем анкетам
   let avatar = DEFAULT_AVATAR;
+  const avatarImages: GameState['avatarImages'] = {};
   const issued = new Map<ISODate, DoneQuest[]>();
   const questById = new Map<string, DoneQuest>();
   const metrics = new Map<ISODate, Partial<Record<Metric, number>>>();
@@ -89,6 +90,9 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
         break;
       }
       case 'avatar_updated': avatar = e.params; break;
+      case 'avatar_image':
+        if (Number.isInteger(e.tier) && e.tier >= 1 && e.tier <= 4 && typeof e.blob === 'string' && /^[a-z0-9-]{1,64}$/.test(e.blob)) avatarImages[e.tier] = e.blob; // последний по ts
+        break;
       case 'quests_issued': {
         if (issued.has(e.date)) break; // побеждает первый
         if (!Array.isArray(e.quests)) break;
@@ -332,7 +336,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   const sleepDate = [...metrics.keys()].filter(d => d <= today && metrics.get(d)!.sleepHours !== undefined).sort().at(-1);
 
   return {
-    profile, avatar, totalXp, level, xpInto: into, xpNeed: need, stats, statPoints, currency,
+    profile, avatar, avatarImages, totalXp, level, xpInto: into, xpNeed: need, stats, statPoints, currency,
     streak: streakNow, shadowWinStreak: wins,
     className: classFor(stats), tier: tierFor(level), multipliers,
     today: {

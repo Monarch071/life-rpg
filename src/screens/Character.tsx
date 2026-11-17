@@ -2,6 +2,9 @@ import { useState } from 'react'
 import Avatar, { EYE_OPTIONS, HAIR_OPTIONS } from '../ui/Avatar'
 import { STATS } from '../domain/stats'
 import { appendEvent } from '../db'
+import { imageNameFor } from '../ai/avatar'
+import { useBlobUrl } from '../blobs'
+import AvatarAi from './AvatarAi'
 import Skills from './Skills'
 import Achievements from './Achievements'
 import type { AvatarParams, GameState, Stat } from '../domain/types'
@@ -59,10 +62,11 @@ function Editor({ saved, tier }: { saved: AvatarParams; tier: 1 | 2 | 3 | 4 }) {
 
 export default function Character({ state }: { state: GameState }) {
   const last7 = state.history.slice(-7)
+  const img = useBlobUrl(imageNameFor(state.avatarImages, state.tier))
   return (
     <div className="home stack">
       <section className="hero">
-        <Avatar params={state.avatar} tier={state.tier} size={220} />
+        <Avatar params={state.avatar} tier={state.tier} size={220} image={img} />
         <div className="cls">{state.className}</div>
         <div className="muted">«{state.title}»</div>
         <div className="muted">Уровень {state.level} · Тир {state.tier}</div>
@@ -94,6 +98,7 @@ export default function Character({ state }: { state: GameState }) {
         )}
       </section>
       <Editor saved={state.avatar} tier={state.tier} />
+      <AvatarAi state={state} />
     </div>
   )
 }

@@ -596,3 +596,15 @@ test('ai_report: не‑понедельник игнорируется, тек�
   const s = replay([r('2026-11-02', 'old'), r('2026-11-09', 'a', 1), r('2026-11-09', 'b', 2)], NOW);
   expect(s.reports).toEqual([{ weekStart: '2026-11-09', text: 'b' }, { weekStart: '2026-11-02', text: 'old' }]);
 });
+
+test('avatar_image: последний по ts для тира, невалидное игнорируется', () => {
+  const s = replay([
+    ev({ type: 'avatar_image', tier: 1, blob: 'avatar-t1-aa', ts: at('2026-11-10') }),
+    ev({ type: 'avatar_image', tier: 3, blob: 'avatar-t3-aa', ts: at('2026-11-11') }),
+    ev({ type: 'avatar_image', tier: 3, blob: 'avatar-t3-bb', ts: at('2026-11-12') }),
+    ev({ type: 'avatar_image', tier: 3, blob: '../x', ts: at('2026-11-13') }),
+    ev({ type: 'avatar_image', tier: 5, blob: 'avatar-t5-aa', ts: at('2026-11-13') }),
+    ev({ type: 'avatar_image', tier: 2.5, blob: 'avatar-t2-aa', ts: at('2026-11-13') }),
+  ], NOW);
+  expect(s.avatarImages).toEqual({ 1: 'avatar-t1-aa', 3: 'avatar-t3-bb' });
+});
