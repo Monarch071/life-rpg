@@ -38,6 +38,7 @@ function Swatches({ label, colors, value, onPick }: { label: string; colors: str
 function Editor({ saved, tier }: { saved: AvatarParams; tier: 1 | 2 | 3 | 4 }) {
   const [p, setP] = useState(saved)
   const [msg, setMsg] = useState('')
+  const [open, setOpen] = useState(false)
   const set = (patch: Partial<AvatarParams>) => { setP({ ...p, ...patch }); setMsg('') }
   const save = async () => {
     try { await appendEvent({ type: 'avatar_updated', params: p }); setMsg('Образ сохранён.') }
@@ -45,7 +46,9 @@ function Editor({ saved, tier }: { saved: AvatarParams; tier: 1 | 2 | 3 | 4 }) {
   }
   return (
     <section className="panel stack" aria-label="Редактор образа">
-      <h2>Образ</h2>
+      <div className="sec"><h2>Образ</h2></div>
+      <button type="button" className="btn" aria-expanded={open} aria-controls="avatar-editor" onClick={() => setOpen(!open)}>{open ? 'Свернуть' : 'Изменить образ'}</button>
+      {open && <div id="avatar-editor" className="stack">
       <div className="field"><span>Причёска</span>
         <div className="chips">{HAIR_OPTIONS.map(h => (
           <button key={h} type="button" className={`btn${p.hair === h ? ' primary' : ''}`} aria-pressed={p.hair === h} onClick={() => set({ hair: h })}>{HAIR_NAMES[h]}</button>
@@ -58,6 +61,7 @@ function Editor({ saved, tier }: { saved: AvatarParams; tier: 1 | 2 | 3 | 4 }) {
       <Swatches label="Цвет одежды" colors={OUTFIT_COLORS} value={p.outfitColor} onPick={c => set({ outfitColor: c })} />
       <div className="center"><Avatar params={p} tier={tier} size={140} decorative /></div>
       <button className="btn primary big" onClick={save}>Сохранить образ</button>
+      </div>}
       {msg && <p aria-live="polite" className="center">{msg}</p>}
     </section>
   )

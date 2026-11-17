@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Check } from 'lucide-react'
 import { getSetting, setSetting } from '../db'
 import type { GameState } from '../domain/types'
 import { pickCelebration, type Seen } from './pickCelebration'
@@ -32,7 +33,7 @@ function Overlay({ c, onClose }: { c: NonNullable<ReturnType<typeof pickCelebrat
       <div className="rays" aria-hidden="true" />
       {[8, 20, 33, 47, 60, 74, 88].map((l, i) => <i key={l} className="conf" aria-hidden="true" style={{ left: `${l}%`, animationDelay: `${i * 0.35}s`, background: i % 2 ? 'var(--gold)' : 'var(--fire2)' }} />)}
       <div className="k">{win ? 'ПОБЕДА' : 'НОВЫЙ УРОВЕНЬ'}</div>
-      {win ? <div className="huge"><b>✓</b></div> : <div className="huge"><b>{c.level}</b></div>}
+      {win ? <div className="huge"><b><Check size={88} strokeWidth={4} aria-hidden="true" /></b></div> : <div className="huge"><b>{c.level}</b></div>}
       <h2 id="cel-title">{win ? 'Победа над Тенью' : 'Тень отступает'}</h2>
       <p>{win ? 'Вчера ты оказался сильнее своей Тени' : 'Ты стал сильнее вчерашнего себя'}</p>
       <div className="rew">{win ? <span className="g">+{c.bonus} XP</span> : <span className="p">+1 очко навыка</span>}</div>

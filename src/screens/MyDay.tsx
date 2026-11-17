@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Briefcase, Palmtree, Clock } from 'lucide-react'
 import { appendEvents, setSetting } from '../db'
 import { getAiConfig } from '../ai/config'
 import { aiDailyQuests } from '../ai/tasks'
@@ -73,12 +74,12 @@ export default function MyDay({ state, profile, onLater }: { state: GameState; p
         <p className="muted">Какой сегодня день? Задания подстроятся под расписание.</p>
         <div className="stack">
           {profile.workTemplates.map((t, i) => (
-            <button key={i} className="btn" disabled={busy} onClick={() => begin({ start: t.start, end: t.end })}>
-              💼 {t.label} <small>{t.start}–{t.end}</small>
+            <button key={i} className="btn day-card" disabled={busy} onClick={() => begin({ start: t.start, end: t.end })}>
+              <Briefcase size={22} aria-hidden="true" /> <span>{t.label}</span> <small>{t.start}–{t.end}</small>
             </button>
           ))}
-          <button className="btn" disabled={busy} onClick={() => begin(null)}>🌴 Выходной</button>
-          <button className="btn ghost" disabled={busy} aria-expanded={custom} onClick={() => setCustom(!custom)}>🕑 Другое время</button>
+          <button className="btn day-card" disabled={busy} onClick={() => begin(null)}><Palmtree size={22} aria-hidden="true" /> <span>Выходной</span></button>
+          <button className="btn day-card ghost" disabled={busy} aria-expanded={custom} onClick={() => setCustom(!custom)}><Clock size={22} aria-hidden="true" /> <span>Другое время</span></button>
           {custom && (
             <div className="row">
               <label className="field">С<input type="time" value={start} onChange={e => setStart(e.target.value)} /></label>

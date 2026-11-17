@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react'
+import { X, Plus } from 'lucide-react'
+import { StatIcon } from '../ui/icons'
 import { appendEvent } from '../db'
 import { classFor, initialStats, STATS } from '../domain/stats'
 import type { Profile, Stat } from '../domain/types'
@@ -127,7 +129,7 @@ export default function Onboarding() {
             <div className="row">
               <input aria-label="Начало работы" type="time" value={t.start} onChange={(e) => setTpl(i, { start: e.target.value })} />
               <input aria-label="Конец работы" type="time" value={t.end} onChange={(e) => setTpl(i, { end: e.target.value })} />
-              <button type="button" className="x" aria-label="Удалить" onClick={() => set({ templates: d.templates.filter((_, j) => j !== i) })}>✕</button>
+              <button type="button" className="x" aria-label="Удалить" onClick={() => set({ templates: d.templates.filter((_, j) => j !== i) })}><X size={18} aria-hidden="true" /></button>
             </div>
           </div>
         ))}
@@ -143,13 +145,13 @@ export default function Onboarding() {
           <div className="card" key={i}>
             <div className="row">
               <input aria-label="Цель" value={g.text} placeholder="Цель" onChange={(e) => setGoal(i, { text: e.target.value })} />
-              <button type="button" className="x" aria-label="Удалить" onClick={() => set({ goals: d.goals.filter((_, j) => j !== i) })}>✕</button>
+              <button type="button" className="x" aria-label="Удалить" onClick={() => set({ goals: d.goals.filter((_, j) => j !== i) })}><X size={18} aria-hidden="true" /></button>
             </div>
             <div className="chips" role="group" aria-label="Срок цели">
               {MONTHS.map((m) => <button key={m} type="button" aria-pressed={g.months === m} className={g.months === m ? 'on' : ''} onClick={() => setGoal(i, { months: m })}>{m} мес</button>)}
             </div>
             <div className="chips" role="group" aria-label="Характеристика цели">
-              {STAT_IDS.map((s) => <button key={s} type="button" aria-pressed={g.stat === s} className={g.stat === s ? 'on' : ''} onClick={() => setGoal(i, { stat: s })}>{STATS[s].icon} {STATS[s].name}</button>)}
+              {STAT_IDS.map((s) => <button key={s} type="button" aria-pressed={g.stat === s} className={g.stat === s ? 'on' : ''} onClick={() => setGoal(i, { stat: s })}><StatIcon stat={s} size={16} />{STATS[s].name}</button>)}
             </div>
           </div>
         ))}
@@ -161,7 +163,7 @@ export default function Onboarding() {
     case 5:
       body = (<>
         <h2>Здоровье и спорт</h2>
-        <div className="chips" role="group" aria-label="Уровень спорта">
+        <div className="chips opts" role="group" aria-label="Уровень спорта">
           {SPORT.map((s, i) => <button key={s} type="button" aria-pressed={d.sportLevel === i} className={d.sportLevel === i ? 'on' : ''} onClick={() => set({ sportLevel: i as 0 | 1 | 2 | 3 })}>{s}</button>)}
         </div>
         <label>Обычно шагов в день
@@ -187,9 +189,9 @@ export default function Onboarding() {
     case 7:
       body = (<>
         <h2>Навыки и отношения</h2>
-        <p>{STATS.int.icon} Интеллект</p>
+        <p className="lbl"><StatIcon stat="int" size={16} /> Интеллект</p>
         <Scale label="Интеллект" value={d.selfRating.int} max={10} onChange={(n) => rate('int', n)} />
-        <p>{STATS.cha.icon} Харизма</p>
+        <p className="lbl"><StatIcon stat="cha" size={16} /> Харизма</p>
         <Scale label="Харизма" value={d.selfRating.cha} max={10} onChange={(n) => rate('cha', n)} />
       </>)
       break
@@ -200,13 +202,13 @@ export default function Onboarding() {
         <Chips label="Полезные привычки" options={[...GOOD, ...customChips('goodHabits', GOOD)]} picked={d.goodHabits} onToggle={(id) => toggle('goodHabits', id)} />
         <div className="row">
           <input aria-label="Своя полезная привычка" value={custom.good} placeholder="Своя полезная" onChange={(e) => setCustom({ ...custom, good: e.target.value })} />
-          <button type="button" className="ghost" aria-label="Добавить полезную привычку" onClick={() => addCustom('good')}>+</button>
+          <button type="button" className="ghost" aria-label="Добавить полезную привычку" onClick={() => addCustom('good')}><Plus size={18} aria-hidden="true" /></button>
         </div>
         <p>Вредные</p>
         <Chips label="Вредные привычки" options={[...BAD, ...customChips('badHabits', BAD)]} picked={d.badHabits} onToggle={(id) => toggle('badHabits', id)} />
         <div className="row">
           <input aria-label="Своя вредная привычка" value={custom.bad} placeholder="Своя вредная" onChange={(e) => setCustom({ ...custom, bad: e.target.value })} />
-          <button type="button" className="ghost" aria-label="Добавить вредную привычку" onClick={() => addCustom('bad')}>+</button>
+          <button type="button" className="ghost" aria-label="Добавить вредную привычку" onClick={() => addCustom('bad')}><Plus size={18} aria-hidden="true" /></button>
         </div>
       </>)
       break
@@ -222,7 +224,7 @@ export default function Onboarding() {
       body = (<>
         <h2>Самооценка</h2>
         {STAT_IDS.map((s) => (
-          <div key={s}><p>{STATS[s].icon} {STATS[s].name}</p><Scale label={STATS[s].name} value={d.selfRating[s]} max={10} onChange={(n) => rate(s, n)} /></div>
+          <div key={s}><p className="lbl"><StatIcon stat={s} size={16} /> {STATS[s].name}</p><Scale label={STATS[s].name} value={d.selfRating[s]} max={10} onChange={(n) => rate(s, n)} /></div>
         ))}
       </>)
       break
@@ -235,7 +237,7 @@ export default function Onboarding() {
         </div>
         {STAT_IDS.map((s) => (
           <div className="stat" key={s}>
-            <span>{STATS[s].icon} {STATS[s].name}</span>
+            <span className="lbl"><StatIcon stat={s} size={16} /> {STATS[s].name}</span>
             <div className="bar"><i style={{ width: `${(stats[s] / 20) * 100}%` }} /></div>
             <b>{stats[s]}</b>
           </div>
@@ -245,10 +247,10 @@ export default function Onboarding() {
 
   return (
     <div className="onb">
-      <div className="progress"><i style={{ width: `${(step / TOTAL) * 100}%` }} /></div>
+      <div className="progress" role="progressbar" aria-label="Прогресс" aria-valuemin={1} aria-valuemax={TOTAL} aria-valuenow={step}><i style={{ width: `${(step / TOTAL) * 100}%` }} /></div>
       <div className="onb-body">
-        <small>Шаг {step} из {TOTAL}</small>
-        {body}
+        <small className="step">Шаг {step} из {TOTAL}</small>
+        <div className="onb-step" key={step}>{body}</div>
         {err && <p className="err" role="alert">{err}</p>}
       </div>
       <div className="onb-nav">

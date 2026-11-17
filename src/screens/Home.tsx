@@ -9,7 +9,7 @@ import type { GameState, Profile } from '../domain/types'
 import { hhmmNow, now } from '../now'
 import { imageNameFor } from '../ai/avatar'
 import { useBlobUrl } from '../blobs'
-import { Bot, Check, Coins, Flame, Gem, Hourglass, Moon, Zap } from 'lucide-react'
+import { Bot, Check, Coins, Flame, Gem, Hourglass, Moon, Zap, X } from 'lucide-react'
 import Arena from '../ui/Arena'
 import LevelBadge from '../ui/LevelBadge'
 import XpBar from '../ui/XpBar'
@@ -225,7 +225,7 @@ function BusyUntil({ date, onClose }: { date: string; onClose: () => void }) {
       <div className="sheet" ref={dlg} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="busy-title">
         <div className="sheet-head">
           <h2 id="busy-title">Занят до…</h2>
-          <button className="icon-btn" aria-label="Закрыть" onClick={onClose}>✕</button>
+          <button className="icon-btn" aria-label="Закрыть" onClick={onClose}><X size={20} aria-hidden="true" /></button>
         </div>
         <p className="muted">Невыполненные задания переедут на свободное время после этого часа.</p>
         <label className="field">Время<input type="time" value={until} onChange={e => setUntil(e.target.value)} /></label>

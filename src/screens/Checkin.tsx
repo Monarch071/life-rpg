@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { X, Zap } from 'lucide-react'
 import { appendEvent } from '../db'
 import { getAiConfig } from '../ai/config'
 import { aiTuning } from '../ai/tasks'
@@ -42,7 +43,7 @@ export default function Checkin({ date, onClose }: { date: string; onClose: () =
       <div className="sheet" ref={dlg} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="ci-title">
         <div className="sheet-head">
           <h2 id="ci-title">Чек‑ин дня</h2>
-          <button className="icon-btn" aria-label="Закрыть" onClick={onClose}>✕</button>
+          <button className="icon-btn" aria-label="Закрыть" onClick={onClose}><X size={20} aria-hidden="true" /></button>
         </div>
         <label className="field">Что получилось
           <textarea rows={3} maxLength={500} value={went} onChange={e => setWent(e.target.value)} />
@@ -51,10 +52,10 @@ export default function Checkin({ date, onClose }: { date: string; onClose: () =
           <textarea rows={3} maxLength={500} value={notWent} onChange={e => setNotWent(e.target.value)} />
         </label>
         <div className="field">
-          <span>⚡ Энергия {energy ? `${energy}/10` : ''}</span>
-          <div className="scale">
+          <span className="lbl"><Zap size={16} aria-hidden="true" /> Энергия {energy ? `${energy}/10` : ''}</span>
+          <div className="scale energy">
             {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
-              <button key={n} className={`btn${energy === n ? ' primary' : ''}`} aria-label={`Энергия ${n} из 10`} aria-pressed={energy === n}
+              <button key={n} style={{ '--e': n } as React.CSSProperties} className={`btn${energy === n ? ' on' : ''}`} aria-label={`Энергия ${n} из 10`} aria-pressed={energy === n}
                 onClick={() => { setEnergy(n); setErr(null) }}>{n}</button>
             ))}
           </div>

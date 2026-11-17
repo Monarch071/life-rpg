@@ -16,9 +16,9 @@ import { DEFAULT_AVATAR } from './domain/replay'
 import { House, Swords, User, ChartLine, ShoppingBag, Settings as SettingsIcon } from 'lucide-react'
 
 const TABS = [
-  { id: 'Главная', Icon: House }, { id: 'Задания', Icon: Swords },
-  { id: 'Герой', Icon: User }, { id: 'Анализ', Icon: ChartLine },
-  { id: 'Магазин', Icon: ShoppingBag }, { id: 'Настройки', Icon: SettingsIcon },
+  { id: 'Главная', Icon: House, label: true }, { id: 'Задания', Icon: Swords, label: true },
+  { id: 'Герой', Icon: User, label: true }, { id: 'Анализ', Icon: ChartLine, label: true },
+  { id: 'Магазин', Icon: ShoppingBag, label: true }, { id: 'Настройки', Icon: SettingsIcon, label: false },
 ] as const
 type Tab = (typeof TABS)[number]['id']
 
@@ -55,7 +55,7 @@ export default function App() {
       <nav className="tabbar">
         {TABS.map((t) => (
           <button key={t.id} className={t.id === tab ? 'active' : ''} aria-label={t.id} aria-current={t.id === tab ? 'page' : undefined} onClick={() => setTab(t.id)}>
-            <t.Icon aria-hidden="true" />
+            <t.Icon aria-hidden="true" />{t.label && <span aria-hidden="true">{t.id}</span>}
           </button>
         ))}
       </nav>
