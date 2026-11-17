@@ -96,7 +96,8 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
         if (ok(h.sleepHours)) m.sleepHours = h.sleepHours;
         if (ok(h.weightKg)) m.weightKg = h.weightKg;
         metrics.set(e.date, m);
-        lastHealth = { ts: e.ts, date: e.date, health: h };
+        lastHealth = { ts: e.ts, date: e.date,
+          health: Object.fromEntries(Object.entries(typeof h === 'object' ? h : {}).filter(([, v]) => ok(v))) as HealthData };
         if (e.date === today) calendar = calendarOf(e.calendar, today);
         break;
       }
