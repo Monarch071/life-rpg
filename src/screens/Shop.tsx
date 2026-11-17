@@ -10,11 +10,12 @@ export default function Shop({ state }: { state: GameState }) {
   const [price, setPrice] = useState('')
   const [ask, setAsk] = useState<{ kind: 'buy' | 'del'; id: string; title: string; price: number } | null>(null)
   const w = useWrite()
+  const wf = useWrite() // форма новой награды: своё сообщение под кнопкой
   const create = async () => {
     const t = title.trim(), p = Number(price)
-    if (!t || t.length > 60) return w.setMsg({ ok: false, text: 'Название: от 1 до 60 символов' })
-    if (!Number.isInteger(p) || p < 1 || p > 100000) return w.setMsg({ ok: false, text: 'Цена: целое число от 1 до 100000' })
-    if (await w.write({ type: 'reward_created', rewardId: crypto.randomUUID(), title: t, price: p }, 'Награда добавлена')) { setTitle(''); setPrice('') }
+    if (!t || t.length > 60) return wf.setMsg({ ok: false, text: 'Название: от 1 до 60 символов' })
+    if (!Number.isInteger(p) || p < 1 || p > 100000) return wf.setMsg({ ok: false, text: 'Цена: целое число от 1 до 100000' })
+    if (await wf.write({ type: 'reward_created', rewardId: crypto.randomUUID(), title: t, price: p }, 'Награда добавлена')) { setTitle(''); setPrice('') }
   }
   const yes = () => {
     const a = ask!; setAsk(null)
@@ -40,9 +41,10 @@ export default function Shop({ state }: { state: GameState }) {
       </section>
       <section className="panel stack" aria-label="Новая награда">
         <h2>Новая награда</h2>
-        <label className="field">Название<input value={title} maxLength={60} onChange={e => { setTitle(e.target.value); w.setMsg(null) }} /></label>
-        <label className="field">Цена (🪙)<input type="number" inputMode="numeric" min={1} max={100000} value={price} onChange={e => { setPrice(e.target.value); w.setMsg(null) }} /></label>
-        <button className="btn primary big" disabled={w.busy} onClick={create}>Добавить</button>
+        <label className="field">Название<input value={title} maxLength={60} onChange={e => { setTitle(e.target.value); wf.setMsg(null) }} /></label>
+        <label className="field">Цена (🪙)<input type="number" inputMode="numeric" min={1} max={100000} value={price} onChange={e => { setPrice(e.target.value); wf.setMsg(null) }} /></label>
+        <button className="btn primary big" disabled={wf.busy} onClick={create}>Добавить</button>
+        {wf.msg && <p role={wf.msg.ok ? 'status' : 'alert'} className={wf.msg.ok ? 'ok' : 'err'}>{wf.msg.text}</p>}
       </section>
       <section className="panel stack" aria-label="История покупок">
         <h2>История покупок</h2>

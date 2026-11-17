@@ -32,19 +32,25 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
   useEffect(() => { pending.current.clear() }, [today.date])
 
   // новое достижение: полученное сегодня и ещё не показанное на этом устройстве
-  const [toast, setToast] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ text: string; ids: string[] } | null>(null)
   useEffect(() => {
     let off = false
     void (async () => {
       const seen = await getSetting<string[]>('seenAchievements', [])
       const fresh = state.achievements.filter(a => a.date === today.date && !seen.includes(a.id))
       if (off || !fresh.length) return
-      setToast(fresh.map(a => `🏆 ${ACHIEVEMENTS.find(d => d.id === a.id)?.title ?? a.id}`).join(' · '))
-      await setSetting('seenAchievements', [...seen, ...fresh.map(a => a.id)])
+      const text = fresh.map(a => `🏆 ${ACHIEVEMENTS.find(d => d.id === a.id)?.title ?? a.id}`).join(' · ')
+      setToast(prev => prev?.text === text ? prev : { text, ids: fresh.map(a => a.id) })
     })().catch(() => {})
     return () => { off = true }
   }, [state.achievements, today.date])
-  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 4000); return () => clearTimeout(t) }, [toast])
+  // «показано» — только после 4 с (или закрытия); если ушли с Главной раньше, покажем снова
+  const dismiss = async () => {
+    if (!toast) return
+    setToast(null)
+    try { await setSetting('seenAchievements', [...new Set([...await getSetting<string[]>('seenAchievements', []), ...toast.ids])]) } catch { /* не критично */ }
+  }
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => void dismiss(), 4000); return () => clearTimeout(t) }, [toast]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // запасной путь: день начат, а заданий нет
   const issue = async () => {
@@ -92,7 +98,7 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
 
   return (
     <div className="home">
-      {toast && <div className="toast" role="status">{toast}</div>}
+      <div role="status">{toast && <div className="toast" onClick={() => void dismiss()}>{toast.text}</div>}</div>
       <header className="hud">
         <div className="hud-top">
           <span className="lvl">Ур. {state.level}</span>
