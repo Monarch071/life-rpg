@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { exportData, importData } from '../backup'
 import { getSetting, setSetting } from '../db'
+import { now } from '../now'
 import { saveBackup } from '../ui/saveFile'
 import { useDialog } from '../ui/useDialog'
 
@@ -22,12 +23,23 @@ export default function Settings() {
   const [file, setFile] = useState<File | null>(null)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const input = useRef<HTMLInputElement>(null)
-  useEffect(() => { void getSetting<number>('cutoffHour', 4).then(setCutoff) }, [])
+  const [lastExport, setLastExport] = useState<number | null>(null)
+  useEffect(() => {
+    void getSetting<number>('cutoffHour', 4).then(setCutoff)
+    void getSetting<number | null>('lastExportAt', null).then(setLastExport)
+  }, [])
 
   const doExport = async () => {
-    try { const r = await saveBackup(await exportData()); setMsg(r === 'cancelled' ? null : { ok: true, text: 'Экспорт готов.' }) }
-    catch { setMsg({ ok: false, text: 'Не удалось выполнить экспорт.' }) }
+    try {
+      const r = await saveBackup(await exportData())
+      if (r === 'cancelled') return setMsg(null)
+      const t = now()
+      setLastExport(t)
+      void setSetting('lastExportAt', t)
+      setMsg({ ok: true, text: 'Экспорт готов.' })
+    } catch { setMsg({ ok: false, text: 'Не удалось выполнить экспорт.' }) }
   }
+  const days = lastExport === null ? null : Math.floor((now() - lastExport) / 86_400_000)
   const reset = () => { setFile(null); if (input.current) input.current.value = '' }
   const doImport = async () => {
     const f = file; reset()
@@ -43,6 +55,9 @@ export default function Settings() {
       <section className="panel stack">
         <h1>Настройки</h1>
         <button className="btn big" onClick={doExport}>Экспорт</button>
+        <p style={days === null || days > 7 ? { color: 'var(--gold)' } : undefined} className={days === null || days > 7 ? undefined : 'muted'}>
+          Последняя копия: {days === null ? 'ещё не делалась' : days < 1 ? 'сегодня' : `${days} дн. назад`}
+        </p>
         <label className="btn big" style={{ cursor: 'pointer' }}>Импорт
           <input ref={input} type="file" accept="application/json,.json" hidden aria-label="Импорт: выбрать файл"
             onChange={e => { setFile(e.target.files?.[0] ?? null); setMsg(null) }} />

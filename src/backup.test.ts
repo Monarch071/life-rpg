@@ -77,3 +77,12 @@ test('импортированные deviceId/aiKey игнорируются', a
   expect(await getSetting('deviceId', '')).toBe(id)
   expect(await getSetting('aiKey', '')).toBe('mine')
 })
+
+test('lastExportAt — локальная настройка: не экспортируется и не перезаписывается импортом', async () => {
+  await setSetting('lastExportAt', 123)
+  await appendEvent(ev)
+  expect(await (await exportData()).text()).not.toContain('lastExportAt')
+  const r = await importData(file({ events: [good], settings: [{ key: 'lastExportAt', value: 999 }] }))
+  expect(r.ok).toBe(true)
+  expect(await getSetting('lastExportAt', 0)).toBe(123)
+})

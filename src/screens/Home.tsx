@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { appendEvent, getSetting } from '../db'
-import { fromMin, toMin } from '../domain/day'
+import { fromMin, gameDate, toMin } from '../domain/day'
 import { STATS } from '../domain/stats'
 import type { GameState, Profile } from '../domain/types'
 import { hhmmNow, now } from '../now'
@@ -15,6 +15,9 @@ import { replanAfterBusy } from './replan'
 
 type Sheet = null | 'quick' | 'busy' | 'checkin'
 
+// «Позже» на «Мой день» — до перезапуска приложения (переживает переключение вкладок)
+let deferredDay = false
+
 export default function Home({ state, profile }: { state: GameState; profile: Profile }) {
   const { today } = state
   const [sheet, setSheet] = useState<Sheet>(null)
@@ -22,6 +25,8 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
   const [err, setErr] = useState<string | null>(null)
   const pending = useRef(new Set<string>())
   const [issuing, setIssuing] = useState(false)
+  const [later, setLaterState] = useState(deferredDay)
+  const setLater = (v: boolean) => { deferredDay = v; setLaterState(v) }
   const cutoffHour = useLiveQuery(() => getSetting<number>('cutoffHour', 4)) ?? 4
   useEffect(() => { pending.current.clear() }, [today.date])
 
@@ -50,6 +55,8 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
 
   const complete = async (id: string, xp: number) => {
     if (pending.current.has(id)) return
+    // игровые сутки уже сменились: не пишем (иначе «+XP» потом исчезнет), а пересчитываем день
+    if (gameDate(now(), cutoffHour) !== today.date) return void document.dispatchEvent(new Event('visibilitychange'))
     pending.current.add(id)
     setErr(null)
     try {
@@ -106,8 +113,11 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
         {quests.length === 0 && today.started && (
           <button className="btn primary big" disabled={issuing} onClick={issue}>🎲 Получить задания</button>
         )}
+        {!today.started && later && (
+          <button className="btn primary big" onClick={() => setLater(false)}>☀️ Начать день</button>
+        )}
         <ul>
-          {quests.map(q => (
+          {(today.started || !later) && quests.map(q => (
             <li key={q.id}>
               <button className={`quest${q.done ? ' done' : ''}`} disabled={q.done} aria-pressed={q.done}
                 onClick={() => complete(q.id, q.xp)}>
@@ -142,7 +152,7 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
       {sheet === 'quick' && <QuickInput state={state} onClose={() => setSheet(null)} />}
       {sheet === 'busy' && <BusyUntil date={today.date} onClose={() => setSheet(null)} />}
       {sheet === 'checkin' && <Checkin date={today.date} onClose={() => setSheet(null)} />}
-      {!today.started && <MyDay state={state} profile={profile} />}
+      {!today.started && !later && <MyDay state={state} profile={profile} onLater={() => setLater(true)} />}
     </div>
   )
 }

@@ -7,14 +7,14 @@ import { useDialog } from '../ui/useDialog'
 import { buildQuests } from './issue'
 
 /** Модальное «Мой день»: выбор режима дня → day_started, затем выдача заданий (если их ещё нет). */
-export default function MyDay({ state, profile }: { state: GameState; profile: Profile }) {
+export default function MyDay({ state, profile, onLater }: { state: GameState; profile: Profile; onLater: () => void }) {
   const [custom, setCustom] = useState(false)
   const [start, setStart] = useState('09:00')
   const [end, setEnd] = useState('18:00')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const lock = useRef(false)
-  const dlg = useDialog<HTMLDivElement>() // не закрывается: день надо начать
+  const dlg = useDialog<HTMLDivElement>() // закрывается только «Позже»: лист перекрывает панель вкладок
 
   const begin = async (work: Win | null) => {
     if (lock.current) return
@@ -63,6 +63,7 @@ export default function MyDay({ state, profile }: { state: GameState; profile: P
           )}
         </div>
         {err && <p className="err" role="alert">{err}</p>}
+        <button className="btn ghost" disabled={busy} onClick={onLater}>Позже</button>
       </div>
     </div>
   )
