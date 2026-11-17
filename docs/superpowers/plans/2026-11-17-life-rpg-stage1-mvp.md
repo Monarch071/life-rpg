@@ -139,9 +139,13 @@ export interface GameState {
   multipliers: Record<Stat, number>;
   today: { date: ISODate; started: boolean; work: {start:HHMM;end:HHMM}|null; wakeAt: HHMM|null;
            quests: (Quest & { done: boolean })[]; xp: number; shadowXp: number;
-           metrics: Partial<Record<Metric, number>>; checkedIn: boolean; lastEnergy: number|null };
+           metrics: Partial<Record<Metric, number>>; checkedIn: boolean; lastEnergy: number|null;
+           busyUntil: HHMM|null };
   history: DayResult[];   // финализированные дни, по возрастанию
+  genInputs: { bestSteps7: number|null; lastSleepHours: number|null; recentTemplateIds: string[] };
+    // для generateDailyQuests: лучший 7‑дневный средний по шагам (из metric_logged steps), сон за последний день с данными, templateId заданий за 2 прошлых дня
 }
+export type DistributiveOmit<T, K extends keyof any> = T extends any ? Omit<T, K> : never;
 ```
 - Produces: `gameDate(ts: number, cutoffHour = 4): ISODate` (локальное время), `addDays(d: ISODate, n: number): ISODate`, `toMin(h: HHMM): number`, `fromMin(m: number): HHMM` (по модулю 1440); `xpToNext(level: number): number`, `levelFromXp(total: number): { level: number; into: number; need: number }`, `questXp(difficulty: 1|2|3|4|5, mult: number): number` = `round(BASE[d-1]·mult)`, `currencyFor(xp: number): number`; `STATS: Record<Stat, {name: string; icon: string}>`, `initialStats(p: Profile): Record<Stat, number>`, `classFor(stats: Record<Stat, number>): string`, `tierFor(level: number): 1|2|3|4`; `seededRng(seed: string): () => number` (mulberry32 от хэша строки).
 
