@@ -221,3 +221,60 @@ h1, h2, h3 { font-family: Unbounded, Manrope, sans-serif; font-weight: 700; }
 
 .xpbar { height: 12px; background: #2a2a33; border-radius: 6px; overflow: hidden; }
 .xpbar i { display: block; height: 100%; background: linear-gradient(var(--fire2), var(--fire)); box-shadow: 0 0 6px #ff5b1488; transition: width 0.5s ease-out; }
+
+/* hero / skills / gems / quests / shop (task 3) */
+h2 svg, h3 svg { vertical-align: -3px; color: var(--fire2); }
+.rating { display: flex; align-items: center; gap: 16px; }
+.rating .lvl-badge.big { filter: drop-shadow(0 0 20px #ff5b1466); }
+.title { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+.title .rank { font: 900 18px Unbounded, sans-serif; overflow-wrap: anywhere; }
+.title .ttl { display: inline-flex; align-self: flex-start; gap: 6px; align-items: center; font: 800 11px Unbounded, sans-serif; letter-spacing: 1px; padding: 6px 10px; border-radius: 8px; background: #9b5cff22; color: var(--shadow2); box-shadow: inset 0 0 0 1px #9b5cff55; overflow-wrap: anywhere; }
+.sec { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.sec h2, .sec h3 { margin: 0 0 6px; font-size: 15px; }
+.sec span { font: 600 12px Manrope, sans-serif; color: var(--muted); }
+.stats { display: flex; flex-direction: column; }
+.stat-row { padding: 8px 4px; border-bottom: 1px solid #ffffff0d; display: flex; flex-direction: column; gap: 4px; }
+.stats .stat { display: flex; align-items: center; gap: 12px; }
+.stats .stat .ico { width: 36px; height: 36px; border-radius: 10px; }
+.stats .stat .ico svg { width: 19px; height: 19px; }
+.stat .n { flex: 1; min-width: 0; font: 700 15px Manrope, sans-serif; }
+.stat .d { font: 800 12px Unbounded, sans-serif; color: var(--up); }
+.stat .v { font: 900 30px Unbounded, sans-serif; min-width: 58px; text-align: right; }
+.stat-row .bar { height: 6px; }
+.stat-row .bar i { background: var(--c); box-shadow: 0 0 6px color-mix(in srgb, var(--c) 55%, transparent); }
+.branch { --c: var(--fire); }
+.branch-h { display: flex; align-items: center; gap: 10px; }
+.branch-h .ico { width: 30px; height: 30px; border-radius: 9px; }
+.node b { display: flex; align-items: center; gap: 6px; }
+.node.open { background: color-mix(in srgb, var(--c) 22%, var(--card)); border-color: var(--c); }
+.node.can { border-color: var(--c); }
+.node.locked { opacity: 0.6; }
+.gems { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.gems .gem { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; min-height: 44px; padding: 4px 0; background: none; border: 0; color: var(--text); font-family: inherit; filter: none; }
+.gem .hex { width: 64px; height: 72px; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background: linear-gradient(150deg, var(--g1), var(--g2)); display: grid; place-items: center; box-shadow: 0 0 0 2px #fff2; animation: gem 3s ease-in-out infinite; }
+.gem .hex svg { width: 26px; height: 26px; color: #fff; filter: drop-shadow(0 2px 2px #0006); }
+.gem b { font: 700 10px Manrope, sans-serif; text-align: center; overflow-wrap: anywhere; line-height: 1.2; }
+.gem small { font: 600 10px Manrope, sans-serif; color: var(--muted); min-height: 12px; }
+.gem:not(.off) { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--g1) 60%, transparent)); }
+.gem.off .hex { background: #25252e; animation: none; }
+.gem.off .hex svg { color: #55556a; }
+.gem.off b { color: var(--muted); }
+.gem[aria-pressed="true"] .hex { box-shadow: 0 0 0 2px var(--fire2); }
+.gem-desc { margin: 0; text-align: center; }
+@keyframes gem { 50% { transform: translateY(-3px) rotate(2deg); } }
+.qhead { align-items: center; }
+.grow { flex: 1; min-width: 0; }
+.card .xpbar-seg, .card .xp-seg { margin-top: 0; }
+.stages { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.stages li { display: flex; align-items: center; gap: 6px; }
+.stages li.done { text-decoration: line-through; opacity: 0.55; color: var(--up); }
+.boss { border-color: #9b5cff55; }
+.balance { display: flex; align-items: center; gap: 10px; font: 900 32px Unbounded, sans-serif; color: var(--gold); }
+.coin.big { width: 40px; height: 40px; }
+.price { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 4px 10px; border-radius: 999px; background: #ffcc4d1f; color: var(--gold); box-shadow: inset 0 0 0 1px #ffcc4d55; font: 800 12px Unbounded, sans-serif; }
+.hist { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #ffffff0d; }
+.hist > .muted { width: 44px; flex: none; }
+.analytics .panel { display: flex; flex-direction: column; gap: 8px; }
+.cards .card b { font: 900 22px Unbounded, sans-serif; }
+.chips .btn svg { flex: none; }
+@media (prefers-reduced-motion: reduce) { .gem .hex { animation: none !important; } }

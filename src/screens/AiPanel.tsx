@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Bot } from 'lucide-react'
 import { clearAiConfig, getAiConfig, PROVIDER_NAMES, saveAiConfig, type AiConfig, type AiProvider } from '../ai/config'
 import { aiErrorText, listModels } from '../ai/providers'
 import Confirm from '../ui/Confirm'
@@ -49,7 +50,7 @@ export default function AiPanel() {
   if (cfg === undefined) return null
   return (
     <section className="panel stack">
-      <h2>ИИ</h2>
+      <h2><Bot size={18} aria-hidden="true" /> ИИ</h2>
       {cfg && !edit ? (<>
         <p role="status">ИИ включён: {PROVIDER_NAMES[cfg.provider]}, {cfg.textModel}</p>
         <button className="btn big" onClick={change}>Изменить</button>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Bell, Download, Upload } from 'lucide-react'
 import { exportData, importData } from '../backup'
 import { getSetting, setSetting } from '../db'
 import { now } from '../now'
@@ -58,11 +59,11 @@ export default function Settings({ state, sync }: { state: GameState; sync: Sync
     <div className="home stack">
       <section className="panel stack">
         <h1>Настройки</h1>
-        <button className="btn big" onClick={doExport}>Экспорт</button>
+        <button className="btn big" onClick={doExport}><Download size={18} aria-hidden="true" />Экспорт</button>
         <p style={days === null || days > 7 ? { color: 'var(--gold)' } : undefined} className={days === null || days > 7 ? undefined : 'muted'}>
           Последняя копия: {days === null ? 'ещё не делалась' : days < 1 ? 'сегодня' : `${days} дн. назад`}
         </p>
-        <label className="btn big" style={{ cursor: 'pointer' }}>Импорт
+        <label className="btn big" style={{ cursor: 'pointer' }}><Upload size={18} aria-hidden="true" />Импорт
           <input ref={input} type="file" accept="application/json,.json" hidden aria-label="Импорт: выбрать файл"
             onChange={e => { setFile(e.target.files?.[0] ?? null); setMsg(null) }} />
         </label>
@@ -76,7 +77,7 @@ export default function Settings({ state, sync }: { state: GameState; sync: Sync
       <SyncPanel state={state} sync={sync} />
       <AiPanel />
       <section className="panel stack">
-        <button className="btn ghost" disabled>Уведомления — этап 5</button>
+        <button className="btn ghost" disabled><Bell size={18} aria-hidden="true" />Уведомления — этап 5</button>
       </section>
       <p className="muted center">Версия {__APP_VERSION__}</p>
       {file && <Confirm onYes={doImport} onNo={reset} />}

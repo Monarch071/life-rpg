@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Check, Lock } from 'lucide-react'
+import { StatIcon, STAT_COLORS } from '../ui/icons'
 import { SKILLS } from '../domain/skills'
 import { STATS } from '../domain/stats'
 import Confirm from '../ui/Confirm'
@@ -14,18 +16,18 @@ export default function Skills({ state }: { state: GameState }) {
     <section className="panel stack" aria-label="Навыки">
       <h2>Навыки · Очки навыков: {points}</h2>
       {(Object.keys(STATS) as Stat[]).map(stat => (
-        <div key={stat} className="stack">
-          <b>{STATS[stat].icon} {STATS[stat].name}</b>
+        <div key={stat} className="stack branch" style={{ '--c': STAT_COLORS[stat] } as React.CSSProperties}>
+          <div className="branch-h"><StatIcon stat={stat} size={18} /><b>{STATS[stat].name}</b></div>
           {SKILLS.filter(s => s.stat === stat).map(s => {
             const open = unlocked.includes(s.id)
             const req = s.requires ? SKILLS.find(x => x.id === s.requires)! : null
             const reqOk = !req || unlocked.includes(req.id)
             const can = !open && reqOk && s.cost <= points
             return (
-              <div key={s.id} className="card" style={open ? { borderColor: '#5dffb0' } : can ? undefined : { opacity: 0.6 }}>
-                <b>{s.title}{open ? ' ✓' : ''}</b>
+              <div key={s.id} className={`card node${open ? ' open' : can ? ' can' : ' locked'}`}>
+                <b>{open ? <Check size={16} aria-hidden="true" /> : !can && <Lock size={14} aria-hidden="true" />}{s.title}</b>
                 <small>{s.desc}</small>
-                {open ? <small className="ok">Открыт</small> : can
+                {open ? <small>Открыт</small> : can
                   ? <button className="btn primary" disabled={w.busy} onClick={() => setAsk(s.id)}>Открыть за {s.cost}</button>
                   : <small className="muted">{!reqOk ? `Нужен узел «${req!.title}»` : 'Не хватает очков'} · цена {s.cost}</small>}
               </div>

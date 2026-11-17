@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import { Crown } from 'lucide-react'
 import Avatar, { EYE_OPTIONS, HAIR_OPTIONS } from '../ui/Avatar'
 import { STATS } from '../domain/stats'
+import LevelBadge from '../ui/LevelBadge'
+import { StatIcon } from '../ui/icons'
 import { appendEvent } from '../db'
 import { imageNameFor } from '../ai/avatar'
 import { useBlobUrl } from '../blobs'
@@ -67,21 +70,31 @@ export default function Character({ state }: { state: GameState }) {
     <div className="home stack">
       <section className="hero">
         <Avatar params={state.avatar} tier={state.tier} size={220} image={img} />
-        <div className="cls">{state.className}</div>
-        <div className="muted">«{state.title}»</div>
-        <div className="muted">Уровень {state.level} · Тир {state.tier}</div>
       </section>
-      <section className="panel stack" aria-label="Характеристики">
+      <section className="panel rating">
+        <LevelBadge level={state.level} big />
+        <div className="title">
+          <div className="rank">{state.className}</div>
+          <span className="ttl"><Crown size={14} aria-hidden="true" />{state.title}</span>
+          <span className="muted">Очки навыков: {state.skills.points} · Тир {state.tier}</span>
+        </div>
+      </section>
+      <section className="panel stats" aria-label="Характеристики">
+        <div className="sec"><h3>Характеристики</h3><span>за неделю</span></div>
         {(Object.keys(STATS) as Stat[]).map(s => {
           const pts = state.statPoints[s] % 10
           const m = state.multipliers[s]
+          const base = state.statHistory.length ? state.statHistory[Math.max(0, state.statHistory.length - 7)].stats[s] : undefined
+          const d = base === undefined ? 0 : state.stats[s] - base
           return (
-            <div key={s}>
+            <div key={s} className="stat-row">
               <div className="stat">
-                <span>{STATS[s].icon} {STATS[s].name}</span>
-                <div className="bar" role="progressbar" aria-label={`${STATS[s].name}: ${pts} из 10 до +1`} aria-valuemin={0} aria-valuemax={10} aria-valuenow={pts}><i style={{ width: `${pts * 10}%` }} /></div>
-                <b>{state.stats[s]}</b>
+                <StatIcon stat={s} />
+                <span className="n">{STATS[s].name}</span>
+                <span className="d">{d > 0 ? `▲${d}` : ''}</span>
+                <b className="v">{state.stats[s]}</b>
               </div>
+              <div className="bar" style={{ '--c': `var(--${s})` } as React.CSSProperties} role="progressbar" aria-label={`${STATS[s].name}: ${pts} из 10 до +1`} aria-valuemin={0} aria-valuemax={10} aria-valuenow={pts}><i style={{ width: `${pts * 10}%` }} /></div>
               <small className="muted">{pts}/10 до +1 · ×{m.toFixed(2)}{m > 1 ? ' · сложность растёт' : m < 1 ? ' · облегчено' : ''}</small>
             </div>
           )

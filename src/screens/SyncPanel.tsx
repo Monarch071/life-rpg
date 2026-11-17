@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { RefreshCw } from 'lucide-react'
 import type { GameState } from '../domain/types'
 import { now } from '../now'
 import { DEFAULT_SYNC_URL, disableSync, enableSync, getSyncConfig, loginLink, rotateToken, type SyncConfig } from '../sync'
@@ -92,7 +93,7 @@ export default function SyncPanel({ state, sync }: { state: GameState; sync: Syn
   const h = state.lastHealth
   return (
     <section className="panel stack">
-      <h2>Синхронизация</h2>
+      <h2><RefreshCw size={18} aria-hidden="true" /> Синхронизация</h2>
       {!cfg ? (<>
         <label className="field">Адрес сервера<input value={url} inputMode="url" autoCapitalize="off" placeholder="https://…" onChange={(e) => setUrl(e.target.value)} /></label>
         <button className="btn primary big" disabled={busy} onClick={enable}>Включить синхронизацию</button>

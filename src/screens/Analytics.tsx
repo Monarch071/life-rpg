@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { Bot, Droplets, Footprints, BookOpen, Moon, Scale, Smartphone, Smile, Wallet, Dumbbell, type LucideIcon } from 'lucide-react'
+import { STAT_COLORS, StatIcon } from '../ui/icons'
 import { getAiConfig, type AiConfig } from '../ai/config'
 import { aiErrorText } from '../ai/providers'
 import { aiWeeklyReport } from '../ai/tasks'
@@ -11,6 +13,7 @@ import LineChart from '../ui/LineChart'
 
 const PERIODS = [7, 30, 90] as const
 const METRICS: Metric[] = ['steps', 'sleepHours', 'weightKg', 'mood', 'screenMin', 'spend', 'water', 'readPages']
+const METRIC_ICONS: Record<Metric, LucideIcon> = { steps: Footprints, sleepHours: Moon, weightKg: Scale, mood: Smile, screenMin: Smartphone, spend: Wallet, water: Droplets, readPages: BookOpen, workoutMin: Dumbbell }
 const dm = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`
 const shift = (d: string, n: number) => new Date(Date.parse(d + 'T00:00:00Z') - n * 864e5).toISOString().slice(0, 10)
 
@@ -57,18 +60,18 @@ export default function Analytics({ state }: { state: GameState }) {
       {hist.length === 0 && sh.length === 0 && metricCharts.length === 0 && <p className="muted center">Графики появятся после нескольких дней игры</p>}
       {hist.length > 0 && <div className="panel"><h2>XP: ты и Тень</h2>
         <LineChart title="XP: ты и Тень" labels={hist.map(h => dm(h.date))} series={[
-          { label: 'Ты', color: 'var(--accent)', values: hist.map(h => h.xp) },
+          { label: 'Ты', color: 'var(--fire)', values: hist.map(h => h.xp) },
           { label: 'Тень', color: 'var(--shadow)', values: hist.map(h => h.shadowXp) }]} /></div>}
       {sh.length > 0 && <div className="panel"><h2>Характеристики</h2>
         <div className="chips" role="group" aria-label="Характеристика">
-          {(Object.keys(STATS) as Stat[]).map(s => <button key={s} className={`btn${s === sel ? ' primary' : ''}`} aria-pressed={s === sel} onClick={() => setStat(s)}>{STATS[s].icon} {STATS[s].name}</button>)}
+          {(Object.keys(STATS) as Stat[]).map(s => <button key={s} className={`btn${s === sel ? ' primary' : ''}`} aria-pressed={s === sel} onClick={() => setStat(s)}><StatIcon stat={s} size={16} />{STATS[s].name}</button>)}
         </div>
-        <LineChart title={STATS[sel].name} labels={sh.map(h => dm(h.date))} series={[{ label: STATS[sel].name, color: 'var(--gold)', values: sh.map(h => h.stats[sel] ?? null) }]} /></div>}
-      {metricCharts.map(({ m, values }) => { const i = METRIC_INFO[m]; return (
-        <div key={m} className="panel"><h2>{i.icon} {i.label} <small className="muted">({i.unit})</small></h2>
-          <LineChart title={i.label} unit={i.unit} labels={mh.map(h => dm(h.date))} series={[{ label: i.label, color: 'var(--accent)', values }]} /></div>
+        <LineChart title={STATS[sel].name} labels={sh.map(h => dm(h.date))} series={[{ label: STATS[sel].name, color: STAT_COLORS[sel], values: sh.map(h => h.stats[sel] ?? null) }]} /></div>}
+      {metricCharts.map(({ m, values }) => { const i = METRIC_INFO[m]; const Ic = METRIC_ICONS[m]; return (
+        <div key={m} className="panel"><h2><Ic size={18} aria-hidden="true" /> {i.label} <small className="muted">({i.unit})</small></h2>
+          <LineChart title={i.label} unit={i.unit} labels={mh.map(h => dm(h.date))} series={[{ label: i.label, color: 'var(--fire)', values }]} /></div>
       ) })}
-      <div className="panel"><h2>Недельный отчёт ИИ</h2>
+      <div className="panel"><h2><Bot size={18} aria-hidden="true" /> Недельный отчёт ИИ</h2>
         {!cfg && <p className="muted">Подключи ИИ в настройках, чтобы получать недельный отчёт</p>}
         {cfg && !state.reports.some(r => r.weekStart === prevWeek) &&
           <button className="btn" disabled={gen || busy} onClick={makeReport}>{gen ? 'Составляю…' : 'Составить отчёт за прошлую неделю'}</button>}

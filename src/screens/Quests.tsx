@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { Check, Swords, Trophy } from 'lucide-react'
+import { StatIcon } from '../ui/icons'
+import XpBar from '../ui/XpBar'
 import { STATS } from '../domain/stats'
 import Confirm from '../ui/Confirm'
 import { useWrite } from '../ui/useWrite'
@@ -29,7 +32,7 @@ function NewBoss({ state }: { state: GameState }) {
       <label className="field">Цель<input value={title} maxLength={80} onChange={e => { setTitle(e.target.value); w.setMsg(null) }} /></label>
       <div className="field"><span>Характеристика</span>
         <div className="chips" role="group" aria-label="Характеристика">{(Object.keys(STATS) as Stat[]).map(s => (
-          <button key={s} type="button" className={`btn${stat === s ? ' primary' : ''}`} aria-pressed={stat === s} onClick={() => setStat(s)}>{STATS[s].icon} {STATS[s].name}</button>
+          <button key={s} type="button" className={`btn${stat === s ? ' primary' : ''}`} aria-pressed={stat === s} onClick={() => setStat(s)}>{STATS[s].name}</button>
         ))}</div></div>
       <label className="field">Этапы (по одному на строку, 2–8)<textarea rows={5} value={stages} onChange={e => { setStages(e.target.value); w.setMsg(null) }} /></label>
       {w.msg && <p role={w.msg.ok ? 'status' : 'alert'} className={w.msg.ok ? 'ok' : 'err'}>{w.msg.text}</p>}
@@ -48,12 +51,12 @@ export default function Quests({ state }: { state: GameState }) {
         {state.weekly.quests.length === 0 && <p className="muted">Недельные задания появятся, когда начнёшь день</p>}
         {state.weekly.quests.map(q => (
           <div key={q.id} className="card">
-            <div className="stat" style={{ gridTemplateColumns: '1fr auto' }}>
-              <span>{q.stat ? STATS[q.stat].icon + ' ' : ''}{q.title}</span><b className="q-xp">+{q.xp} XP</b>
+            <div className="row qhead">
+              {q.stat && <StatIcon stat={q.stat} />}
+              <span className="grow">{q.title}</span><b className="xpchip">+{q.xp} XP</b>
             </div>
-            <div className="bar" role="progressbar" aria-label={q.title} aria-valuemin={0} aria-valuemax={q.target} aria-valuenow={Math.min(q.progress, q.target)}>
-              <i style={{ width: `${Math.min(100, (q.progress / q.target) * 100)}%` }} /></div>
-            <small className={q.done ? 'ok' : 'muted'}>{q.done ? '✓ Выполнено' : `${Math.min(q.progress, q.target)}/${q.target}`}</small>
+            <XpBar into={Math.min(q.progress, q.target)} need={q.target} label={q.title} unit="" />
+            {q.done && <small className="ok"><Check size={14} aria-hidden="true" /> Выполнено</small>}
           </div>
         ))}
       </section>
@@ -61,10 +64,14 @@ export default function Quests({ state }: { state: GameState }) {
         <h1>Боссы</h1>
         {state.bosses.length === 0 && <p className="muted">Боссов пока нет — создай первого ниже.</p>}
         {state.bosses.map(b => (
-          <div key={b.id} className="card">
-            <b>{STATS[b.stat].icon} {b.title}{b.defeated ? ' — побеждён! 🏆' : ''}</b>
-            <ol style={{ margin: 0, paddingLeft: 22 }}>{b.stages.map((s, i) => (
-              <li key={i} style={i < b.done ? { textDecoration: 'line-through', opacity: 0.55 } : undefined}>{s}</li>
+          <div key={b.id} className="card boss">
+            <div className="row qhead">
+              <span className="ico" style={{ '--c': 'var(--shadow)' } as React.CSSProperties} aria-hidden="true"><Swords size={22} /></span>
+              <b className="grow">{b.title}{b.defeated ? ' — побеждён!' : ''}</b>
+              {b.defeated && <Trophy size={20} color="var(--gold)" aria-hidden="true" />}
+            </div>
+            <ol className="stages">{b.stages.map((s, i) => (
+              <li key={i} className={i < b.done ? 'done' : undefined}>{i < b.done && <Check size={14} aria-hidden="true" />}{s}</li>
             ))}</ol>
             {!b.defeated && (<>
               <button className="btn primary" disabled={w.busy}

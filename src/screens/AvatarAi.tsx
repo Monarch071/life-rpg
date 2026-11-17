@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Image as ImageIcon } from 'lucide-react'
 import { generateAvatar, PHOTO_ERROR_TEXT, PhotoError } from '../ai/avatar'
 import { getAiConfig, PROVIDER_NAMES, type AiConfig } from '../ai/config'
 import { aiErrorText } from '../ai/providers'
@@ -42,7 +43,7 @@ export default function AvatarAi({ state }: { state: GameState }) {
   if (!cfg?.imageModel) {
     return (
       <section className="panel stack" aria-label="Аватар от ИИ">
-        <h2>Аватар от ИИ</h2>
+        <h2><ImageIcon size={18} aria-hidden="true" /> Аватар от ИИ</h2>
         <p className="muted">Подключи Gemini или OpenAI в настройках, чтобы создать аватар по фото</p>
       </section>
     )
@@ -73,7 +74,7 @@ export default function AvatarAi({ state }: { state: GameState }) {
 
   return (
     <section className="panel stack" aria-label="Аватар от ИИ">
-      <h2>Аватар от ИИ</h2>
+      <h2><ImageIcon size={18} aria-hidden="true" /> Аватар от ИИ</h2>
       {newTier && <p role="status">Новый тир! Создай новый образ</p>}
       <label className="btn big" style={{ cursor: 'pointer' }}>
         Выбрать фото

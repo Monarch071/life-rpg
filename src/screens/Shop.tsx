@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Coins, Trash2 } from 'lucide-react'
 import Confirm from '../ui/Confirm'
 import { useWrite } from '../ui/useWrite'
 import type { GameState } from '../domain/types'
@@ -19,21 +20,22 @@ export default function Shop({ state }: { state: GameState }) {
   }
   const yes = () => {
     const a = ask!; setAsk(null)
-    void (a.kind === 'buy' ? w.write({ type: 'reward_purchased', rewardId: a.id }, 'Куплено! Наслаждайся 🎉') : w.write({ type: 'reward_deleted', rewardId: a.id }, 'Награда удалена'))
+    void (a.kind === 'buy' ? w.write({ type: 'reward_purchased', rewardId: a.id }, 'Куплено! Наслаждайся!') : w.write({ type: 'reward_deleted', rewardId: a.id }, 'Награда удалена'))
   }
   return (
     <div className="home stack">
       <section className="panel stack" aria-label="Магазин">
-        <h1>Магазин <span className="coins" aria-label={`Монеты: ${state.currency}`}>🪙 {state.currency}</span></h1>
+        <h1>Магазин</h1>
+        <div className="balance" aria-label={`Монеты: ${state.currency}`}><span className="coin big" aria-hidden="true"><Coins size={22} /></span><b>{state.currency}</b></div>
         {state.rewards.length === 0 && <p className="muted">Придумай награды за свои монеты — например, «1 час игр — 150».</p>}
         {state.rewards.map(r => (
           <div key={r.id} className="card">
-            <b>{r.title}</b>
+            <div className="row qhead"><b className="grow">{r.title}</b><span className="price"><Coins size={13} aria-hidden="true" />{r.price}</span></div>
             <div className="row">
               <button className="btn primary" style={{ flex: 1 }} disabled={w.busy || state.currency < r.price}
                 onClick={() => setAsk({ kind: 'buy', id: r.id, title: r.title, price: r.price })}>
-                Купить · 🪙 {r.price}{state.currency < r.price && <small>Не хватает {r.price - state.currency}</small>}</button>
-              <button className="btn ghost" disabled={w.busy} aria-label={`Удалить «${r.title}»`} onClick={() => setAsk({ kind: 'del', id: r.id, title: r.title, price: r.price })}>Удалить</button>
+                Купить{state.currency < r.price && <small>Не хватает {r.price - state.currency}</small>}</button>
+              <button className="btn ghost" disabled={w.busy} aria-label={`Удалить «${r.title}»`} onClick={() => setAsk({ kind: 'del', id: r.id, title: r.title, price: r.price })}><Trash2 size={16} aria-hidden="true" />Удалить</button>
             </div>
           </div>
         ))}
@@ -42,7 +44,7 @@ export default function Shop({ state }: { state: GameState }) {
       <section className="panel stack" aria-label="Новая награда">
         <h2>Новая награда</h2>
         <label className="field">Название<input value={title} maxLength={60} onChange={e => { setTitle(e.target.value); wf.setMsg(null) }} /></label>
-        <label className="field">Цена (🪙)<input type="number" inputMode="numeric" min={1} max={100000} value={price} onChange={e => { setPrice(e.target.value); wf.setMsg(null) }} /></label>
+        <label className="field">Цена (монеты)<input type="number" inputMode="numeric" min={1} max={100000} value={price} onChange={e => { setPrice(e.target.value); wf.setMsg(null) }} /></label>
         <button className="btn primary big" disabled={wf.busy} onClick={create}>Добавить</button>
         {wf.msg && <p role={wf.msg.ok ? 'status' : 'alert'} className={wf.msg.ok ? 'ok' : 'err'}>{wf.msg.text}</p>}
       </section>
@@ -50,7 +52,7 @@ export default function Shop({ state }: { state: GameState }) {
         <h2>История покупок</h2>
         {state.purchases.length === 0 && <p className="muted">Пока пусто.</p>}
         {state.purchases.slice(-20).reverse().map((p, i) => (
-          <div key={i} className="stat" style={{ gridTemplateColumns: '48px 1fr auto' }}><span className="muted">{dm(p.ts)}</span><span>{p.title}</span><b>🪙 {p.price}</b></div>
+          <div key={i} className="hist"><span className="muted">{dm(p.ts)}</span><span className="grow">{p.title}</span><span className="price"><Coins size={13} aria-hidden="true" />{p.price}</span></div>
         ))}
       </section>
       {ask && <Confirm title={ask.kind === 'buy' ? `Купить «${ask.title}» за ${ask.price}?` : `Удалить «${ask.title}»?`}
