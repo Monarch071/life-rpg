@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { generateDailyQuests, type GenCtx } from './generate';
-import { QUEST_TEMPLATES } from './questBank';
+import { QUEST_TEMPLATES, plural } from './questBank';
 import { STATS } from './stats';
 import { toMin, addDays } from './day';
 import type { Profile, Stat } from './types';
@@ -68,5 +68,28 @@ describe('generateDailyQuests', () => {
       const q = generateDailyQuests(ctx({ date: addDays('2026-11-17', i), lastSleepHours: 5, yesterday: yd(4, 4), lastEnergy: 9 }));
       for (const x of q) if (QUEST_TEMPLATES.find(t => t.id === x.templateId)?.physical) expect(x.difficulty).toBeLessThanOrEqual(2);
     }
+  });
+});
+
+describe('устойчивость', () => {
+  test('все шаблоны слабой характеристики недавние, энергия 3 → не падает', () => {
+    const recent = QUEST_TEMPLATES.filter(t => t.stat === 'str').map(t => t.id);
+    const q = generateDailyQuests(ctx({ stats: stats({ str: 1 }), lastEnergy: 3, yesterday: yd(2, 4), recentTemplateIds: recent }));
+    expect(q.some(x => x.stat === 'str')).toBe(true);
+    expect(q.length).toBeGreaterThanOrEqual(3);
+    expect(q.length).toBeLessThanOrEqual(7);
+  });
+});
+
+describe('склонение', () => {
+  test('plural', () => {
+    const p = (n: number) => plural(n, 'a', 'b', 'c');
+    expect([1, 2, 5, 11, 21, 22, 14, 111].map(p)).toEqual(['a', 'b', 'c', 'c', 'a', 'b', 'c', 'c']);
+  });
+  test('заголовки', () => {
+    const t = (id: string) => QUEST_TEMPLATES.find(x => x.id === id)!;
+    expect([1, 2, 5].map(n => t('article').title(n))).toEqual(['Прочитать 1 статью', 'Прочитать 2 статьи', 'Прочитать 5 статей']);
+    expect([1, 2, 5].map(n => t('compliments').title(n))).toEqual(['Сделать 1 комплимент', 'Сделать 2 комплимента', 'Сделать 5 комплиментов']);
+    expect(t('call').title(2)).toBe('Позвонить 2 близким');
   });
 });

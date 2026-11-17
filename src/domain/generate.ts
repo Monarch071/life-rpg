@@ -43,13 +43,15 @@ export function generateDailyQuests(ctx: GenCtx): Quest[] {
   add(steps, ctx.bestSteps7 ? Math.ceil((ctx.bestSteps7 * 1.05) / 500) * 500 : Math.max(3000, profile.stepsUsual));
 
   // пул обычных заданий: без привычек и шагов, по энергии, без недавних
-  let pool = QUEST_TEMPLATES.filter(t => !t.badHabit && t.id !== 'steps' && (energy > 4 || t.difficulty < 4));
-  const fresh = pool.filter(t => !ctx.recentTemplateIds.includes(t.id));
-  if (fresh.length >= 8) pool = fresh;
+  const eligible = QUEST_TEMPLATES.filter(t => !t.badHabit && t.id !== 'steps' && (energy > 4 || t.difficulty < 4));
+  const fresh = eligible.filter(t => !ctx.recentTemplateIds.includes(t.id));
+  const pool = fresh.length >= 8 ? fresh : eligible;
 
   // 2. самая слабая характеристика (ничья — по порядку STATS)
   const weakest = ORDER.reduce((a, s) => (stats[s] < stats[a] ? s : a));
-  add(pick(pool.filter(t => t.stat === weakest)));
+  // если все шаблоны характеристики недавние — берём из неотфильтрованных по недавности
+  const weakPool = pool.filter(t => t.stat === weakest);
+  add(pick(weakPool.length ? weakPool : eligible.filter(t => t.stat === weakest)));
 
   // 3. вредная привычка
   if (profile.badHabits.length) {
