@@ -1,0 +1,12 @@
+name = "life-rpg-sync"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://monarch071.github.io,http://localhost:5173,http://localhost:4173"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "life-rpg"
+database_id = "REPLACE_AT_DEPLOY"
+migrations_dir = "migrations"
