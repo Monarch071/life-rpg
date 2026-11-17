@@ -12,11 +12,12 @@ import Shop from './screens/Shop'
 import Analytics from './screens/Analytics'
 import Avatar, { EYE_OPTIONS, HAIR_OPTIONS } from './ui/Avatar'
 import { DEFAULT_AVATAR } from './domain/replay'
+import { House, Swords, User, ChartLine, ShoppingBag, Settings as SettingsIcon } from 'lucide-react'
 
 const TABS = [
-  { id: 'Главная', icon: '🏠', label: 'Главная' }, { id: 'Задания', icon: '⚔️', label: 'Задания' },
-  { id: 'Герой', icon: '🧍', label: 'Герой' }, { id: 'Анализ', icon: '📈', label: 'Анализ' },
-  { id: 'Магазин', icon: '🪙', label: 'Магазин' }, { id: 'Настройки', icon: '⚙️', label: '' },
+  { id: 'Главная', Icon: House }, { id: 'Задания', Icon: Swords },
+  { id: 'Герой', Icon: User }, { id: 'Анализ', Icon: ChartLine },
+  { id: 'Магазин', Icon: ShoppingBag }, { id: 'Настройки', Icon: SettingsIcon },
 ] as const
 type Tab = (typeof TABS)[number]['id']
 
@@ -52,7 +53,7 @@ export default function App() {
       <nav className="tabbar">
         {TABS.map((t) => (
           <button key={t.id} className={t.id === tab ? 'active' : ''} aria-label={t.id} aria-current={t.id === tab ? 'page' : undefined} onClick={() => setTab(t.id)}>
-            <span aria-hidden="true">{t.icon}</span><small aria-hidden="true">{t.label}</small>
+            <t.Icon aria-hidden="true" />
           </button>
         ))}
       </nav>

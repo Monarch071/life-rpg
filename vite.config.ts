@@ -12,13 +12,14 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'apple-touch-icon-180x180.png'],
+      workbox: { globPatterns: ['**/*.{js,css,html,woff2}'] },
       manifest: {
         name: 'Life RPG',
         short_name: 'Life RPG',
         lang: 'ru',
         display: 'standalone',
-        background_color: '#070b16',
-        theme_color: '#070b16',
+        background_color: '#0c0c0f',
+        theme_color: '#0c0c0f',
         start_url: '/life-rpg/',
         scope: '/life-rpg/',
         icons: [
