@@ -1,4 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { getAiConfig, type AiConfig } from '../ai/config'
+import { aiErrorText } from '../ai/providers'
+import { aiWeeklyReport } from '../ai/tasks'
+import { addDays, weekStart } from '../domain/day'
+import { useWrite } from '../ui/useWrite'
 import { METRIC_INFO } from '../domain/metricInfo'
 import { STATS } from '../domain/stats'
 import type { GameState, Metric, Stat } from '../domain/types'
@@ -12,6 +17,20 @@ const shift = (d: string, n: number) => new Date(Date.parse(d + 'T00:00:00Z') - 
 export default function Analytics({ state }: { state: GameState }) {
   const [days, setDays] = useState<(typeof PERIODS)[number]>(30)
   const [stat, setStat] = useState<Stat | null>(null)
+  const [cfg, setCfg] = useState<AiConfig | null>(null)
+  const [gen, setGen] = useState(false)
+  const [repErr, setRepErr] = useState<string | null>(null)
+  const { busy, msg, write } = useWrite()
+  useEffect(() => { getAiConfig().then(setCfg).catch(() => {}) }, [])
+  const prevWeek = addDays(weekStart(state.today.date), -7)
+  const report = state.reports[0]
+  const makeReport = async () => {
+    if (!cfg || gen) return
+    setGen(true); setRepErr(null)
+    try { await write({ type: 'ai_report', weekStart: prevWeek, text: await aiWeeklyReport(cfg, state) }, 'Отчёт готов') }
+    catch (e) { setRepErr(aiErrorText(e)) }
+    finally { setGen(false) }
+  }
   const from = shift(state.today.date, days - 1)
   const hist = state.history.filter(h => h.date >= from)
   const sh = state.statHistory.filter(h => h.date >= from)
@@ -49,7 +68,14 @@ export default function Analytics({ state }: { state: GameState }) {
         <div key={m} className="panel"><h2>{i.icon} {i.label} <small className="muted">({i.unit})</small></h2>
           <LineChart title={i.label} unit={i.unit} labels={mh.map(h => dm(h.date))} series={[{ label: i.label, color: 'var(--accent)', values }]} /></div>
       ) })}
-      <button className="btn" disabled>Недельный отчёт ИИ — на этапе 4</button>
+      <div className="panel"><h2>Недельный отчёт ИИ</h2>
+        {!cfg && <p className="muted">Подключи ИИ в настройках, чтобы получать недельный отчёт</p>}
+        {cfg && !state.reports.some(r => r.weekStart === prevWeek) &&
+          <button className="btn" disabled={gen || busy} onClick={makeReport}>{gen ? 'Составляю…' : 'Составить отчёт за прошлую неделю'}</button>}
+        {report && <><h3>Неделя с {dm(report.weekStart)}</h3><p style={{ whiteSpace: 'pre-wrap' }}>{report.text}</p></>}
+        {repErr && <p className="err" role="alert">{repErr}</p>}
+        {msg && <p className={msg.ok ? 'muted' : 'err'} role={msg.ok ? 'status' : 'alert'}>{msg.text}</p>}
+      </div>
     </section>
   )
 }

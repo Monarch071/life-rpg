@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react'
 import { appendEvent } from '../db'
+import { getAiConfig } from '../ai/config'
+import { aiTuning } from '../ai/tasks'
+import { loadState } from '../useGame'
 import { useDialog } from '../ui/useDialog'
 
 /** Вечерний чек‑ин: что получилось / что нет / энергия 1–10. */
@@ -18,8 +21,15 @@ export default function Checkin({ date, onClose }: { date: string; onClose: () =
     lock.current = true
     setSaving(true)
     try {
-      await appendEvent({ type: 'checkin', date, went: went.trim(), notWent: notWent.trim(), energy })
+      const c = { went: went.trim(), notWent: notWent.trim(), energy }
+      await appendEvent({ type: 'checkin', date, ...c })
       onClose()
+      void (async () => { // фон: ошибки ИИ молча игнорируются
+        const cfg = await getAiConfig()
+        if (!cfg) return
+        const t = await aiTuning(cfg, await loadState(), c)
+        await appendEvent({ type: 'ai_tuning', date, ...t })
+      })().catch(() => {})
     } catch {
       setErr('Не удалось сохранить, попробуй ещё раз')
       lock.current = false

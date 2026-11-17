@@ -41,6 +41,8 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'boss_created'; bossId: string; title: string; stat: Stat; stages: string[] }
   | { type: 'boss_stage_done'; bossId: string; stage: number }
   | { type: 'boss_abandoned'; bossId: string }
+  | { type: 'ai_tuning'; date: ISODate; factors: Partial<Record<Stat, number>>; note: string }
+  | { type: 'ai_report'; weekStart: ISODate; text: string }
 );
 export type WeeklyKind = 'active_days' | 'stat_quests' | 'steps_total' | 'shadow_wins';
 export interface WeeklyQuest { id: string; weekStart: ISODate; kind: WeeklyKind; stat: Stat | null; target: number; title: string; xp: number }
@@ -58,7 +60,7 @@ export interface GameState {
   today: { date: ISODate; started: boolean; work: {start:HHMM;end:HHMM}|null; wakeAt: HHMM|null;
            quests: (Quest & { done: boolean })[]; xp: number; shadowXp: number;
            metrics: Partial<Record<Metric, number>>; checkedIn: boolean; lastEnergy: number|null;
-           busyUntil: HHMM|null; calendar: { title: string; start: HHMM; end: HHMM }[];
+           busyUntil: HHMM|null; aiNote: string|null; calendar: { title: string; start: HHMM; end: HHMM }[];
            shadowMetrics: { metric: Metric; you: number|null; target: number; lowerIsBetter: boolean }[] };
   lastHealth: { ts: number; date: ISODate; health: HealthData } | null;
   skills: { unlocked: string[]; points: number };   // points = доступно сейчас
@@ -66,6 +68,7 @@ export interface GameState {
   purchases: { rewardId: string; title: string; price: number; ts: number }[];
   weekly: { weekStart: ISODate; quests: (WeeklyQuest & { progress: number; done: boolean })[] };   // неделя сегодняшней игровой даты; без выдачи — []
   bosses: Boss[];         // кроме брошенных
+  reports: { weekStart: ISODate; text: string }[];   // недельные отчёты ИИ, по убыванию недели
   genWeekly: WeeklyCtx;   // контекст для generateWeeklyQuests текущей недели
   history: DayResult[];   // финализированные дни, по возрастанию
   achievements: { id: string; date: ISODate }[];   // в порядке получения

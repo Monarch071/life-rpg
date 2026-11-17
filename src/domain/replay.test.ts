@@ -547,3 +547,52 @@ test('onboarding_completed без анкеты из сети игнорируе�
   expect(() => replay(evs, Date.parse('2026-11-17T12:00:00'))).not.toThrow()
   expect(replay(evs, Date.parse('2026-11-17T12:00:00')).profile).toBeNull()
 })
+
+// --- ИИ: тюнинг и отчёты ---
+const tune = (date: string, factors: Record<string, unknown>, extra: { ts?: number } = {}) => ev({ type: 'ai_tuning', date, factors, note: 'Завтра легче', ...extra });
+const tuneBase = () => [issue('2026-11-15', [q('a', '2026-11-15', 50)]), done('2026-11-15', 'a')];
+
+test('ai_tuning: фактор ограничен 1.1 и применяется после adjustMultipliers', () => {
+  const base = replay(tuneBase(), NOW).multipliers.str;
+  const m = replay([...tuneBase(), tune('2026-11-15', { str: 1.5 })], NOW).multipliers.str;
+  expect(m).toBeCloseTo(base * 1.1, 6);
+});
+
+test('ai_tuning: нечисловой фактор и чужая характеристика игнорируются', () => {
+  const base = replay(tuneBase(), NOW).multipliers;
+  const s = replay([...tuneBase(), tune('2026-11-15', { str: 'x', magic: 1.1, int: NaN })], NOW);
+  expect(s.multipliers).toEqual(base);
+});
+
+test('ai_tuning: множитель в пределах 0.5–3.0', () => {
+  const evs: GameEvent[] = [];
+  for (let i = 1; i <= 14; i++) { const d = `2026-11-${String(i).padStart(2, '0')}`; evs.push(issue(d, [q(`x${i}`, d, 10)]), done(d, `x${i}`), tune(d, { str: 1.1 })); }
+  expect(replay(evs, NOW).multipliers.str).toBeLessThanOrEqual(3);
+  const low: GameEvent[] = [];
+  for (let i = 1; i <= 14; i++) { const d = `2026-11-${String(i).padStart(2, '0')}`; low.push(issue(d, [q(`y${i}`, d, 10)]), tune(d, { str: 0.1 })); }
+  expect(replay(low, NOW).multipliers.str).toBeGreaterThanOrEqual(0.5);
+});
+
+test('ai_tuning: второй на ту же дату игнорируется', () => {
+  const one = replay([...tuneBase(), tune('2026-11-15', { str: 1.1 })], NOW).multipliers.str;
+  const two = replay([...tuneBase(), tune('2026-11-15', { str: 1.1 }), tune('2026-11-15', { str: 0.9 }, { ts: at('2026-11-15', 23) })], NOW).multipliers.str;
+  expect(two).toBe(one);
+});
+
+test('ai_tuning: мусорные события не бросают', () => {
+  expect(() => replay([...tuneBase(), ev({ type: 'ai_tuning', date: '2026-11-15', factors: null, note: 5 }), ev({ type: 'ai_tuning' })], NOW)).not.toThrow();
+});
+
+test('today.aiNote — из тюнинга за вчера', () => {
+  const s = replay([...tuneBase(), tune('2026-11-16', { str: 1 })], NOW);
+  expect(s.today.aiNote).toBe('Завтра легче');
+  expect(replay([], NOW).today.aiNote).toBeNull();
+});
+
+test('ai_report: не‑понедельник игнорируется, текст обрезается, последний побеждает', () => {
+  const r = (weekStart: string, text: unknown, ts?: number) => ev({ type: 'ai_report', weekStart, text, ...(ts ? { ts } : {}) });
+  expect(replay([r('2026-11-11', 'x')], NOW).reports).toEqual([]);
+  expect(replay([r('2026-11-09', 'x'.repeat(5000))], NOW).reports[0].text).toHaveLength(4000);
+  const s = replay([r('2026-11-02', 'old'), r('2026-11-09', 'a', 1), r('2026-11-09', 'b', 2)], NOW);
+  expect(s.reports).toEqual([{ weekStart: '2026-11-09', text: 'b' }, { weekStart: '2026-11-02', text: 'old' }]);
+});

@@ -28,6 +28,8 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
   const pending = useRef(new Set<string>())
   const [issuing, setIssuing] = useState(false)
   const [later, setLaterState] = useState(deferredDay)
+  const [fallback, setFallback] = useState(false)
+  useEffect(() => { getSetting('aiFallback', '').then(d => setFallback(d === today.date)).catch(() => {}) }, [today.date, today.started])
   const setLater = (v: boolean) => { deferredDay = v; setLaterState(v) }
   const cutoffHour = useLiveQuery(() => getSetting<number>('cutoffHour', 4)) ?? 4
   useEffect(() => { pending.current.clear() }, [today.date])
@@ -130,6 +132,8 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
         <span className="dot">·</span>
         <span className={leader === 'shadow' ? 'sh lead' : 'sh'}>Тень {today.shadowXp} XP</span>
       </div>
+      {today.aiNote && <p className="muted center">🤖 {today.aiNote}</p>}
+      {fallback && <p className="muted center" role="status">ИИ недоступен — задания по правилам</p>}
       {today.shadowMetrics.length > 0 && (
         <section className="shadow-metrics" aria-label="Тень по метрикам">
           <h2>Тень по метрикам</h2>

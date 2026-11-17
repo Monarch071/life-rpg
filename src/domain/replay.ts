@@ -69,6 +69,8 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   let busyUntil: HHMM | null = null, checkedIn = false, lastEnergy: number | null = null;
   const skillEvents: { skillId: string; ts: number }[] = [];
   const weeklyIssued = new Map<ISODate, WeeklyQuest[]>();
+  const tunings = new Map<ISODate, { factors: Partial<Record<Stat, number>>; note: string }>();
+  const reports = new Map<ISODate, string>();
   const bossEvents: Extract<GameEvent, { type: 'boss_created' | 'boss_stage_done' | 'boss_abandoned' }>[] = [];
   const shopEvents: Extract<GameEvent, { type: 'reward_created' | 'reward_deleted' | 'reward_purchased' }>[] = [];
   const days = new Map<ISODate, Delta>(); // счётчики достижений по игровым датам
@@ -135,6 +137,16 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
         const qs = (Array.isArray(e.quests) ? e.quests : []).filter(w => validWeekly(w) && !seenIds.has(w.id) && !!seenIds.add(w.id))
           .slice(0, 5).map(w => ({ ...w, xp: Math.min(1000, Math.max(0, Math.round(w.xp))) }));
         if (qs.length) weeklyIssued.set(e.weekStart, qs); // побеждает первый
+        break;
+      }
+      case 'ai_tuning': {
+        if (typeof e.date !== 'string' || tunings.has(e.date) || !e.factors || typeof e.factors !== 'object') break; // побеждает первый
+        tunings.set(e.date, { factors: e.factors, note: typeof e.note === 'string' ? e.note.slice(0, 200) : '' });
+        break;
+      }
+      case 'ai_report': {
+        if (typeof e.weekStart !== 'string' || !/^\d{4}-\d\d-\d\d$/.test(e.weekStart) || weekStart(e.weekStart) !== e.weekStart || typeof e.text !== 'string') break;
+        reports.set(e.weekStart, e.text.slice(0, 4000)); // последний по ts
         break;
       }
       case 'boss_created': case 'boss_stage_done': case 'boss_abandoned': bossEvents.push(e); break;
@@ -207,6 +219,9 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
     history.push({ date: d, xp, shadowXp, completed, issued: qs.length, won });
     finalized.push(qs.map(q => ({ stat: q.stat, done: q.done })));
     multipliers = adjustMultipliers(multipliers, finalized.slice(-7).flat());
+    for (const [s, f] of Object.entries(tunings.get(d)?.factors ?? {}))
+      if (Object.hasOwn(STATS, s) && typeof f === 'number' && Number.isFinite(f))
+        multipliers[s as Stat] = Math.min(3, Math.max(0.5, multipliers[s as Stat] * Math.min(1.1, Math.max(0.9, f))));
   }
 
   // Боссы: этапы строго по порядку; XP и очки характеристики — как у обычных заданий.
@@ -325,11 +340,13 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
       quests: todayQuests, xp: sum(todayQuests.filter(q => q.done)),
       shadowXp: shadowOf(todayQuests, today),
       metrics: metrics.get(today) ?? {}, checkedIn, lastEnergy, busyUntil, calendar, shadowMetrics,
+      aiNote: (tunings.get(today) ?? tunings.get(addDays(today, -1)))?.note || null,
     },
     lastHealth,
     skills: { unlocked: [...unlockedAt.keys()], points: Math.max(0, baseLevel - 1 - spent) }, rewards, purchases,
     weekly: { weekStart: thisWeek, quests: weeklyNow },
     bosses: [...bossMap.values()].filter(b => !b.abandoned),
+    reports: [...reports].map(([weekStart, text]) => ({ weekStart, text })).sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1)),
     genWeekly: { weekStart: thisWeek, stats, multipliers, prevActiveDays, prevStatQuests, bestSteps7: best7(metrics, today, 'steps') },
     history, achievements: achs, title, statHistory, metricHistory,
     genInputs: {

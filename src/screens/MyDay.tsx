@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react'
-import { appendEvents } from '../db'
+import { appendEvents, setSetting } from '../db'
+import { getAiConfig } from '../ai/config'
+import { aiDailyQuests } from '../ai/tasks'
 import { getSyncConfig, syncNow } from '../sync'
 import { loadState } from '../useGame'
 import type { Win } from '../domain/schedule'
-import type { GameState, Profile } from '../domain/types'
+import type { GameState, Profile, Quest } from '../domain/types'
 import { hhmmNow } from '../now'
 import { useDialog } from '../ui/useDialog'
 import { generateWeeklyQuests } from '../domain/weekly'
@@ -38,7 +40,19 @@ export default function MyDay({ state, profile, onLater }: { state: GameState; p
         }
       } catch { /* синк не должен мешать началу дня */ }
       // сначала генерация, потом одна атомарная запись — день не останется без заданий
-      const quests = cur.today.quests.length === 0 ? buildQuests(cur, profile, work, wakeAt) : null
+      let quests: Quest[] | null = null
+      if (cur.today.quests.length === 0) {
+        const cfg = await getAiConfig().catch(() => null)
+        if (cfg) {
+          let timer: ReturnType<typeof setTimeout> | undefined
+          try {
+            quests = await Promise.race([aiDailyQuests(cfg, cur, profile, work, wakeAt),
+              new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('timeout')), 25_000) })])
+          } catch { await setSetting('aiFallback', date).catch(() => {}) } // тихо на правила; пометку покажет Home
+          clearTimeout(timer)
+        }
+        quests ??= buildQuests(cur, profile, work, wakeAt)
+      }
       await appendEvents([
         { type: 'day_started', date, work, wakeAt },
         ...(cur.weekly.quests.length === 0
