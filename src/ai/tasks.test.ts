@@ -79,3 +79,10 @@ test('questContext: портрет героя только при наличии
   expect(t).toContain('Тихий стратег'); expect(t).toContain('Дисциплина'); expect(t).toContain('Мягкий темп')
   expect(t).toContain('Вес, кг: 80'); expect(t).toContain('Свобода')
 })
+
+test('KEY_ANSWERS ссылаются на существующие вопросы анкеты', async () => {
+  const { KEY_ANSWERS } = await import('./tasks')
+  const { QUESTIONS } = await import('../domain/interview')
+  const ids = new Set(QUESTIONS.map(q => q.id))
+  expect(KEY_ANSWERS.map(([id]) => id).filter(id => !ids.has(id))).toEqual([])
+})
