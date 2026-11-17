@@ -26,4 +26,6 @@ npm test
 
 Синхронизация iPhone и компьютера: [docs/stage-2-sync.md](docs/stage-2-sync.md)
 
+Магазин, навыки, боссы, достижения, аналитика: [docs/stage-3-game.md](docs/stage-3-game.md)
+
 Команда «Life RPG — синк» (шаги, сон, вес из «Здоровья»): [docs/shortcuts.md](docs/shortcuts.md)
