@@ -21,6 +21,7 @@ const W = 300
 export default function LineChart({ labels, series, height = 120, unit, title }: { labels: string[]; series: Series[]; height?: number; unit?: string; title: string }) {
   const all = series.flatMap(s => s.values).filter((v): v is number => v !== null && Number.isFinite(v))
   if (!all.length) return <p className="muted">Нет данных</p>
+  if (labels.length < 2) return <p className="muted">График появится со второго дня</p> // одна точка не рисуется линией
   let min = Math.min(...all), max = Math.max(...all)
   if (min === max) { min -= 1; max += 1 }
   const last = series.map(s => {

@@ -135,7 +135,7 @@ export default function Home({ state, profile }: { state: GameState; profile: Pr
           <h2>Тень по метрикам</h2>
           {today.shadowMetrics.map(s => {
             const i = METRIC_INFO[s.metric]
-            const pct = s.you === null ? 0 : s.lowerIsBetter ? (s.you <= s.target ? 100 : Math.max(0, s.target / s.you * 100)) : Math.min(100, s.you / s.target * 100)
+            const pct = s.you === null || !(s.target > 0) ? 0 : s.lowerIsBetter ? (s.you <= s.target ? 100 : Math.max(0, s.target / s.you * 100)) : Math.min(100, s.you / s.target * 100)
             const n = (v: number) => (Math.round(v * 10) / 10).toLocaleString('ru-RU')
             return (
               <div key={s.metric} className="sm-row">
