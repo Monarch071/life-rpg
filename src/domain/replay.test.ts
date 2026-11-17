@@ -328,7 +328,7 @@ test('награды: покупка, перерасход игнорирует�
   expect(s.purchases).toHaveLength(1);
   // ещё покупка при нехватке
   const poor = replay([...earn, created, ...[10, 11, 12, 13, 14, 15, 16].map(buy)], NOW);
-  expect(poor.currency).toBeGreaterThanOrEqual(0);
+  expect(poor.currency).toBe(base - 100); expect(poor.purchases).toHaveLength(1);
   // удалена до покупки — не покупается; удалена после — покупка остаётся
   const del = (h: number) => ev({ type: 'reward_deleted', rewardId: 'r1', ts: at('2026-11-15', h) });
   expect(replay([...earn, created, del(10), buy(11)], NOW).purchases).toEqual([]);
@@ -338,6 +338,41 @@ test('награды: покупка, перерасход игнорирует�
   const bad = replay([
     ev({ type: 'reward_created', rewardId: 'x', title: 'a', price: -5 }),
     ev({ type: 'reward_created', rewardId: 'y', title: '', price: 5 }),
+    ev({ type: 'reward_created', rewardId: 'z', title: '   ', price: 5 }),
   ], NOW);
   expect(bad.rewards).toEqual([]);
+  const trimmed = replay([ev({ type: 'reward_created', rewardId: 't', title: '  Кино ', price: 5 })], NOW);
+  expect(trimmed.rewards).toEqual([{ id: 't', title: 'Кино', price: 5 }]);
+});
+
+test('очки навыков считаются от базового уровня: бонус победы над Тенью их не увеличивает', () => {
+  const evs = [...bigDay(95, '2026-11-01'), unlock('str1', at('2026-11-12', 9))];
+  const s = replay(evs, NOW);
+  expect(s.level).toBe(2); // 95 + бонус победы 14 = 109
+  expect(s.skills).toEqual({ unlocked: [], points: 0 });
+});
+
+test('coins: +25% монет с даты открытия (округление вниз)', () => {
+  const base = [...bigDay(2000, '2026-11-01'), unlock('fin1', at('2026-11-02', 9)),
+    issue('2026-11-05', [q('c', '2026-11-05', 100)]), done('2026-11-05', 'c')];
+  const withCoins = [...base, unlock('coins', at('2026-11-02', 10))];
+  expect(replay(withCoins, NOW).currency - replay(base, NOW).currency).toBe(2); // 10 → 12
+});
+
+test('str1 + str2 дают +25% XP', () => {
+  const evs = [...bigDay(2000, '2026-11-01'), unlock('str1', at('2026-11-02', 9)), unlock('str2', at('2026-11-02', 10)),
+    issue('2026-11-05', [q('a', '2026-11-05', 20)]), done('2026-11-05', 'a')];
+  expect(replay(evs, NOW).history.find(h => h.date === '2026-11-05')!.xp).toBe(25);
+});
+
+test('freeze: возобновляется в новой неделе и не тратится при серии 0', () => {
+  const pre = [...bigDay(2000, '2026-11-01'), unlock('dis1', at('2026-11-02', 9)), unlock('freeze', at('2026-11-02', 10))];
+  // новая неделя: заморозка снова доступна
+  const weeks = [...pre, ...bigDay(10, '2026-11-09'), issue('2026-11-10', [q('m1', '2026-11-10', 10)]),
+    issue('2026-11-11', [q('m2', '2026-11-11', 10)]), ...bigDay(10, '2026-11-16'), issue('2026-11-17', [q('m3', '2026-11-17', 10)])];
+  expect(replay(weeks, at('2026-11-18')).streak).toBe(1);
+  // пустой день при серии 0 заморозку не тратит
+  const idle = [...pre, issue('2026-11-09', [q('i1', '2026-11-09', 10)]), ...bigDay(10, '2026-11-10'),
+    issue('2026-11-11', [q('i2', '2026-11-11', 10)])];
+  expect(replay(idle, at('2026-11-12')).streak).toBe(1);
 });

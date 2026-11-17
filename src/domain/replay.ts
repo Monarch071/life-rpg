@@ -151,7 +151,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   const freezeWeeks = new Set<ISODate>(); // недели, где заморозка уже сработала
   /** Заморозка: пустой день не обнуляет серию, раз в календарную неделю. */
   const frozen = (d: ISODate) => {
-    if (!effectsAt(d).streakFreeze || freezeWeeks.has(weekStart(d))) return false;
+    if (streak === 0 || !effectsAt(d).streakFreeze || freezeWeeks.has(weekStart(d))) return false;
     freezeWeeks.add(weekStart(d)); return true;
   };
   for (let d = firstDate; d !== undefined && d < today; d = addDays(d, 1)) {
@@ -177,9 +177,10 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   let coinsSpent = 0;
   for (const e of shopEvents) {
     if (e.type === 'reward_created') {
-      if (!shop.has(e.rewardId) && typeof e.title === 'string' && e.title.length > 0 && e.title.length <= 60
+      const title = typeof e.title === 'string' ? e.title.trim() : '';
+      if (!shop.has(e.rewardId) && title.length > 0 && title.length <= 60
         && Number.isInteger(e.price) && e.price >= 1 && e.price <= 100000)
-        shop.set(e.rewardId, { id: e.rewardId, title: e.title, price: e.price, deleted: false });
+        shop.set(e.rewardId, { id: e.rewardId, title, price: e.price, deleted: false });
     } else {
       const r = shop.get(e.rewardId);
       if (!r || r.deleted) continue;
@@ -208,7 +209,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
       metrics: metrics.get(today) ?? {}, checkedIn, lastEnergy, busyUntil, calendar,
     },
     lastHealth,
-    skills: { unlocked: [...unlockedAt.keys()], points: Math.max(0, level - 1 - spent) }, rewards, purchases,
+    skills: { unlocked: [...unlockedAt.keys()], points: Math.max(0, baseLevel - 1 - spent) }, rewards, purchases,
     history,
     genInputs: {
       bestSteps7: bestSteps7(metrics, today),
