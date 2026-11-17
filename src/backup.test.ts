@@ -47,3 +47,33 @@ test('чужой JSON (нет app или schema > 1) → ok:false', async () => 
   }
   expect(await db.events.count()).toBe(1)
 })
+
+const file = (o: object) => new Blob([JSON.stringify({ app: 'life-rpg', schema: 1, ...o })])
+const good = { id: 'a', ts: 1, deviceId: 'd', type: 'busy_until', date: '2026-11-17', until: '18:00' }
+
+test('плохой cutoffHour → ok:false, данные не тронуты', async () => {
+  await appendEvent(ev)
+  for (const v of ['x', 7, -1, 2.5]) {
+    const r = await importData(file({ events: [good], settings: [{ key: 'cutoffHour', value: v }] }))
+    expect(r.ok).toBe(false)
+  }
+  expect(await db.events.count()).toBe(1)
+})
+
+test('событие, ломающее replay → ok:false, данные не тронуты', async () => {
+  await appendEvent(ev)
+  const bad = { id: 'b', ts: 2, deviceId: 'd', type: 'quests_issued', date: '2026-11-17', quests: null }
+  const r = await importData(file({ events: [good, bad] }))
+  expect(r).toEqual({ ok: false, error: 'Файл повреждён: не удалось восстановить игру' })
+  expect(await db.events.count()).toBe(1)
+})
+
+test('импортированные deviceId/aiKey игнорируются', async () => {
+  await setSetting('aiKey', 'mine')
+  await appendEvent(ev)
+  const id = await getSetting('deviceId', '')
+  const r = await importData(file({ events: [good], settings: [{ key: 'deviceId', value: 'evil' }, { key: 'aiKey', value: 'evil' }] }))
+  expect(r.ok).toBe(true)
+  expect(await getSetting('deviceId', '')).toBe(id)
+  expect(await getSetting('aiKey', '')).toBe('mine')
+})

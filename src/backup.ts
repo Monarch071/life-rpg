@@ -1,4 +1,6 @@
 import { db } from './db'
+import { replay } from './domain/replay'
+import type { GameEvent } from './domain/types'
 
 // device-local settings: never exported, never overwritten by import
 const isLocal = (key: string) => key === 'deviceId' || key.startsWith('ai')
@@ -27,6 +29,16 @@ export async function importData(file: Blob): Promise<{ ok: true; events: number
   const settings = (Array.isArray(data.settings) ? data.settings : []).filter(
     (s: any) => s && typeof s.key === 'string' && !isLocal(s.key),
   )
+  const cutoff = settings.find((s: any) => s.key === 'cutoffHour')?.value
+  if (cutoff !== undefined && !(Number.isInteger(cutoff) && cutoff >= 0 && cutoff <= 6))
+    return { ok: false, error: 'Резервная копия повреждена: неверный час смены дня.' }
+  try {
+    // a payload that breaks replay would crash the app on every launch
+    const plain = data.events.map(({ pending: _p, seq: _s, ...e }: any) => e as GameEvent)
+    replay(plain, Date.now(), cutoff ?? 4)
+  } catch {
+    return { ok: false, error: 'Файл повреждён: не удалось восстановить игру' }
+  }
   try {
     await db.transaction('rw', db.events, db.settings, async () => {
       await db.events.clear()
