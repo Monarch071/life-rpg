@@ -20,14 +20,13 @@ function normalize(events: GameEvent[]): GameEvent[] {
     .filter(e => !seen.has(e.id) && !!seen.add(e.id));
 }
 
-/** Лучшее среднее шагов по 7‑дневным окнам за 28 дней до сегодня; null, если значений меньше 3. */
+/** Лучшее среднее шагов по 7‑дневным окнам за 28 дней до сегодня; окно считается при ≥3 значениях, иначе null. */
 function bestSteps7(metrics: Map<ISODate, Partial<Record<Metric, number>>>, today: ISODate): number | null {
   const vals = Array.from({ length: 28 }, (_, i) => metrics.get(addDays(today, i - 28))?.steps);
-  if (vals.filter(v => v !== undefined).length < 3) return null;
   let best: number | null = null;
   for (let i = 0; i + 7 <= vals.length; i++) {
     const w = vals.slice(i, i + 7).filter((v): v is number => v !== undefined);
-    if (w.length) best = Math.max(best ?? -Infinity, w.reduce((a, b) => a + b, 0) / w.length);
+    if (w.length >= 3) best = Math.max(best ?? -Infinity, w.reduce((a, b) => a + b, 0) / w.length);
   }
   return best;
 }
@@ -35,6 +34,7 @@ function bestSteps7(metrics: Map<ISODate, Partial<Record<Metric, number>>>, toda
 export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameState {
   const today = gameDate(now, cutoffHour);
   let profile: Profile | null = null;
+  let initial: Record<Stat, number> | null = null; // поэлементный максимум по всем анкетам
   let avatar = DEFAULT_AVATAR;
   const issued = new Map<ISODate, DoneQuest[]>();
   const questById = new Map<string, DoneQuest>();
@@ -44,7 +44,13 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
 
   for (const e of normalize(events)) {
     switch (e.type) {
-      case 'onboarding_completed': profile = e.profile; break;
+      case 'onboarding_completed': {
+        profile = e.profile;
+        const st = initialStats(e.profile);
+        if (initial) for (const k of STAT_KEYS) initial[k] = Math.max(initial[k], st[k]);
+        else initial = st;
+        break;
+      }
       case 'avatar_updated': avatar = e.params; break;
       case 'quests_issued': {
         if (issued.has(e.date)) break; // побеждает первый
@@ -103,7 +109,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   }
 
   const todayQuests = issued.get(today) ?? [];
-  const initial = profile ? initialStats(profile) : fill(1);
+  initial ??= fill(1);
   const stats = fill(0);
   for (const s of STAT_KEYS) stats[s] = initial[s] + Math.floor(statPoints[s] / 10);
   const { level, into, need } = levelFromXp(totalXp);

@@ -145,7 +145,7 @@ test('today: день, занятость, метрики, чекины, ава�
 test('genInputs', () => {
   const steps = (date: string, value: number) => ev({ type: 'metric_logged', date, metric: 'steps', value, mode: 'set' });
   const s = replay([
-    steps('2026-11-01', 9000), steps('2026-11-02', 11000), steps('2026-11-14', 3000),
+    steps('2026-11-01', 9000), steps('2026-11-02', 11000), steps('2026-11-03', 16000), steps('2026-11-14', 30000),
     steps('2026-10-01', 50000), // вне 28 дней
     steps('2026-11-17', 50000), // сегодня не учитывается
     ev({ type: 'metric_logged', date: '2026-11-12', metric: 'sleepHours', value: 6, mode: 'set' }),
@@ -154,9 +154,33 @@ test('genInputs', () => {
     issue('2026-11-15', [q('b', '2026-11-15', 10, 'str', 1, 'T2')]),
     issue('2026-11-16', [q('c', '2026-11-16', 10, 'str', 1, 'T3'), q('d', '2026-11-16', 10, 'str', 1, 'T4')]),
   ], NOW);
-  expect(s.genInputs.bestSteps7).toBe(11000); // окно 11-02..11-08 содержит только 11000
+  expect(s.genInputs.bestSteps7).toBe(12000); // окна с одним значением (30000, 16000) не считаются
   expect(s.genInputs.lastSleepHours).toBe(7.5);
   expect([...s.genInputs.recentTemplateIds].sort()).toEqual(['T2', 'T3', 'T4']);
+  // 3 значения, но ни в одном 7‑дневном окне их нет трёх → null
+  expect(replay([steps('2026-11-01', 9000), steps('2026-11-05', 9000), steps('2026-11-14', 9000)], NOW).genInputs.bestSteps7).toBeNull();
   const few = replay([steps('2026-11-01', 9000), steps('2026-11-02', 11000)], NOW);
   expect(few.genInputs).toEqual({ bestSteps7: null, lastSleepHours: null, recentTemplateIds: [] });
+});
+
+test('7 идеальных дней по характеристике дают множитель ≈1.1', () => {
+  const evs = Array.from({ length: 7 }, (_, i) => {
+    const d = `2026-11-${String(10 + i).padStart(2, '0')}`;
+    return [issue(d, [q(`p${i}`, d, 20, 'end')]), done(d, `p${i}`)];
+  }).flat();
+  const s = replay(evs, NOW);
+  expect(s.multipliers.end).toBeCloseTo(1.1, 3);
+  expect(s.multipliers.str).toBe(1);
+});
+
+test('повторная анкета с меньшей самооценкой не снижает характеристики', () => {
+  const mk = (n: number) => ({ name: 'A', sportLevel: 0,
+    selfRating: { str: n, end: n, int: n, dis: n, cha: n, fin: n, spi: n } }) as unknown as Profile;
+  const low = mk(2);
+  const s = replay([
+    ev({ type: 'onboarding_completed', profile: mk(5), ts: at('2026-11-15') }),
+    ev({ type: 'onboarding_completed', profile: { ...low, selfRating: { ...low.selfRating, int: 8 } }, ts: at('2026-11-16') }),
+  ], NOW);
+  expect(s.profile!.selfRating.str).toBe(2); // профиль — последний
+  expect(s.stats.str).toBe(10); expect(s.stats.int).toBe(16);
 });
