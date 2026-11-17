@@ -10,7 +10,7 @@ export default function JoinSync({ initial, onDone }: { initial?: { url: string;
   const [token, setToken] = useState(initial?.token ?? '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  const dlg = useDialog<HTMLDivElement>(onDone)
+  const dlg = useDialog<HTMLDivElement>(() => { if (!busy) onDone() })
 
   const go = async () => {
     if (!isHttpUrl(url.trim())) return setErr('Введи адрес сервера')

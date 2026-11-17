@@ -36,6 +36,8 @@ export default function SyncPanel({ state, sync }: { state: GameState; sync: Syn
   const [rotate, setRotate] = useState(false)
   const reload = () => getSyncConfig().then(setCfg)
   useEffect(() => { void reload() }, [sync.status])
+  const [, tick] = useState(0)
+  useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 60_000); return () => clearInterval(t) }, [])
 
   const done = () => { setJoin(false); void reload(); sync.run() }
   const copy = async (text: string, what: string) => {
@@ -54,7 +56,9 @@ export default function SyncPanel({ state, sync }: { state: GameState; sync: Syn
     setMsg(null)
     const r = await enableSync(url.trim()).catch(() => ({ ok: false as const, error: 'Не удалось включить синхронизацию' }))
     setBusy(false)
-    if (r.ok) { await reload(); sync.run() } else setMsg({ ok: false, text: r.error })
+    await reload() // конфиг мог сохраниться, даже если первый синк упал
+    if (r.ok) sync.run()
+    else setMsg({ ok: false, text: r.error })
   }
   const doRotate = async () => {
     setRotate(false)

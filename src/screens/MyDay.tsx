@@ -28,10 +28,14 @@ export default function MyDay({ state, profile, onLater }: { state: GameState; p
       const date = state.today.date
       // первое устройство выдаёт задания: подтянуть чужие события и смотреть уже свежее состояние
       let cur = state
-      if (await getSyncConfig()) {
-        await Promise.race([syncNow(), new Promise((r) => setTimeout(r, 4000))])
-        cur = await loadState()
-      }
+      try {
+        if (await getSyncConfig()) {
+          let timer: ReturnType<typeof setTimeout> | undefined
+          await Promise.race([syncNow().catch(() => null), new Promise((r) => { timer = setTimeout(r, 4000) })])
+          clearTimeout(timer)
+          cur = await loadState()
+        }
+      } catch { /* синк не должен мешать началу дня */ }
       // сначала генерация, потом одна атомарная запись — день не останется без заданий
       const quests = cur.today.quests.length === 0 ? buildQuests(cur, profile, work, wakeAt) : null
       await appendEvents([
