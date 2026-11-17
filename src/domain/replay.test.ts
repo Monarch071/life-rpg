@@ -184,3 +184,22 @@ test('повторная анкета с меньшей самооценкой �
   expect(s.profile!.selfRating.str).toBe(2); // профиль — последний
   expect(s.stats.str).toBe(10); expect(s.stats.int).toBe(16);
 });
+
+test('смена часа конца суток не стирает заработанное', () => {
+  const evs = [issue('2026-11-16', [q('a', '2026-11-16', 50)]), done('2026-11-16', 'a', new Date(2026, 10, 17, 2, 30).getTime())];
+  for (const cutoff of [4, 2, 6, 0]) expect(replay(evs, NOW, cutoff).history[0].completed).toBe(1);
+  // на два дня позже — не засчитывается
+  const late = [issue('2026-11-15', [q('b', '2026-11-15', 50)]), done('2026-11-15', 'b', new Date(2026, 10, 17, 2, 30).getTime())];
+  for (const cutoff of [4, 2, 6]) expect(replay(late, NOW, cutoff).totalXp).toBe(0);
+});
+
+test('показанная Тень сегодня = записанной при финализации', () => {
+  const evs = [
+    issue('2026-11-15', [q('h', '2026-11-15', 60)]), done('2026-11-15', 'h'),
+    issue('2026-11-16', [q('a', '2026-11-16', 30), q('b', '2026-11-16', 20), q('c', '2026-11-16', 40)]),
+    done('2026-11-16', 'a'),
+  ];
+  const live = replay(evs, at('2026-11-16', 21)).today.shadowXp;
+  expect(live).toBe(replay(evs, NOW).history.at(-1)!.shadowXp);
+  expect(live).toBe(61 + 30); // p75([60])·1.02 + ½·(20+40) невыполненных
+});

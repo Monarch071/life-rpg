@@ -61,7 +61,8 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
       }
       case 'quest_completed': {
         const q = questById.get(e.questId);
-        if (q && !q.done && gameDate(e.ts, cutoffHour) === q.date) q.done = true; // задним числом — нельзя
+        // окно не зависит от настройки cutoffHour (0–6), иначе её смена переоценивала бы историю
+        if (q && !q.done && gameDate(e.ts, 6) <= q.date && q.date <= gameDate(e.ts, 0)) q.done = true;
         break;
       }
       case 'metric_logged': {
@@ -90,12 +91,14 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   const history: DayResult[] = [];
   const finalized: { stat: Stat; done: boolean }[][] = [];
   let streak = 0, wins = 0, multipliers = fill(1);
+  // одна формула и для финализации, и для живого счёта сегодня: показанное = записанному
+  const shadowOf = (qs: DoneQuest[]) => shadowXpForDay(history.slice(-14).map(h => h.xp), wins) + Math.round(0.5 * sum(qs.filter(q => !q.done)));
   const firstDate = [...issued.keys()].sort()[0];
   for (let d = firstDate; d !== undefined && d < today; d = addDays(d, 1)) {
     const qs = issued.get(d);
     if (!qs) { streak = 0; wins = 0; continue; }
     const xp = sum(qs.filter(q => q.done));
-    const shadowXp = shadowXpForDay(history.slice(-14).map(h => h.xp), wins) + Math.round(0.5 * sum(qs.filter(q => !q.done)));
+    const shadowXp = shadowOf(qs);
     const won = xp > shadowXp;
     if (won) {
       const bonus = Math.max(10, Math.round(0.15 * xp));
@@ -122,7 +125,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
     today: {
       date: today, started: !!started, work: started?.work ?? null, wakeAt: started?.wakeAt ?? null,
       quests: todayQuests, xp: sum(todayQuests.filter(q => q.done)),
-      shadowXp: shadowXpForDay(history.slice(-14).map(h => h.xp), wins),
+      shadowXp: shadowOf(todayQuests),
       metrics: metrics.get(today) ?? {}, checkedIn, lastEnergy, busyUntil,
     },
     history,
