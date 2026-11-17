@@ -2,3 +2,4 @@ node_modules
 dist
 .superpowers/
 worker/.wrangler/
+.claude/launch.json
