@@ -9,7 +9,7 @@ export function buildQuests(state: GameState, profile: Profile, work: Win | null
   const last = history.at(-1)
   return generateDailyQuests({
     date: today.date, profile, stats: state.stats, multipliers: state.multipliers, wakeAt, work,
-    busy: [], // календарь — этап 2
+    busy: today.calendar.map(({ start, end }) => ({ start, end })),
     yesterday: last && last.date === addDays(today.date, -1) ? last : null,
     lastEnergy: today.lastEnergy, ...genInputs,
   })

@@ -203,3 +203,71 @@ test('показанная Тень сегодня = записанной при
   expect(live).toBe(replay(evs, NOW).history.at(-1)!.shadowXp);
   expect(live).toBe(61 + 30); // p75([60])·1.02 + ½·(20+40) невыполненных
 });
+
+// ---- health_packet ----
+const iso = (date: string, h: number, min = 0) => { const [y, m, d] = date.split('-').map(Number); return new Date(y, m - 1, d, h, min).toISOString(); };
+const pkt = (date: string, health: unknown, ts = at(date, 9), calendar: unknown = []) =>
+  ev({ type: 'health_packet', date, kind: 'morning', health, calendar, ts, deviceId: 'shortcuts' });
+const qa = (id: string, date: string, op: '>=' | '<=', value: number, metric: 'steps' | 'sleepHours' | 'weightKg' = 'steps'): Quest =>
+  ({ ...q(id, date, 30), auto: { metric, op, value } });
+
+test('health_packet: шаги дают метрику и автозачёт', () => {
+  const s = replay([issue('2026-11-17', [qa('a', '2026-11-17', '>=', 8000)]), pkt('2026-11-17', { steps: 9000 })], NOW);
+  expect(s.today.metrics.steps).toBe(9000);
+  expect(s.today.quests[0].done).toBe(true);
+  expect(s.totalXp).toBe(30);
+});
+
+test('health_packet: steps/workoutMin — максимум, sleepHours — последний', () => {
+  const s = replay([
+    pkt('2026-11-17', { steps: 5000, sleepHours: 6.5, workoutMin: 40 }, at('2026-11-17', 9)),
+    pkt('2026-11-17', { steps: 3000, sleepHours: 7, workoutMin: 20 }, at('2026-11-17', 10)),
+  ], NOW);
+  expect(s.today.metrics).toMatchObject({ steps: 5000, sleepHours: 7, workoutMin: 40 });
+});
+
+test('автозачёт: условие не выполнено → не done', () => {
+  const s = replay([issue('2026-11-17', [qa('a', '2026-11-17', '>=', 8000)]), pkt('2026-11-17', { steps: 7000 })], NOW);
+  expect(s.today.quests[0].done).toBe(false);
+});
+
+test('автозачёт работает и для ручного metric_logged', () => {
+  const s = replay([
+    issue('2026-11-17', [qa('a', '2026-11-17', '>=', 8000)]),
+    ev({ type: 'metric_logged', date: '2026-11-17', metric: 'steps', value: 8500, mode: 'set' }),
+  ], NOW);
+  expect(s.today.quests[0].done).toBe(true);
+});
+
+test('автозачёт <=: вес', () => {
+  const s = replay([issue('2026-11-17', [qa('a', '2026-11-17', '<=', 80, 'weightKg')]), pkt('2026-11-17', { weightKg: 79.5 })], NOW);
+  expect(s.today.quests[0].done).toBe(true);
+});
+
+test('пакет за вчера засчитывает вчерашнее задание в истории', () => {
+  const s = replay([issue('2026-11-16', [qa('a', '2026-11-16', '>=', 8000)]), pkt('2026-11-16', { steps: 9000 }, at('2026-11-17', 9))], NOW);
+  expect(s.history.at(-1)!.xp).toBe(30);
+});
+
+test('мусорный пакет не роняет replay', () => {
+  expect(() => replay([pkt('2026-11-17', null, at('2026-11-17', 9), null), pkt('2026-11-17', { steps: 'x', sleepHours: NaN })], NOW)).not.toThrow();
+  expect(replay([pkt('2026-11-17', { steps: NaN })], NOW).today.metrics.steps).toBeUndefined();
+});
+
+test('календарь: локальное время, фильтр весь день и чужой даты; lastHealth', () => {
+  const cal = [
+    { title: 'Работа', start: iso('2026-11-17', 11), end: iso('2026-11-17', 20) },
+    { title: 'Весь день', start: iso('2026-11-17', 0), end: iso('2026-11-18', 0) },
+    { title: 'Завтра', start: iso('2026-11-18', 10), end: iso('2026-11-18', 11) },
+  ];
+  const s = replay([pkt('2026-11-17', { steps: 100 }, at('2026-11-17', 9), cal)], NOW);
+  expect(s.today.calendar).toEqual([{ title: 'Работа', start: '11:00', end: '20:00' }]);
+  expect(s.lastHealth).toMatchObject({ date: '2026-11-17', health: { steps: 100 } });
+  expect(replay([], NOW).lastHealth).toBeNull();
+});
+
+test('quests_issued с разных устройств: побеждает меньший ts независимо от порядка', () => {
+  const late = ev({ type: 'quests_issued', date: '2026-11-17', quests: [q('late', '2026-11-17', 20)], ts: at('2026-11-17', 9), deviceId: 'd2' });
+  const early = ev({ type: 'quests_issued', date: '2026-11-17', quests: [q('early', '2026-11-17', 20)], ts: at('2026-11-17', 8), deviceId: 'd1' });
+  expect(replay([late, early], NOW).today.quests.map(x => x.id)).toEqual(['early']);
+});

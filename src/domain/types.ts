@@ -22,6 +22,7 @@ export interface Quest {
   templateId: string;
 }
 export type Metric = 'steps'|'sleepHours'|'weightKg'|'screenMin'|'spend'|'mood'|'water'|'readPages'|'workoutMin';
+export interface HealthData { steps?: number; sleepHours?: number; workoutMin?: number; activeKcal?: number; restingHR?: number; weightKg?: number }
 export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'onboarding_completed'; profile: Profile }
   | { type: 'day_started'; date: ISODate; work: { start: HHMM; end: HHMM } | null; wakeAt: HHMM }
@@ -30,6 +31,7 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'quest_completed'; date: ISODate; questId: string }
   | { type: 'metric_logged'; date: ISODate; metric: Metric; value: number; mode: 'set'|'add' }
   | { type: 'checkin'; date: ISODate; went: string; notWent: string; energy: number }
+  | { type: 'health_packet'; date: ISODate; kind: 'morning'|'evening'|'other'; health: HealthData; calendar: { title: string; start: string; end: string }[] }
   | { type: 'avatar_updated'; params: AvatarParams }
 );
 export interface AvatarParams { hair: string; hairColor: string; outfitColor: string; eyes: string }
@@ -44,7 +46,8 @@ export interface GameState {
   today: { date: ISODate; started: boolean; work: {start:HHMM;end:HHMM}|null; wakeAt: HHMM|null;
            quests: (Quest & { done: boolean })[]; xp: number; shadowXp: number;
            metrics: Partial<Record<Metric, number>>; checkedIn: boolean; lastEnergy: number|null;
-           busyUntil: HHMM|null };
+           busyUntil: HHMM|null; calendar: { title: string; start: HHMM; end: HHMM }[] };
+  lastHealth: { ts: number; date: ISODate; health: HealthData } | null;
   history: DayResult[];   // финализированные дни, по возрастанию
   genInputs: { bestSteps7: number|null; lastSleepHours: number|null; recentTemplateIds: string[] };
     // для generateDailyQuests: лучший 7‑дневный средний по шагам (из metric_logged steps), сон за последний день с данными, templateId заданий за 2 прошлых дня

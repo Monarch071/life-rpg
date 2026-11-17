@@ -2,7 +2,7 @@ import { addDays, gameDate } from './day';
 import { adjustMultipliers } from './difficulty';
 import { shadowXpForDay } from './shadow';
 import { classFor, initialStats, STATS, tierFor } from './stats';
-import type { AvatarParams, DayResult, GameEvent, GameState, HHMM, ISODate, Metric, Profile, Quest, Stat } from './types';
+import type { AvatarParams, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, Metric, Profile, Quest, Stat } from './types';
 import { currencyFor, levelFromXp } from './xp';
 
 export const DEFAULT_AVATAR: AvatarParams = { hair: 'short', hairColor: '#2b1d14', outfitColor: '#4f46e5', eyes: 'round' };
@@ -31,6 +31,21 @@ function bestSteps7(metrics: Map<ISODate, Partial<Record<Metric, number>>>, toda
   return best;
 }
 
+const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+/** Календарь пакета → локальные HH:MM; без «весь день» (≥20 ч) и без событий другой локальной даты. Вход — граница доверия. */
+function calendarOf(raw: unknown, date: ISODate): GameState['today']['calendar'] {
+  if (!Array.isArray(raw)) return [];
+  const out: GameState['today']['calendar'] = [];
+  for (const c of raw) {
+    const s = new Date(c?.start), e = new Date(c?.end);
+    if (isNaN(+s) || isNaN(+e) || +e <= +s || +e - +s >= 20 * 3600e3) continue;
+    if (gameDate(+s, 0) !== date) continue;
+    out.push({ title: String(c.title ?? ''), start: hhmm(s), end: hhmm(e) });
+  }
+  return out;
+}
+
 export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameState {
   const today = gameDate(now, cutoffHour);
   let profile: Profile | null = null;
@@ -40,6 +55,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   const questById = new Map<string, DoneQuest>();
   const metrics = new Map<ISODate, Partial<Record<Metric, number>>>();
   let started: { work: { start: HHMM; end: HHMM } | null; wakeAt: HHMM } | null = null;
+  let lastHealth: GameState['lastHealth'] = null, calendar: GameState['today']['calendar'] = [];
   let busyUntil: HHMM | null = null, checkedIn = false, lastEnergy: number | null = null;
 
   for (const e of normalize(events)) {
@@ -71,6 +87,19 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
         metrics.set(e.date, m);
         break;
       }
+      case 'health_packet': {
+        const h = (e.health ?? {}) as HealthData;
+        const m = metrics.get(e.date) ?? {};
+        const ok = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+        if (ok(h.steps)) m.steps = Math.max(m.steps ?? -Infinity, h.steps);
+        if (ok(h.workoutMin)) m.workoutMin = Math.max(m.workoutMin ?? -Infinity, h.workoutMin);
+        if (ok(h.sleepHours)) m.sleepHours = h.sleepHours;
+        if (ok(h.weightKg)) m.weightKg = h.weightKg;
+        metrics.set(e.date, m);
+        lastHealth = { ts: e.ts, date: e.date, health: h };
+        if (e.date === today) calendar = calendarOf(e.calendar, today);
+        break;
+      }
       case 'day_started': if (e.date === today && !started) started = { work: e.work, wakeAt: e.wakeAt }; break;
       case 'busy_until': if (e.date === today) busyUntil = e.until; break;
       case 'checkin':
@@ -79,6 +108,12 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
         break;
       // неизвестные типы игнорируются (совместимость вперёд)
     }
+  }
+
+  // автозачёт по метрикам — в том числе за прошлые дни (пакет мог прийти позже)
+  for (const q of questById.values()) {
+    const v = q.auto ? metrics.get(q.date)?.[q.auto.metric] : undefined;
+    if (q.auto && v !== undefined && (q.auto.op === '>=' ? v >= q.auto.value : v <= q.auto.value)) q.done = true;
   }
 
   let totalXp = 0, currency = 0;
@@ -126,8 +161,9 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
       date: today, started: !!started, work: started?.work ?? null, wakeAt: started?.wakeAt ?? null,
       quests: todayQuests, xp: sum(todayQuests.filter(q => q.done)),
       shadowXp: shadowOf(todayQuests),
-      metrics: metrics.get(today) ?? {}, checkedIn, lastEnergy, busyUntil,
+      metrics: metrics.get(today) ?? {}, checkedIn, lastEnergy, busyUntil, calendar,
     },
+    lastHealth,
     history,
     genInputs: {
       bestSteps7: bestSteps7(metrics, today),
