@@ -91,6 +91,7 @@ export default function MyDay({ state, profile, onLater }: { state: GameState; p
             </button>
           )}
         </div>
+        <p role="status" className="muted">{busy ? 'Подбираю задания… это может занять до 30 секунд' : ''}</p>
         {err && <p className="err" role="alert">{err}</p>}
         <button className="btn ghost" disabled={busy} onClick={onLater}>Позже</button>
       </div>

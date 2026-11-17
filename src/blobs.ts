@@ -53,7 +53,7 @@ export function useBlobUrl(name: string | null): string | null {
     let dead = false
     let u: string | null = null
     setSrc(null)
-    if (name) void getBlob(name).then(b => { if (b && !dead) setSrc(u = URL.createObjectURL(b)) })
+    if (name) void getBlob(name).then(b => { if (b && !dead) setSrc(u = URL.createObjectURL(b)) }).catch(() => {})
     return () => { dead = true; if (u) URL.revokeObjectURL(u) }
   }, [name])
   return src
