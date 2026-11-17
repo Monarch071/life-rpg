@@ -541,3 +541,9 @@ test('quests_issued: не массив и мусорные записи не л�
   const s = replay([ev({ type: 'quests_issued', date: '2026-11-17', quests: [null, 5, { id: 'x' }, q('ok', '2026-11-17', 10)] })], NOW);
   expect(s.today.quests.map(x => x.id)).toEqual(['ok']);
 });
+
+test('onboarding_completed без анкеты из сети игнорируется, replay не падает', () => {
+  const evs = [{ id: 'x', ts: 1, deviceId: 'd', type: 'onboarding_completed', profile: null } as any]
+  expect(() => replay(evs, Date.parse('2026-11-17T12:00:00'))).not.toThrow()
+  expect(replay(evs, Date.parse('2026-11-17T12:00:00')).profile).toBeNull()
+})

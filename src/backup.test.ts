@@ -60,14 +60,6 @@ test('плохой cutoffHour → ok:false, данные не тронуты', a
   expect(await db.events.count()).toBe(1)
 })
 
-test('событие, ломающее replay → ok:false, данные не тронуты', async () => {
-  await appendEvent(ev)
-  const bad = { id: 'b', ts: 2, deviceId: 'd', type: 'onboarding_completed', profile: null }
-  const r = await importData(file({ events: [good, bad] }))
-  expect(r).toEqual({ ok: false, error: 'Файл повреждён: не удалось восстановить игру' })
-  expect(await db.events.count()).toBe(1)
-})
-
 test('импортированные deviceId/aiKey игнорируются', async () => {
   await setSetting('aiKey', 'mine')
   await appendEvent(ev)

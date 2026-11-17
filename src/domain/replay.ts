@@ -79,6 +79,7 @@ export function replay(events: GameEvent[], now: number, cutoffHour = 4): GameSt
   for (const e of normalize(events)) {
     switch (e.type) {
       case 'onboarding_completed': {
+        if (!e.profile || typeof e.profile !== 'object' || !e.profile.selfRating || typeof e.profile.selfRating !== 'object') break; // из сети
         profile = e.profile;
         const st = initialStats(e.profile);
         if (initial) for (const k of STAT_KEYS) initial[k] = Math.max(initial[k], st[k]);
