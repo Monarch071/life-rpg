@@ -25,15 +25,17 @@ export default function Settings() {
   useEffect(() => { void getSetting<number>('cutoffHour', 4).then(setCutoff) }, [])
 
   const doExport = async () => {
-    try { await saveBackup(await exportData()); setMsg({ ok: true, text: 'Экспорт готов.' }) }
+    try { const r = await saveBackup(await exportData()); setMsg(r === 'cancelled' ? null : { ok: true, text: 'Экспорт готов.' }) }
     catch { setMsg({ ok: false, text: 'Не удалось выполнить экспорт.' }) }
   }
   const reset = () => { setFile(null); if (input.current) input.current.value = '' }
   const doImport = async () => {
     const f = file; reset()
     if (!f) return
-    const r = await importData(f)
-    setMsg(r.ok ? { ok: true, text: `Импортировано событий: ${r.events}.` } : { ok: false, text: r.error })
+    try {
+      const r = await importData(f)
+      setMsg(r.ok ? { ok: true, text: `Импортировано событий: ${r.events}.` } : { ok: false, text: r.error })
+    } catch { setMsg({ ok: false, text: 'Не удалось импортировать файл' }) }
   }
 
   return (

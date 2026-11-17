@@ -8,14 +8,16 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, { 
   componentDidCatch(e: unknown) { console.error(e) }
 
   backup = async () => {
-    try { await saveBackup(await exportData()); this.setState({ msg: 'Копия сохранена.' }) }
+    try { const r = await saveBackup(await exportData()); this.setState({ msg: r === 'cancelled' ? '' : 'Копия сохранена.' }) }
     catch { this.setState({ msg: 'Не удалось сохранить копию.' }) }
   }
   restore = async (f?: File) => {
     if (!f) return
-    const r = await importData(f)
-    if (r.ok) location.reload()
-    else this.setState({ msg: r.error })
+    try {
+      const r = await importData(f)
+      if (r.ok) location.reload()
+      else this.setState({ msg: r.error })
+    } catch { this.setState({ msg: 'Не удалось импортировать файл' }) }
   }
 
   render() {

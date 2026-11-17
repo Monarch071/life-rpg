@@ -15,8 +15,8 @@ function Swatches({ label, colors, value, onPick }: { label: string; colors: str
     <div className="field">
       <span>{label}</span>
       <div className="chips" role="group" aria-label={label}>
-        {colors.map(c => (
-          <button key={c} type="button" className="icon-btn" aria-label={c} aria-pressed={value === c}
+        {colors.map((c, i) => (
+          <button key={c} type="button" className="icon-btn" aria-label={`Цвет №${i + 1}`} aria-pressed={value === c}
             style={{ background: c, borderColor: value === c ? 'var(--gold)' : 'var(--shadow)', borderWidth: value === c ? 3 : 1 }}
             onClick={() => onPick(c)} />
         ))}
@@ -27,7 +27,7 @@ function Swatches({ label, colors, value, onPick }: { label: string; colors: str
   )
 }
 
-function Editor({ saved }: { saved: AvatarParams }) {
+function Editor({ saved, tier }: { saved: AvatarParams; tier: 1 | 2 | 3 | 4 }) {
   const [p, setP] = useState(saved)
   const [msg, setMsg] = useState('')
   const set = (patch: Partial<AvatarParams>) => { setP({ ...p, ...patch }); setMsg('') }
@@ -40,15 +40,15 @@ function Editor({ saved }: { saved: AvatarParams }) {
       <h2>Образ</h2>
       <div className="field"><span>Причёска</span>
         <div className="chips">{HAIR_OPTIONS.map(h => (
-          <button key={h} className={`btn${p.hair === h ? ' primary' : ''}`} aria-pressed={p.hair === h} onClick={() => set({ hair: h })}>{HAIR_NAMES[h]}</button>
+          <button key={h} type="button" className={`btn${p.hair === h ? ' primary' : ''}`} aria-pressed={p.hair === h} onClick={() => set({ hair: h })}>{HAIR_NAMES[h]}</button>
         ))}</div></div>
       <div className="field"><span>Глаза</span>
         <div className="chips">{EYE_OPTIONS.map(h => (
-          <button key={h} className={`btn${p.eyes === h ? ' primary' : ''}`} aria-pressed={p.eyes === h} onClick={() => set({ eyes: h })}>{EYE_NAMES[h]}</button>
+          <button key={h} type="button" className={`btn${p.eyes === h ? ' primary' : ''}`} aria-pressed={p.eyes === h} onClick={() => set({ eyes: h })}>{EYE_NAMES[h]}</button>
         ))}</div></div>
       <Swatches label="Цвет волос" colors={HAIR_COLORS} value={p.hairColor} onPick={c => set({ hairColor: c })} />
       <Swatches label="Цвет одежды" colors={OUTFIT_COLORS} value={p.outfitColor} onPick={c => set({ outfitColor: c })} />
-      <div className="center"><Avatar params={p} tier={1} size={140} decorative /></div>
+      <div className="center"><Avatar params={p} tier={tier} size={140} decorative /></div>
       <button className="btn primary big" onClick={save}>Сохранить образ</button>
       {msg && <p aria-live="polite" className="center">{msg}</p>}
     </section>
@@ -88,7 +88,7 @@ export default function Character({ state }: { state: GameState }) {
           ))}</div>
         )}
       </section>
-      <Editor saved={state.avatar} />
+      <Editor saved={state.avatar} tier={state.tier} />
     </div>
   )
 }
