@@ -50,3 +50,11 @@ test('cleanAnswers отбрасывает мусор', () => {
   expect(cleanAnswers({ a: 'x', b: 2, c: ['y'], d: {}, e: NaN, f: [1], g: null })).toEqual({ a: 'x', b: 2, c: ['y'] });
   expect(cleanAnswers([1, 2])).toEqual({}); expect(cleanAnswers(undefined)).toEqual({});
 });
+
+test('пустые ответы → все 1; только телесные ответы поднимают только str/end', () => {
+  expect(Object.values(ruleStats({}))).toEqual([1, 1, 1, 1, 1, 1, 1]);
+  const r = ruleStats({ pushups: 30, pullups: 8, plank: 120, run_km: 5, steps: 8000 });
+  expect(r.str).toBeGreaterThan(1); expect(r.end).toBeGreaterThan(1);
+  expect([r.int, r.dis, r.cha, r.fin, r.spi]).toEqual([1, 1, 1, 1, 1]);
+  expect(ruleStats({ pushups: 40 }).str).toBe(20); // частичные ответы: среднее только по имеющимся
+});

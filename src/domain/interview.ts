@@ -178,7 +178,8 @@ export function validAnalysis(x: unknown): Analysis | null {
 
 /**
  * ruleStats — прозрачный расчёт без ИИ. Каждый компонент нормируется в 0..1 (линейно до «потолка»),
- * пропущенный/нечисловой ответ даёт нейтральные 0.5. Характеристика = 1 + round(19 · Σ вес·компонент), т.е. 1..20.
+ * пропущенный/нечисловой ответ не учитывается: усредняем только по имеющимся компонентам (веса перенормируются),
+ * а если ответов нет вовсе — характеристика 1 (анкета не поднимает то, о чём не спросили). Характеристика = 1 + round(19 · Σ вес·компонент), т.е. 1..20.
  * Честно низкие значения — нормально: потолки выбраны «как у тренированного человека».
  *
  *  Сила         0.4 отжимания (потолок 40) + 0.3 подтягивания (12) + 0.3 планка (180 сек)
@@ -191,18 +192,26 @@ export function validAnalysis(x: unknown): Analysis | null {
  */
 export function ruleStats(a: Answers): Record<Stat, number> {
   const ans: Answers = cleanAnswers(a);
+  type T = number | undefined; // undefined — ответа нет
   const cl = (t: number) => Math.min(1, Math.max(0, t));
   const n = (id: string) => (typeof ans[id] === 'number' ? (ans[id] as number) : undefined);
-  const up = (id: string, cap: number) => { const v = n(id); return v === undefined ? 0.5 : cl(v / cap); };
-  const down = (id: string, cap: number) => { const v = n(id); return v === undefined ? 0.5 : cl(1 - v / cap); };
-  const sc5 = (id: string, inv = false) => { const v = n(id); return v === undefined ? 0.5 : cl(inv ? (5 - v) / 4 : (v - 1) / 4); };
-  const ord = (id: string, opts: string[], inv = false) => {
+  const up = (id: string, cap: number): T => { const v = n(id); return v === undefined ? undefined : cl(v / cap); };
+  const down = (id: string, cap: number): T => { const v = n(id); return v === undefined ? undefined : cl(1 - v / cap); };
+  const sc5 = (id: string, inv = false): T => { const v = n(id); return v === undefined ? undefined : cl(inv ? (5 - v) / 4 : (v - 1) / 4); };
+  const ord = (id: string, opts: string[], inv = false): T => {
     const i = typeof ans[id] === 'string' ? opts.indexOf(ans[id] as string) : -1;
-    return i < 0 ? 0.5 : inv ? 1 - i / (opts.length - 1) : i / (opts.length - 1);
+    return i < 0 ? undefined : inv ? 1 - i / (opts.length - 1) : i / (opts.length - 1);
   };
-  const sleep = () => { const v = n('sleep_hours'); return v === undefined ? 0.5 : cl(1 - Math.abs(v - 8) / 4); };
-  const pair = (pos: string, neg: string) => (sc5(pos) + sc5(neg, true)) / 2;
-  const mix = (...parts: [number, number][]) => 1 + Math.round(19 * cl(parts.reduce((s, [w, t]) => s + w * t, 0)));
+  const sleep = (): T => { const v = n('sleep_hours'); return v === undefined ? undefined : cl(1 - Math.abs(v - 8) / 4); };
+  const pair = (pos: string, neg: string): T => {
+    const p = [sc5(pos), sc5(neg, true)].filter((x): x is number => x !== undefined);
+    return p.length ? p.reduce((x, y) => x + y, 0) / p.length : undefined;
+  };
+  const mix = (...parts: [number, T][]) => {
+    const got = parts.filter((p): p is [number, number] => p[1] !== undefined);
+    const w = got.reduce((s, [wt]) => s + wt, 0);
+    return w ? 1 + Math.round(19 * cl(got.reduce((s, [wt, t]) => s + wt * t, 0) / w)) : 1;
+  };
   return {
     str: mix([0.4, up('pushups', 40)], [0.3, up('pullups', 12)], [0.3, up('plank', 180)]),
     end: mix([0.4, up('run_km', 10)], [0.3, up('steps', 12000)], [0.3, sleep()]),
