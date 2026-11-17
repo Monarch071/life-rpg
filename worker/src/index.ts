@@ -148,7 +148,7 @@ export async function handle(req: Request, store: Store, allowedOrigins: string[
     if (e instanceof HttpError) { status = e.status; body = { ok: false, error: e.message } }
     else { status = 500; body = { ok: false, error: 'Внутренняя ошибка' } }
   }
-  if (mime) return new Response(body as Uint8Array, { status, headers: { ...headers, 'content-type': mime, 'cache-control': 'private, max-age=31536000, immutable' } })
+  if (mime) return new Response(body as Uint8Array, { status, headers: { ...headers, 'content-type': mime, 'cache-control': 'private, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' } })
   return new Response(JSON.stringify(body), { status, headers })
 }
 

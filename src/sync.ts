@@ -79,7 +79,7 @@ async function run(): Promise<SyncResult> {
       more = page.more === true && page.next > since // иначе зациклимся
     }
     await setSetting('lastSyncAt', now())
-    void uploadPendingBlobs()
+    void uploadPendingBlobs().catch(() => {})
     return { ok: true, pushed, pulled }
   })
 }
