@@ -28,4 +28,6 @@ npm test
 
 Магазин, навыки, боссы, достижения, аналитика: [docs/stage-3-game.md](docs/stage-3-game.md)
 
+ИИ: задания, совет, недельный отчёт, аватар по фото: [docs/stage-4-ai.md](docs/stage-4-ai.md)
+
 Команда «Life RPG — синк» (шаги, сон, вес из «Здоровья»): [docs/shortcuts.md](docs/shortcuts.md)
