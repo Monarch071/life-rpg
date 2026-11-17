@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useGame } from './useGame'
 import Onboarding from './screens/Onboarding'
 import Home from './screens/Home'
+import Character from './screens/Character'
+import Settings from './screens/Settings'
 import Avatar, { EYE_OPTIONS, HAIR_OPTIONS } from './ui/Avatar'
 import { DEFAULT_AVATAR } from './domain/replay'
 
@@ -27,11 +29,10 @@ export default function App() {
       <main className="content">
         {tab === 'Главная' ? (
           <Home state={state} profile={state.profile} />
+        ) : tab === 'Персонаж' ? (
+          <Character state={state} />
         ) : (
-          <section className="panel">
-            <h1>{tab}</h1>
-            <p>Скоро здесь будет контент.</p>
-          </section>
+          <Settings />
         )}
       </main>
       <nav className="tabbar">
