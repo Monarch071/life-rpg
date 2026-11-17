@@ -432,3 +432,25 @@ test('босс: брошенный скрыт, XP остаётся', () => {
   const s = replay([boss(['а', 'б']), stage(0), ev({ type: 'boss_abandoned', bossId: 'b1' }), stage(1)], NOW);
   expect(s.bosses).toEqual([]); expect(s.totalXp).toBe(100);
 });
+
+test('монеты за босса и недельное — по навыкам на дату получения, не по сегодняшним', () => {
+  const pre = [...bigDay(2000, '2026-11-01'), unlock('fin1', at('2026-11-02', 9)), unlock('coins', at('2026-11-17', 13))];
+  const evs = [...pre, boss(['а', 'б']), ev({ type: 'boss_stage_done', bossId: 'b1', stage: 0, ts: at('2026-11-16', 9) }),
+    ev({ type: 'boss_stage_done', bossId: 'b1', stage: 1, ts: at('2026-11-16', 10) })];
+  const base = replay(evs.filter(e => !(e as { skillId?: string }).skillId?.startsWith('coins')), NOW);
+  expect(replay(evs, NOW).skills.unlocked).toContain('coins');
+  expect(replay(evs, NOW).currency).toBe(base.currency);
+});
+
+test('weekly_issued: дубли id оплачиваются раз, не-понедельник и мусор игнорируются, XP зажат', () => {
+  const dup = replay([weekly([wq('active_days', 1, null, 5000), wq('active_days', 1, null, 5000)]), issue(W, [q('a', W, 10)]), done(W, 'a')], NOW);
+  expect(dup.weekly.quests.length).toBe(1);
+  expect(dup.totalXp).toBe(1010);
+  const bad = replay([ev({ type: 'weekly_issued', weekStart: '2026-11-17', quests: [wq('active_days', 1)], ts: at(W, 7) })], NOW);
+  expect(bad.weekly.quests).toEqual([]);
+  expect(replay([weekly([wq('bogus', 1), wq('active_days', 1e12)])], NOW).weekly.quests).toEqual([]);
+});
+
+test('босс со stat "constructor" игнорируется', () => {
+  expect(replay([ev({ type: 'boss_created', bossId: 'x', title: 'T', stat: 'constructor', stages: ['а', 'б'] })], NOW).bosses).toEqual([]);
+});
