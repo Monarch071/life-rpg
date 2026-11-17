@@ -12,6 +12,7 @@ import { useBlobUrl } from '../blobs'
 import { Bot, Check, Coins, Flame, Gem, Hourglass, Moon, Zap, X } from 'lucide-react'
 import Arena from '../ui/Arena'
 import { PhotoCta, type Go } from './AvatarAi'
+import { InterviewCta } from './Interview'
 import LevelBadge from '../ui/LevelBadge'
 import XpBar from '../ui/XpBar'
 import { StatIcon } from '../ui/icons'
@@ -27,7 +28,7 @@ type Sheet = null | 'quick' | 'busy' | 'checkin'
 // «Позже» на «Мой день» — до перезапуска приложения (переживает переключение вкладок)
 let deferredDay = false
 
-export default function Home({ state, profile, go }: { state: GameState; profile: Profile; go: Go }) {
+export default function Home({ state, profile, go, interview }: { state: GameState; profile: Profile; go: Go; interview: () => void }) {
   const { today } = state
   const img = useBlobUrl(imageNameFor(state.avatarImages, state.tier))
   const [sheet, setSheet] = useState<Sheet>(null)
@@ -40,6 +41,8 @@ export default function Home({ state, profile, go }: { state: GameState; profile
   useEffect(() => { getSetting('aiFallback', '').then(d => setFallback(d === today.date)).catch(() => {}) }, [today.date, today.started])
   const setLater = (v: boolean) => { deferredDay = v; setLaterState(v) }
   const cutoffHour = useLiveQuery(() => getSetting<number>('cutoffHour', 4)) ?? 4
+  const ivwSeen = useLiveQuery(() => getSetting('seenInterviewPrompt', false)) ?? true // плашка анкеты — один раз
+  const hideIvw = () => void setSetting('seenInterviewPrompt', true).catch(() => {})
   useEffect(() => { pending.current.clear() }, [today.date])
 
   // новое достижение: полученное сегодня и ещё не показанное на этом устройстве
@@ -126,6 +129,7 @@ export default function Home({ state, profile, go }: { state: GameState; profile
 
       <Arena state={state} image={img} />
       {!img && <PhotoCta go={go} />}
+      {!state.character && !ivwSeen && <InterviewCta onStart={() => { hideIvw(); interview() }} onLater={hideIvw} />}
 
       <section className="score" aria-label="Счёт">
         <div className="row" aria-live="polite">

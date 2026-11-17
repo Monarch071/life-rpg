@@ -10,6 +10,7 @@ import { useBlobUrl } from '../blobs'
 import AvatarAi, { PhotoCta, type Go } from './AvatarAi'
 import StatRadar from '../ui/StatRadar'
 import Skills from './Skills'
+import { InterviewCta, Portrait } from './Interview'
 import Achievements from './Achievements'
 import type { AvatarParams, GameState, Stat } from '../domain/types'
 
@@ -68,7 +69,7 @@ function Editor({ saved, tier }: { saved: AvatarParams; tier: 1 | 2 | 3 | 4 }) {
   )
 }
 
-export default function Character({ state, go }: { state: GameState; go: Go }) {
+export default function Character({ state, go, interview }: { state: GameState; go: Go; interview: () => void }) {
   const last7 = state.history.slice(-7)
   const img = useBlobUrl(imageNameFor(state.avatarImages, state.tier))
   const [chart, setChart] = useState(true)
@@ -115,6 +116,7 @@ export default function Character({ state, go }: { state: GameState; go: Go }) {
           )
         })}
       </section>
+      {state.character ? <Portrait c={state.character} onRetake={interview} /> : <InterviewCta onStart={interview} />}
       <Skills state={state} />
       <Achievements state={state} />
       <section className="panel stack" aria-label="История">

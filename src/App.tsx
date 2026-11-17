@@ -10,6 +10,7 @@ import Settings from './screens/Settings'
 import Quests from './screens/Quests'
 import Shop from './screens/Shop'
 import Analytics from './screens/Analytics'
+import Interview from './screens/Interview'
 import Celebration from './ui/Celebration'
 import Avatar, { EYE_OPTIONS, HAIR_OPTIONS } from './ui/Avatar'
 import { DEFAULT_AVATAR } from './domain/replay'
@@ -26,6 +27,8 @@ export default function App() {
   const state = useGame()
   const sync = useSync()
   const [tab, setTab] = useState<Tab>('Главная')
+  const [ivw, setIvw] = useState(false)
+  const openIvw = () => setIvw(true)
   const [login, setLogin] = useState(() => parseLoginHash(location.hash))
   // переход на вкладку и прокрутка к блоку; блок дорисовывается асинхронно — ждём его высоту (до ~1 с)
   const go = (t: 'Герой' | 'Настройки', id: string) => {
@@ -51,10 +54,11 @@ export default function App() {
     <div className="app">
       {joinSheet}
       <Celebration state={state} />
+      {ivw && <Interview state={state} onClose={() => setIvw(false)} />}
       <main className="content">
-        {tab === 'Главная' ? <Home state={state} profile={state.profile} go={go} />
+        {tab === 'Главная' ? <Home state={state} profile={state.profile} go={go} interview={openIvw} />
           : tab === 'Задания' ? <Quests state={state} />
-          : tab === 'Герой' ? <Character state={state} go={go} />
+          : tab === 'Герой' ? <Character state={state} go={go} interview={openIvw} />
           : tab === 'Магазин' ? <Shop state={state} />
           : tab === 'Анализ' ? <Analytics state={state} />
           : <Settings state={state} sync={sync} />}

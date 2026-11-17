@@ -354,3 +354,60 @@ h1 { font-size: 22px; margin: 0 0 8px; }
 .photo-cta small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
 .photo-cta .btn { flex: none; font-size: 14px; }
 .stats .sec { align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+
+/* interview */
+.ivw { position: fixed; inset: 0; z-index: 40; background: radial-gradient(120% 50% at 50% 0%, #24140c 0%, transparent 60%), var(--bg); padding-top: env(safe-area-inset-top); }
+.ivw-top { padding: 10px 16px 8px; border-bottom: 1px solid var(--line); background: var(--bg2); display: flex; flex-direction: column; gap: 8px; }
+.ivw-top .row { display: flex; align-items: center; gap: 8px; }
+.ivw-top b { font: 700 14px Unbounded, sans-serif; color: var(--fire2); }
+.ivw-top small { margin-left: auto; color: var(--muted); font: 700 12px Manrope, sans-serif; white-space: nowrap; }
+.ivw-top .x { box-shadow: none; background: none; border-color: transparent; }
+.sec-ic { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--fire2); background: #ff5b1422; flex: none; }
+.ivw-segs { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; height: 8px; }
+.ivw-segs i { position: relative; border-radius: 3px; background: #2a2a33; overflow: hidden; }
+.ivw-segs i b { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--fire), var(--fire2)); box-shadow: 0 0 6px #ff5b1488; transition: width 0.3s; }
+.ivw-segs i.cur { outline: 1px solid #ff8a3d88; }
+.ivw-step { display: flex; flex-direction: column; gap: 14px; animation: ivw-in 0.32s cubic-bezier(0.2, 1, 0.4, 1) backwards; }
+@keyframes ivw-in { from { opacity: 0; transform: translateX(calc(var(--dir, 1) * 36px)); } }
+.onb-body .ivw-q { margin: 6px 0 4px; font: 700 21px/1.3 Unbounded, sans-serif; color: var(--text); overflow-wrap: anywhere; }
+.ivw .chips.opts button { min-height: 56px; padding: 10px 14px; line-height: 1.3; }
+.ivw .chips.opts .box { flex: none; width: 24px; height: 24px; border-radius: 7px; border: 2px solid var(--line); display: grid; place-items: center; color: #1a0a02; }
+.ivw .chips.opts .on .box { background: var(--fire); border-color: var(--fire); }
+.ivw-scale .scale { flex-wrap: nowrap; }
+.ivw .ivw-scale .scale button { flex: 1; min-width: 0; min-height: 60px; padding: 0; font: 800 22px Unbounded, sans-serif; }
+.ivw-scale .edges { display: flex; justify-content: space-between; gap: 16px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+.ivw-scale .edges span:last-child { text-align: right; }
+.onb label.ivw-num { flex-direction: row; align-items: center; gap: 10px; }
+.onb .ivw-num input { font: 800 28px Unbounded, sans-serif; text-align: center; min-height: 64px; }
+.ivw-num span { font: 700 16px Manrope, sans-serif; color: var(--muted); flex: none; }
+.ivw-text { width: 100%; font: 16px Manrope, sans-serif; padding: 12px; background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 12px; resize: vertical; }
+.ivw-text:focus { outline: none; border-color: var(--fire); box-shadow: 0 0 0 3px #ff5b1433; }
+.ivw-intro { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding-top: 8vh; }
+.onb-body .ivw-intro h2 { font-size: 30px; margin: 0; }
+.ivw-intro small { color: var(--muted); font: 800 12px Unbounded, sans-serif; letter-spacing: 2px; text-transform: uppercase; }
+.ivw-intro .note { font-size: 13px; max-width: 320px; }
+.big-ic { width: 96px; height: 96px; border-radius: 26px; display: grid; place-items: center; margin-bottom: 10px; color: #1a0a02; background: linear-gradient(160deg, var(--fire2), var(--fire)); box-shadow: 0 6px 0 var(--fire-deep), 0 0 40px #ff5b1466; animation: slam 0.6s cubic-bezier(0.2, 1.8, 0.4, 1) backwards; }
+.big-ic.pulse { animation: pulse 1.4s ease-in-out infinite; }
+.ai-tag { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: #9b5cff22; color: var(--shadow2); font: 700 12px Manrope, sans-serif; }
+.ivw .onb-nav .ghost { flex: 0 1 auto; }
+.ivw-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px; border-radius: var(--r); border: 1px solid #ff5b1455; background: linear-gradient(110deg, #2a140a, var(--card) 70%); animation: in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) backwards; }
+.ivw-cta .ic { flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: var(--fire2); background: #ff5b1422; box-shadow: 0 0 14px #ff5b1444; }
+.ivw-cta > div:not(.row) { flex: 1; min-width: 0; }
+.ivw-cta b { display: block; font: 700 14px Unbounded, sans-serif; }
+.ivw-cta small { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; line-height: 1.4; }
+.ivw-cta .row { display: flex; gap: 8px; width: 100%; }
+.ivw-cta .row .btn { flex: 1; }
+.arch { font: 900 22px/1.2 Unbounded, sans-serif; color: var(--fire2); overflow-wrap: anywhere; }
+.portrait p { margin: 0; line-height: 1.5; }
+.trait { display: flex; flex-direction: column; gap: 6px; }
+.trait small { color: var(--muted); font: 700 11px Manrope, sans-serif; letter-spacing: 1px; text-transform: uppercase; }
+.tchip { padding: 6px 10px; border-radius: 999px; font: 700 13px Manrope, sans-serif; border: 1px solid; }
+.tchip.good { color: var(--up); border-color: #3ee07a66; background: #3ee07a14; }
+.tchip.grow { color: var(--shadow2); border-color: #9b5cff66; background: #9b5cff14; }
+.lvlup.reveal { background: radial-gradient(circle at 50% 30%, #ff5b1444, transparent 65%), var(--bg); justify-content: flex-start; overflow-y: auto; padding: calc(32px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); }
+.lvlup.reveal > * { flex: none; }
+.lvlup.reveal .arch { font-size: 28px; color: var(--text); text-shadow: 0 0 24px #ff5b1488; animation: slam 0.7s cubic-bezier(0.2, 1.8, 0.4, 1) 0.2s backwards; }
+.rv-radar { position: relative; width: 100%; max-width: 320px; animation: in 0.5s 0.5s backwards; }
+.lvlup.reveal .sum { color: var(--text); max-width: 420px; line-height: 1.5; }
+.lvlup.reveal .trait { position: relative; width: 100%; max-width: 420px; animation: in 0.5s 0.75s backwards; }
+@media (prefers-reduced-motion: reduce) { .ivw-segs i b { transition: none; } }
