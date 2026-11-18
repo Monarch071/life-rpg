@@ -1,3 +1,4 @@
+import type { ThemeId } from './calendar';
 import type { SkillId } from './skillCatalog';
 export type Stat = 'str'|'end'|'int'|'dis'|'cha'|'fin'|'spi';
 export type HHMM = string;            // '09:30'
@@ -16,11 +17,13 @@ export interface Profile {
 }
 export interface Quest {
   id: string; date: ISODate; title: string; stat: Stat;
-  difficulty: 1|2|3|4|5; minutes: number;
+  difficulty?: 1|2|3|4|5;                      // только легаси
+  minutes: number;
   window: { start: HHMM; end: HHMM } | null;   // null — «в течение дня»
   xp: number;
   auto: { metric: 'steps'|'sleepHours'|'weightKg'|'workoutMin'; op: '>='|'<='; value: number } | null;
   templateId: string;
+  rank?: Rank; skills?: [SkillId] | [SkillId, SkillId]; kind?: QuestKind; why?: string;
 }
 export type Metric = 'steps'|'sleepHours'|'weightKg'|'screenMin'|'spend'|'mood'|'water'|'readPages'|'workoutMin';
 export interface HealthData { steps?: number; sleepHours?: number; workoutMin?: number; activeKcal?: number; restingHR?: number; weightKg?: number }
@@ -32,7 +35,7 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'day_started'; date: ISODate; work: { start: HHMM; end: HHMM } | null; wakeAt: HHMM }
   | { type: 'busy_until'; date: ISODate; until: HHMM }
   | { type: 'quests_issued'; date: ISODate; quests: Quest[] }
-  | { type: 'quest_completed'; date: ISODate; questId: string }
+  | { type: 'quest_completed'; date: ISODate; questId: string; verify?: 'photo'; photo?: string }
   | { type: 'metric_logged'; date: ISODate; metric: Metric; value: number; mode: 'set'|'add' }
   | { type: 'checkin'; date: ISODate; went: string; notWent: string; energy: number }
   | { type: 'health_packet'; date: ISODate; kind: 'morning'|'evening'|'other'; health: HealthData; calendar: { title: string; start: string; end: string }[] }
@@ -49,40 +52,52 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'ai_report'; weekStart: ISODate; text: string }
   | { type: 'avatar_image'; tier: 1|2|3|4; blob: string }
   | { type: 'interview_completed'; answers: Answers; followups: { q: string; a: string }[]; analysis: Analysis | null }
+  | { type: 'season_theme_set'; theme: ThemeId }
 );
 export type WeeklyKind = 'active_days' | 'stat_quests' | 'steps_total' | 'shadow_wins';
 export interface WeeklyQuest { id: string; weekStart: ISODate; kind: WeeklyKind; stat: Stat | null; target: number; title: string; xp: number }
 export interface Boss { id: string; title: string; stat: Stat; stages: string[]; done: number; defeated: boolean; abandoned: boolean }
-export interface WeeklyCtx { weekStart: ISODate; stats: Record<Stat, number>; multipliers: Record<Stat, number>; prevActiveDays: number; prevStatQuests: number; bestSteps7: number | null }
+export interface WeeklyCtx { weekStart: ISODate; stats: Record<Stat, number>; multipliers: Record<Stat, number>; prevActiveDays: number; prevStatQuests: number; bestSteps7: number | null; themeStat: Stat | null }
 export interface AvatarParams { hair: string; hairColor: string; outfitColor: string; eyes: string }
-export interface DayResult { date: ISODate; xp: number; shadowXp: number; completed: number; issued: number; won: boolean }
+export interface DayResult { date: ISODate; xp: number; completed: number; issued: number; counted: boolean; perfect: boolean; rest: boolean; streak: number }
+export interface StatInfo { base: number; into: number; need: number; xp: number; form: number | null; status: 'new' | 'in_form' | 'sagging' | 'abandoned'; norm: number; xp14: number; lastRestore: ISODate | null }
+export interface SkillState { level: number; into: number; need: number; xp: number; start: number; lastDate: ISODate | null }
+export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss';
+  questId?: string; base: number; k: number; bonus: number; penalty: number; mult: number; xp: number; gold: number;
+  skills: [SkillId, number][]; stats: Partial<Record<Stat, number>>; verified: boolean }
+/** legacy — задание без ранга (старый журнал): XP как сохранено, без проверки и бонусов. */
+export type DayQuest = Quest & { rank: Rank; skills: NonNullable<Quest['skills']>; kind: QuestKind; done: boolean; verify: Verify | null; xpFinal: number | null; dropped: boolean; legacy: boolean }
 export interface GameState {
   profile: Profile | null; avatar: AvatarParams;
   avatarImages: Partial<Record<1|2|3|4, string>>;   // имя блоба аватара по тирам
-  totalXp: number; level: number; xpInto: number; xpNeed: number;
-  stats: Record<Stat, number>; statPoints: Record<Stat, number>;
-  currency: number; streak: number; shadowWinStreak: number;
+  totalXp: number; level: number; xpInto: number; xpNeed: number;   // totalXp — сумма строк леджера; уровень от startLevel
+  startLevel: number;
+  start: { source: 'ai' | 'rules' | 'none'; scores: Record<Stat, number>; levelWhy: Partial<Record<Stat, string>> };
+  stats: Record<Stat, number>;          // Основа 1–100
+  statInfo: Record<Stat, StatInfo>;
+  gold: number; streak: number;
   className: string; tier: 1|2|3|4;
   multipliers: Record<Stat, number>;
   today: { date: ISODate; started: boolean; work: {start:HHMM;end:HHMM}|null; wakeAt: HHMM|null;
-           quests: (Quest & { done: boolean })[]; xp: number; shadowXp: number;
+           quests: DayQuest[]; xp: number;
            metrics: Partial<Record<Metric, number>>; checkedIn: boolean; lastEnergy: number|null;
-           busyUntil: HHMM|null; aiNote: string|null; calendar: { title: string; start: HHMM; end: HHMM }[];
-           shadowMetrics: { metric: Metric; you: number|null; target: number; lowerIsBetter: boolean }[] };
+           busyUntil: HHMM|null; aiNote: string|null; calendar: { title: string; start: HHMM; end: HHMM }[] };
   character: { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; focus: string[]; questGuidance: string; date: ISODate; ai: boolean } | null;   // по последней валидной анкете
   interviewAnswers: Answers | null;   // последние ответы анкеты (для промпта заданий)
   lastHealth: { ts: number; date: ISODate; health: HealthData } | null;
-  skills: { unlocked: string[]; points: number };   // points = доступно сейчас
+  skills: Record<SkillId, SkillState>;
   rewards: { id: string; title: string; price: number }[];   // не удалённые, в порядке создания
   purchases: { rewardId: string; title: string; price: number; ts: number }[];
   weekly: { weekStart: ISODate; quests: (WeeklyQuest & { progress: number; done: boolean })[] };   // неделя сегодняшней игровой даты; без выдачи — []
   bosses: Boss[];         // кроме брошенных
   reports: { weekStart: ISODate; text: string }[];   // недельные отчёты ИИ, по убыванию недели
   genWeekly: WeeklyCtx;   // контекст для generateWeeklyQuests текущей недели
+  season: { id: string; kind: 'prologue' | 'winter' | 'spring' | 'summer' | 'autumn'; name: string; start: ISODate; end: ISODate; theme: ThemeId | null; xp: number; step: number };
+  ledger: LedgerEntry[];  // начисления XP/золота, по дате
   history: DayResult[];   // финализированные дни, по возрастанию
   achievements: { id: string; date: ISODate }[];   // в порядке получения
   title: string;          // titleReward последнего достижения с титулом, иначе 'Новичок'
-  statHistory: { date: ISODate; stats: Record<Stat, number> }[];   // на конец каждого финализированного дня
+  statHistory: { date: ISODate; stats: Record<Stat, number> }[];   // Основа на конец каждого финализированного дня
   metricHistory: { date: ISODate; metrics: Partial<Record<Metric, number>> }[];   // даты ≤ сегодня с метриками, по возрастанию
   genInputs: { bestSteps7: number|null; lastSleepHours: number|null; recentTemplateIds: string[] };
     // для generateDailyQuests: лучший 7‑дневный средний по шагам (из metric_logged steps), сон за последний день с данными, templateId заданий за 2 прошлых дня

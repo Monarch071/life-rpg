@@ -86,7 +86,7 @@ export default function Character({ state, go, interview }: { state: GameState; 
           <div>
             <div className="rank">{state.className}</div>
             <span className="ttl"><Crown size={14} aria-hidden="true" />{state.title}</span>
-            <small className="muted">Очки навыков: {state.skills.points} · Тир {state.tier}</small>
+            <small className="muted">Тир {state.tier}</small>
           </div>
         </div>
       </section>
@@ -102,7 +102,7 @@ export default function Character({ state, go, interview }: { state: GameState; 
           <StatRadar stats={state.stats} prev={radarPrev} />
           {radarPrev && <p className="muted center radar-key"><i /> неделю назад</p>}
         </> : (Object.keys(STATS) as Stat[]).map(s => {
-          const pts = state.statPoints[s] % 10
+          const si = state.statInfo[s]
           const m = state.multipliers[s]
           const d = prev ? state.stats[s] - prev[s] : 0
           return (
@@ -113,8 +113,8 @@ export default function Character({ state, go, interview }: { state: GameState; 
                 <span className="d">{d > 0 ? `▲${d}` : ''}</span>
                 <b className="v">{state.stats[s]}</b>
               </div>
-              <div className="bar" style={{ '--c': `var(--${s})` } as React.CSSProperties} role="progressbar" aria-label={`${STATS[s].name}: ${pts} из 10 до +1`} aria-valuemin={0} aria-valuemax={10} aria-valuenow={pts}><i style={{ width: `${pts * 10}%` }} /></div>
-              <small className="muted">{pts}/10 до +1 · ×{m.toFixed(2)}{m > 1 ? ' · сложность растёт' : m < 1 ? ' · облегчено' : ''}</small>
+              <div className="bar" style={{ '--c': `var(--${s})` } as React.CSSProperties} role="progressbar" aria-label={`${STATS[s].name}: ${si.into} из ${si.need} XP до +1`} aria-valuemin={0} aria-valuemax={si.need} aria-valuenow={si.into}><i style={{ width: `${si.need ? (si.into / si.need) * 100 : 100}%` }} /></div>
+              <small className="muted">{si.into}/{si.need} XP до +1 · всего {si.xp} XP · ×{m.toFixed(2)}{m > 1 ? ' · сложность растёт' : m < 1 ? ' · облегчено' : ''}</small>
             </div>
           )
         })}
@@ -126,7 +126,7 @@ export default function Character({ state, go, interview }: { state: GameState; 
         <h2>Последние дни</h2>
         {last7.length === 0 ? <p className="muted">Пока нет завершённых дней.</p> : (
           <div className="chips">{last7.map(d => (
-            <span key={d.date} className="pill" style={d.won ? undefined : { background: 'var(--shadow)' }}>{dm(d.date)} · {d.won ? 'Победа' : 'Тень'}</span>
+            <span key={d.date} className="pill" style={d.counted ? undefined : { background: 'var(--shadow)' }}>{dm(d.date)} · {d.counted ? 'Засчитан' : 'Пропуск'}</span>
           ))}</div>
         )}
       </section>

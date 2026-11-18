@@ -1,7 +1,7 @@
 import type { ISODate } from './types';
 import { levelFromXp } from './xp';
 
-export interface AchievementCounters { questsDone: number; streak: number; shadowWinStreak: number; shadowWins: number; level: number;
+export interface AchievementCounters { questsDone: number; streak: number; level: number;
   maxStepsDay: number; perfectDays: number; checkins: number; purchases: number; skills: number; weeklyDone: number; bossesDefeated: number }
 export interface AchievementDef { id: string; icon: string; title: string; desc: string; titleReward: string | null; test: (c: AchievementCounters) => boolean }
 
@@ -18,9 +18,6 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   a('streak_7', '🔥', 'Неделя огня', 'Серия 7 дней', 'Упорный', c => c.streak >= 7),
   a('streak_30', '🌋', 'Месяц огня', 'Серия 30 дней', 'Несгибаемый', c => c.streak >= 30),
   a('streak_100', '☄️', 'Сотня дней', 'Серия 100 дней', 'Легенда', c => c.streak >= 100),
-  a('shadow_win', '🗡️', 'Тень повержена', 'Победи Тень за день', 'Охотник на Тень', c => c.shadowWins >= 1),
-  a('shadow_streak_3', '⚔️', 'Тень отступает', 'Победи Тень 3 дня подряд', null, c => c.shadowWinStreak >= 3),
-  a('shadow_streak_7', '👑', 'Тень сломлена', 'Победи Тень 7 дней подряд', 'Повелитель Тени', c => c.shadowWinStreak >= 7),
   a('level_5', '⭐', 'Уровень 5', 'Достигни 5 уровня', null, c => c.level >= 5),
   a('level_10', '🌟', 'Уровень 10', 'Достигни 10 уровня', 'Опытный', c => c.level >= 10),
   a('level_15', '💫', 'Уровень 15', 'Достигни 15 уровня', null, c => c.level >= 15),
@@ -29,26 +26,26 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   a('perfect_day', '✅', 'Идеальный день', 'Выполни все задания дня (от 3 заданий)', null, c => c.perfectDays >= 1),
   a('checkin_7', '🧭', 'Внимание к себе', '7 чек-инов', null, c => c.checkins >= 7),
   a('first_purchase', '🎁', 'Заслуженная награда', 'Купи первую награду', null, c => c.purchases >= 1),
-  a('first_skill', '🧠', 'Первый навык', 'Открой навык', null, c => c.skills >= 1),
+  a('first_skill', '🧠', 'Первый навык', 'Подними любой навык до 2 уровня', null, c => c.skills >= 1),
   a('weekly_first', '📅', 'Недельный рубеж', 'Выполни недельное задание', null, c => c.weeklyDone >= 1),
   a('boss_first', '🐉', 'Босс повержен', 'Победи босса', 'Победитель боссов', c => c.bossesDefeated >= 1),
 ];
 
-/** Приращения счётчиков по игровой дате. xp — для уровня; steps — максимум; streak/shadowWinStreak — значение на конец дня. */
+/** Приращения счётчиков по игровой дате. xp — для уровня; steps — максимум; streak — значение на конец дня. */
 export type Delta = Partial<Omit<AchievementCounters, 'level' | 'maxStepsDay'>> & { xp?: number; steps?: number };
-const ADDITIVE = ['questsDone', 'shadowWins', 'perfectDays', 'checkins', 'purchases', 'skills', 'weeklyDone', 'bossesDefeated'] as const;
+const ADDITIVE = ['questsDone', 'perfectDays', 'checkins', 'purchases', 'skills', 'weeklyDone', 'bossesDefeated'] as const;
 
 /** Один проход по датам с событиями (по возрастанию, ≤ today): достижение получено в первую дату, где условие верно. */
-export function earnAchievements(days: Map<ISODate, Delta>, today: ISODate): { id: string; date: ISODate }[] {
-  const c: AchievementCounters = { questsDone: 0, streak: 0, shadowWinStreak: 0, shadowWins: 0, level: 1, maxStepsDay: 0, perfectDays: 0, checkins: 0, purchases: 0, skills: 0, weeklyDone: 0, bossesDefeated: 0 };
+export function earnAchievements(days: Map<ISODate, Delta>, today: ISODate, startLevel = 1): { id: string; date: ISODate }[] {
+  const c: AchievementCounters = { questsDone: 0, streak: 0, level: startLevel, maxStepsDay: 0, perfectDays: 0, checkins: 0, purchases: 0, skills: 0, weeklyDone: 0, bossesDefeated: 0 };
   const got = new Set<string>(), out: { id: string; date: ISODate }[] = [];
   let xp = 0;
   for (const d of [...days.keys()].filter(k => k <= today).sort()) {
     const x = days.get(d)!;
     for (const k of ADDITIVE) c[k] += x[k] ?? 0;
-    xp += x.xp ?? 0; c.level = levelFromXp(xp).level;
+    xp += x.xp ?? 0; c.level = levelFromXp(xp, startLevel).level;
     c.maxStepsDay = Math.max(c.maxStepsDay, x.steps ?? 0);
-    c.streak = x.streak ?? 0; c.shadowWinStreak = x.shadowWinStreak ?? 0;
+    c.streak = x.streak ?? 0;
     for (const def of ACHIEVEMENTS) if (!got.has(def.id) && def.test(c)) { got.add(def.id); out.push({ id: def.id, date: d }); }
   }
   return out;

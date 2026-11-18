@@ -1,3 +1,4 @@
+import { BALANCE } from './balance';
 import { STATS } from './stats';
 import type { Stat, WeeklyCtx, WeeklyQuest } from './types';
 
@@ -7,17 +8,18 @@ const ORDER = Object.keys(STATS) as Stat[];
 /** Самая слабая характеристика; ничья — по порядку STATS. */
 export const weakestStat = (stats: Record<Stat, number>): Stat => ORDER.reduce((a, s) => (stats[s] < stats[a] ? s : a));
 
-/** Ровно 3 недельных задания; без случайности. */
+/** Ровно 3 недельных задания; без случайности. Без данных о шагах третье — по теме сезона (в Прологе — вторая по слабости). */
 export function generateWeeklyQuests(c: WeeklyCtx): WeeklyQuest[] {
-  const mk = (kind: WeeklyQuest['kind'], stat: Stat | null, target: number, title: string): WeeklyQuest =>
-    ({ id: `${c.weekStart}:w:${kind}`, weekStart: c.weekStart, kind, stat, target, title, xp: Math.round(150 * (stat ? c.multipliers[stat] : 1)) });
+  const mk = (kind: WeeklyQuest['kind'], stat: Stat | null, target: number, title: string, id: string = kind): WeeklyQuest =>
+    ({ id: `${c.weekStart}:w:${id}`, weekStart: c.weekStart, kind, stat, target, title, xp: BALANCE.weeklyXp });
   const weak = weakestStat(c.stats);
   const days = Math.min(7, Math.max(3, c.prevActiveDays + 1));
   const n = Math.max(3, Math.round(c.prevStatQuests * 1.1));
   const steps = c.bestSteps7 === null ? null : Math.ceil(c.bestSteps7 * 7 * 1.05 / 1000) * 1000;
+  const other = c.themeStat && c.themeStat !== weak ? c.themeStat : weakestStat({ ...c.stats, [weak]: Infinity });
   return [
     mk('active_days', null, days, `Будь активен ${days} дней из 7`),
     mk('stat_quests', weak, n, `Выполни ${n} заданий: ${STATS[weak].name}`),
-    steps === null ? mk('shadow_wins', null, 3, 'Победи Тень 3 раза') : mk('steps_total', null, steps, `Пройди ${steps} шагов за неделю`),
+    steps === null ? mk('stat_quests', other, 3, `Выполни 3 задания: ${STATS[other].name}`, 'stat_quests_2') : mk('steps_total', null, steps, `Пройди ${steps} шагов за неделю`),
   ];
 }

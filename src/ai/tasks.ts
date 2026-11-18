@@ -42,7 +42,7 @@ export function questContext(state: GameState, profile: Profile, work: Win | nul
     `Цели: ${profile.goals.map(g => `${g.text} (${g.months} мес, ${STATS[g.stat].name})`).join('; ') || 'нет'}`,
     `Характеристики (множитель сложности): ${STAT_KEYS.map(s => statLine(s, state)).join(', ')}`,
     `Самая слабая характеристика: ${STATS[weakestStat(state.stats)].name}`,
-    `История 14 дней (дата: xp/тень/выполнено из выдано): ${state.history.slice(-14).map(h => `${h.date.slice(5)}: ${h.xp}/${h.shadowXp}/${h.completed} из ${h.issued}`).join('; ') || 'нет'}`,
+    `История 14 дней (дата: xp/выполнено из выдано): ${state.history.slice(-14).map(h => `${h.date.slice(5)}: ${h.xp}/${h.completed} из ${h.issued}`).join('; ') || 'нет'}`,
     `Метрики, среднее за 7 дней: ${m7.join(', ') || 'нет данных'}`,
     `Энергия: сейчас ${state.today.lastEnergy ?? 'неизвестно'}/10; утро ${profile.energy.morning}, день ${profile.energy.day}, вечер ${profile.energy.evening} из 5`,
     `Сон: ${state.genInputs.lastSleepHours ?? 'неизвестно'} ч`,
@@ -67,7 +67,7 @@ export function validateAiQuests(raw: unknown, ctx: { date: ISODate; multipliers
     const key = title.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    const difficulty = r.difficulty as Quest['difficulty'], stat = r.stat as Stat
+    const difficulty = r.difficulty as NonNullable<Quest['difficulty']>, stat = r.stat as Stat
     ok.push({ id: `${ctx.date}:ai:${ok.length}`, date: ctx.date, title, stat, difficulty, minutes: allDay ? 0 : r.minutes,
       xp: questXp(difficulty, ctx.multipliers[stat]), auto: null, templateId: 'ai' })
   }
@@ -97,7 +97,7 @@ const TUNING_SCHEMA = { type: 'object', required: ['factors', 'note'],
 export async function aiTuning(cfg: AiConfig, state: GameState, checkin: { went: string; notWent: string; energy: number }): Promise<{ factors: Partial<Record<Stat, number>>; note: string }> {
   const d = state.history.at(-1)
   const user = [`Герой: ${state.profile?.name ?? ''}`, `Характеристики: ${STAT_KEYS.map(s => statLine(s, state)).join(', ')}`,
-    `Сегодня: выполнено ${state.today.quests.filter(q => q.done).length} из ${state.today.quests.length}, ${state.today.xp} XP против Тени ${state.today.shadowXp}`,
+    `Сегодня: выполнено ${state.today.quests.filter(q => q.done).length} из ${state.today.quests.length}, ${state.today.xp} XP, серия ${state.streak} дн.`,
     d ? `Вчера: ${d.completed} из ${d.issued}` : '',
     `Чек-ин: получилось — ${checkin.went || '—'}; не получилось — ${checkin.notWent || '—'}; энергия ${checkin.energy}/10`].filter(Boolean).join('\n')
   const raw = await generateJson(cfg, TUNING_SYSTEM, user, TUNING_SCHEMA) as any
@@ -115,7 +115,7 @@ export async function aiWeeklyReport(cfg: AiConfig, state: GameState): Promise<s
   const from = addDays(state.today.date, -14)
   const user = [`Герой: ${state.profile?.name ?? ''}, уровень ${state.level}`,
     `Характеристики: ${STAT_KEYS.map(s => statLine(s, state)).join(', ')}`,
-    `Дни (дата: xp/тень/выполнено из выдано/победа): ${state.history.filter(h => h.date >= from).map(h => `${h.date}: ${h.xp}/${h.shadowXp}/${h.completed} из ${h.issued}/${h.won ? 'да' : 'нет'}`).join('; ') || 'нет'}`,
+    `Дни (дата: xp/выполнено из выдано/засчитан): ${state.history.filter(h => h.date >= from).map(h => `${h.date}: ${h.xp}/${h.completed} из ${h.issued}/${h.counted ? 'да' : 'нет'}`).join('; ') || 'нет'}`,
     `Метрики: ${state.metricHistory.filter(h => h.date >= from).map(h => `${h.date} ${JSON.stringify(h.metrics)}`).join('; ') || 'нет'}`,
   ].join('\n')
   const raw = await generateJson(cfg, REPORT_SYSTEM, user, REPORT_SCHEMA) as any

@@ -41,6 +41,7 @@ export const BALANCE = {
   achievementGold: 25, weeklyXp: 150,
   dayTypes: DEFAULT_DAY_TYPES,
   legacyRank: { 1: 'E', 2: 'E', 3: 'D', 4: 'C', 5: 'B' },
+  legacy:  { questXpMax: 10_000, weeklyXpMax: 1000, bossStageXp: 100, bossDefeatXp: 200 },   // старый журнал: XP как сохранено, в пределах
 } as const;
 
 export const RANKS: readonly Rank[] = ['E', 'D', 'C', 'B', 'A', 'S'];

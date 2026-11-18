@@ -26,15 +26,15 @@ export default function Shop({ state }: { state: GameState }) {
     <div className="home stack">
       <section className="panel stack" aria-label="Магазин">
         <h1>Магазин</h1>
-        <div className="balance" aria-label={`Монеты: ${state.currency}`}><span className="coin big" aria-hidden="true"><Coins size={22} /></span><b>{state.currency}</b></div>
-        {state.rewards.length === 0 && <p className="muted">Придумай награды за свои монеты — например, «1 час игр — 150».</p>}
+        <div className="balance" aria-label={`Золото: ${state.gold}`}><span className="coin big" aria-hidden="true"><Coins size={22} /></span><b>{state.gold}</b></div>
+        {state.rewards.length === 0 && <p className="muted">Придумай награды за своё золото — например, «1 час игр — 150».</p>}
         {state.rewards.map(r => (
           <div key={r.id} className="card">
             <div className="row qhead"><b className="grow">{r.title}</b><span className="price"><Coins size={13} aria-hidden="true" />{r.price}</span></div>
             <div className="row">
-              <button className="btn primary" style={{ flex: 1 }} disabled={w.busy || state.currency < r.price}
+              <button className="btn primary" style={{ flex: 1 }} disabled={w.busy || state.gold < r.price}
                 onClick={() => setAsk({ kind: 'buy', id: r.id, title: r.title, price: r.price })}>
-                Купить{state.currency < r.price && <small>Не хватает {r.price - state.currency}</small>}</button>
+                Купить{state.gold < r.price && <small>Не хватает {r.price - state.gold}</small>}</button>
               <button className="btn ghost" disabled={w.busy} aria-label={`Удалить «${r.title}»`} onClick={() => setAsk({ kind: 'del', id: r.id, title: r.title, price: r.price })}><Trash2 size={16} aria-hidden="true" />Удалить</button>
             </div>
           </div>
@@ -44,7 +44,7 @@ export default function Shop({ state }: { state: GameState }) {
       <section className="panel stack" aria-label="Новая награда">
         <h2>Новая награда</h2>
         <label className="field">Название<input value={title} maxLength={60} onChange={e => { setTitle(e.target.value); wf.setMsg(null) }} /></label>
-        <label className="field">Цена (монеты)<input type="number" inputMode="numeric" min={1} max={100000} value={price} onChange={e => { setPrice(e.target.value); wf.setMsg(null) }} /></label>
+        <label className="field">Цена (золото)<input type="number" inputMode="numeric" min={1} max={100000} value={price} onChange={e => { setPrice(e.target.value); wf.setMsg(null) }} /></label>
         <button className="btn primary big" disabled={wf.busy} onClick={create}>Добавить</button>
         {wf.msg && <p role={wf.msg.ok ? 'status' : 'alert'} className={wf.msg.ok ? 'ok' : 'err'}>{wf.msg.text}</p>}
       </section>

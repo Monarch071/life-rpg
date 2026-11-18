@@ -16,7 +16,7 @@ const ctx = (o: Partial<GenCtx> = {}): GenCtx => ({
   date: '2026-11-17', profile, stats: stats(), multipliers: mult, wakeAt: '08:00', work: null, busy: [],
   yesterday: null, lastEnergy: null, lastSleepHours: null, bestSteps7: null, recentTemplateIds: [], ...o,
 });
-const yd = (completed: number, issued: number) => ({ date: '2026-11-16', xp: 0, shadowXp: 0, completed, issued, won: false });
+const yd = (completed: number, issued: number) => ({ date: '2026-11-16', xp: 0, completed, issued, counted: completed > 0, perfect: completed === issued, rest: false, streak: 0 });
 
 describe('банк', () => {
   test('≥6 на характеристику, привычки покрыты', () => {
@@ -45,7 +45,7 @@ describe('generateDailyQuests', () => {
     expect(generateDailyQuests(ctx({ yesterday: yd(5, 5), lastEnergy: 8 })).length).toBe(6);
     const low = generateDailyQuests(ctx({ yesterday: yd(2, 4), lastEnergy: 3 }));
     expect(low.length).toBe(3);
-    expect(low.every(x => x.difficulty < 4)).toBe(true);
+    expect(low.every(x => x.difficulty! < 4)).toBe(true);
   });
   test('слабая характеристика и шаги', () => {
     const q = generateDailyQuests(ctx({ stats: stats({ fin: 2 }), bestSteps7: 7000 }));

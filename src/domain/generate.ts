@@ -25,7 +25,7 @@ export function generateDailyQuests(ctx: GenCtx): Quest[] {
 
   const build = (t: QuestTemplate, n: number): Omit<Quest, 'window'> => {
     const tired = ctx.lastSleepHours !== null && ctx.lastSleepHours < 6 && t.physical;
-    const difficulty = (tired ? Math.min(t.difficulty, 2) : t.difficulty) as Quest['difficulty'];
+    const difficulty = (tired ? Math.min(t.difficulty, 2) : t.difficulty) as NonNullable<Quest['difficulty']>;
     return {
       id: `${date}:${t.id}`, date, title: t.title(n), stat: t.stat, difficulty, minutes: t.allDay ? 0 : t.minutes(n),
       xp: questXp(difficulty, multipliers[t.stat]), auto: t.auto?.(n) ?? null, templateId: t.id,

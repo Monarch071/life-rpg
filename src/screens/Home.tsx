@@ -3,7 +3,6 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { appendEvent, getSetting, setSetting } from '../db'
 import { ACHIEVEMENTS } from '../domain/achievements'
 import { fromMin, gameDate, toMin } from '../domain/day'
-import { METRIC_INFO } from '../domain/metricInfo'
 import { STATS } from '../domain/stats'
 import type { GameState, Profile } from '../domain/types'
 import { hhmmNow, now } from '../now'
@@ -118,22 +117,6 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       {!img && <PhotoCta go={go} />}
       {!state.character && !ivwSeen && <InterviewCta onStart={() => { hideIvw(); interview() }} onLater={hideIvw} />}
 
-        {today.shadowMetrics.length > 0 && (
-          <div className="glass mtr" aria-label="Тень по метрикам">
-            {today.shadowMetrics.map(s => {
-              const i = METRIC_INFO[s.metric]
-              const pct = s.you === null || !(s.target > 0) ? 0 : s.lowerIsBetter ? (s.you <= s.target ? 100 : Math.max(0, s.target / s.you * 100)) : Math.min(100, s.you / s.target * 100)
-              const n = (v: number) => (Math.round(v * 10) / 10).toLocaleString('ru-RU')
-              return (
-                <div key={s.metric}>
-                  {i.label}
-                  <b>{s.you === null ? '—' : n(s.you)} / {s.lowerIsBetter ? 'не больше ' : ''}{n(s.target)}</b>
-                  <div className="mini" role="progressbar" aria-label={i.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}><i style={{ width: `${pct}%` }} /></div>
-                </div>
-              )
-            })}
-          </div>
-        )}
       {today.aiNote && <p className="muted center ai-note"><Bot size={14} aria-hidden="true" /> {today.aiNote}</p>}
       {fallback && <p className="muted center" role="status">ИИ недоступен — задания по правилам</p>}
 

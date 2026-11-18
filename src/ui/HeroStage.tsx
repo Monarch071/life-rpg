@@ -11,8 +11,8 @@ export default function HeroStage({ state, profile, image, cta, onCta }: {
   const { today } = state
   const keys = Object.keys(STATS) as Stat[]
   const max = Math.max(20, ...keys.map(k => state.stats[k]))
-  const quote = profile.goals[0]?.text || state.character?.archetype || 'Тень не дремлет. Каждый день — шаг вперёд.'
-  const share = today.xp + today.shadowXp > 0 ? (today.xp / (today.xp + today.shadowXp)) * 100 : 50
+  const quote = profile.goals[0]?.text || state.character?.archetype || 'Каждый день — шаг вперёд.'
+  const share = today.quests.length ? (today.quests.filter(q => q.done).length / today.quests.length) * 100 : 0
   const pct = state.xpNeed > 0 ? Math.min(100, (state.xpInto / state.xpNeed) * 100) : 0
 
   return (
@@ -34,7 +34,7 @@ export default function HeroStage({ state, profile, image, cta, onCta }: {
             <small className="n"><em>{state.xpInto}</em> / {state.xpNeed} XP</small>
           </div>
         </div>
-        <span className="glass coins-pill" aria-label={`Монеты: ${state.currency}`}><Coins size={16} aria-hidden="true" />{state.currency}</span>
+        <span className="glass coins-pill" aria-label={`Золото: ${state.gold}`}><Coins size={16} aria-hidden="true" />{state.gold}</span>
       </div>
 
       <div className="glass quote-card">
@@ -55,9 +55,8 @@ export default function HeroStage({ state, profile, image, cta, onCta }: {
 
       <div className="glass versus-card">
         <div className="vs-row" aria-live="polite">
-          <span>Ты <b>{today.xp}</b></span>
-          <small>сегодня · серия {state.streak} дн.</small>
-          <span className="sh"><b>{today.shadowXp}</b> Тень</span>
+          <span>Сегодня <b>{today.xp}</b> XP</span>
+          <span>серия <b>{state.streak}</b> дн.</span>
         </div>
         <div className="rope" aria-hidden="true" style={{ '--p': `${share}%` } as React.CSSProperties} />
         {cta && <button className="btn primary big" onClick={onCta}><Swords size={18} aria-hidden="true" />{cta}</button>}

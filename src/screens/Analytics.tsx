@@ -44,7 +44,7 @@ export default function Analytics({ state }: { state: GameState }) {
   const issued = hist.reduce((s, h) => s + h.issued, 0)
   const cards: [string, string][] = [
     ['Выполнено заданий', `${issued ? Math.round(hist.reduce((s, h) => s + h.completed, 0) / issued * 100) : 0}%`],
-    ['Побед над Тенью', String(hist.filter(h => h.won).length)],
+    ['Засчитано дней', String(hist.filter(h => h.counted).length)],
     ['Средний XP в день', (hist.length ? Math.round(hist.reduce((s, h) => s + h.xp, 0) / hist.length) : 0).toLocaleString('ru-RU')],
     ['Серия', String(state.streak)],
   ]
@@ -58,10 +58,9 @@ export default function Analytics({ state }: { state: GameState }) {
         {cards.map(([k, v]) => <div key={k} className="panel card"><b>{v}</b><small className="muted">{k}</small></div>)}
       </div>
       {hist.length === 0 && sh.length === 0 && metricCharts.length === 0 && <p className="muted center">Графики появятся после нескольких дней игры</p>}
-      {hist.length > 0 && <div className="panel"><h2>XP: ты и Тень</h2>
-        <LineChart title="XP: ты и Тень" labels={hist.map(h => dm(h.date))} series={[
-          { label: 'Ты', color: 'var(--fire)', values: hist.map(h => h.xp) },
-          { label: 'Тень', color: 'var(--shadow)', values: hist.map(h => h.shadowXp) }]} /></div>}
+      {hist.length > 0 && <div className="panel"><h2>XP по дням</h2>
+        <LineChart title="XP по дням" labels={hist.map(h => dm(h.date))} series={[
+          { label: 'XP', color: 'var(--fire)', values: hist.map(h => h.xp) }]} /></div>}
       {sh.length > 0 && <div className="panel"><h2>Характеристики</h2>
         <div className="chips" role="group" aria-label="Характеристика">
           {(Object.keys(STATS) as Stat[]).map(s => <button key={s} className={`btn${s === sel ? ' primary' : ''}`} aria-pressed={s === sel} onClick={() => setStat(s)}><StatIcon stat={s} size={16} />{STATS[s].name}</button>)}

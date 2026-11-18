@@ -1,19 +1,14 @@
 import { Crown, Sparkles } from 'lucide-react'
 import { ACHIEVEMENTS } from '../domain/achievements'
-import { SKILLS } from '../domain/skills'
-import { STATS } from '../domain/stats'
-import type { GameState, Stat } from '../domain/types'
+import { SKILL_CATALOG } from '../domain/skillCatalog'
+import type { GameState } from '../domain/types'
 
 /** Черты, навыки и прогресс под главным экраном — как на референсе. */
 export default function HeroExtras({ state }: { state: GameState }) {
   const traits = state.character?.strengths.slice(0, 3) ?? []
-  const skills = (Object.keys(STATS) as Stat[])
-    .map(stat => {
-      const all = SKILLS.filter(s => s.stat === stat)
-      const lv = all.filter(s => state.skills.unlocked.includes(s.id)).length
-      return { stat, lv, pct: (lv / all.length) * 100 }
-    })
-    .sort((a, b) => b.lv - a.lv || state.stats[b.stat] - state.stats[a.stat])
+  const skills = SKILL_CATALOG
+    .map(s => { const k = state.skills[s.id]; return { id: s.id, title: s.title, lv: k.level, xp: k.xp, pct: k.need ? (k.into / k.need) * 100 : 100 } })
+    .sort((a, b) => b.lv - a.lv || b.xp - a.xp)   // sort стабилен: ничья — по порядку каталога
     .slice(0, 3)
 
   return (
@@ -29,8 +24,8 @@ export default function HeroExtras({ state }: { state: GameState }) {
           <h3>Навыки</h3>
           <ul className="skl">
             {skills.map(s => (
-              <li key={s.stat}>
-                <div><span>{STATS[s.stat].name}</span><small>Lv. {s.lv}</small></div>
+              <li key={s.id}>
+                <div><span>{s.title}</span><small>Lv. {s.lv}</small></div>
                 <i aria-hidden="true"><b style={{ width: `${Math.max(4, s.pct)}%` }} /></i>
               </li>
             ))}
