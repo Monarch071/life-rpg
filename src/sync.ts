@@ -139,6 +139,9 @@ export async function rotateToken(): Promise<SyncResult> {
 }
 
 export async function disableSync(): Promise<void> {
+  // напоминания шлёт этот сервер: без токена их потом не выключить из приложения
+  const cfg = await getSyncConfig()
+  if (cfg && await getSetting('notifyOn', false)) await import('./push').then(m => m.disablePush(cfg)).catch(() => {})
   const t = await getSetting<string>('syncToken', '')
   if (t) await setSetting('syncTokenPrev', t)
   await db.settings.bulkDelete(['syncToken', 'syncCursor', 'lastSyncAt'])

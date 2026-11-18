@@ -100,7 +100,9 @@ async function route(req: Request, store: Store, vapid?: Vapid): Promise<Out> {
     }
     const sub = await store.getPushSub(b.endpoint)
     if (!sub) throw new HttpError(404, 'Подписка не найдена')
-    const status = await pushTo(store, sub, message('test'), vapid).catch(() => { throw new HttpError(502, 'Push-сервис недоступен') })
+    const status = await pushTo(store, sub, message('test'), vapid).catch((e: unknown) => {
+      throw new HttpError(502, e instanceof TypeError ? 'Push-сервис недоступен' : 'Ошибка ключа VAPID на сервере')
+    })
     return { status: 200, body: { ok: status < 300, status } }
   }
 

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { refreshPush } from './push'
 import { useGame } from './useGame'
 import { useSync } from './useSync'
 import { parseLoginHash } from './sync'
@@ -25,6 +26,7 @@ type Tab = (typeof TABS)[number]['id']
 
 export default function App() {
   const state = useGame()
+  useEffect(() => { void refreshPush().catch(() => {}) }, [])
   const sync = useSync()
   const [tab, setTab] = useState<Tab>('Главная')
   const [ivw, setIvw] = useState(false)

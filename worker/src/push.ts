@@ -35,12 +35,16 @@ export function localNow(tz: string, now: number): { date: string; min: number }
   return { date: `${p.year}-${p.month}-${p.day}`, min: +p.hour * 60 + +p.minute }
 }
 
+const prevDay = (d: string) => new Date(Date.parse(d + 'T00:00:00Z') - 86_400_000).toISOString().slice(0, 10)
+
 export function due(r: PushRow, now: number): { kind: Kind; date: string }[] {
   const { date, min } = localNow(r.tz, now)
   const out: { kind: Kind; date: string }[] = []
   for (const kind of ['morning', 'evening'] as const) {
     const t = r[kind]
-    if (t !== null && min >= t && min < t + WINDOW && r[`last_${kind}`] !== date) out.push({ kind, date })
+    if (t === null || (min - t + 1440) % 1440 >= WINDOW) continue
+    const slot = min >= t ? date : prevDay(date) // окно 23:30 продолжается после полуночи
+    if (r[`last_${kind}`] !== slot) out.push({ kind, date: slot })
   }
   return out
 }
@@ -83,7 +87,8 @@ export async function runCron(store: Store, v: Vapid, now: number, fetcher?: typ
         if (dead(status)) break
         // при временной ошибке (5xx, 429) не отмечаем — повторим через 15 минут в пределах окна
         if (status < 300) { await store.markPushSent(r.endpoint, kind, date); sent++ }
-      } catch { /* сеть — повторим на следующем тике */ }
+        else console.error('push', kind, status)
+      } catch (e) { console.error('push', kind, e) } // сеть или неверный VAPID_PRIVATE — повторим на следующем тике
     }
   }
   return sent

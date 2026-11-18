@@ -1,5 +1,5 @@
 import { getSetting, setSetting } from './db'
-import { call, type SyncConfig } from './sync'
+import { call, getSyncConfig, type SyncConfig } from './sync'
 
 export interface NotifyPrefs { on: boolean; morning: string | null; evening: string | null } // "HH:MM" или null
 
@@ -66,6 +66,14 @@ export async function disablePush(cfg: SyncConfig | null): Promise<void> {
     await sub.unsubscribe()
   }
   await setSetting('notifyOn', false)
+}
+
+/** При запуске: если браузер заменил подписку, тихо переподписаться (разрешение уже есть — запроса не будет). */
+export async function refreshPush(): Promise<void> {
+  if (!pushSupported() || Notification.permission !== 'granted') return
+  const p = await loadPrefs()
+  const cfg = await getSyncConfig()
+  if (p.on && cfg) await enablePush(cfg, p)
 }
 
 export async function testPush(cfg: SyncConfig): Promise<void> {

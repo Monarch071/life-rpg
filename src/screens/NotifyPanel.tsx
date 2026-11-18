@@ -35,8 +35,8 @@ export default function NotifyPanel({ sync }: { sync: SyncState }) {
     finally { setBusy(false); setP(await loadPrefs()) }
   }
 
-  const hint = !pushSupported() ? 'Этот браузер не умеет присылать уведомления.'
-    : iosNotInstalled() ? 'На iPhone уведомления приходят только в приложение с экрана «Домой»: Поделиться → «На экран Домой», потом открой его оттуда.'
+  const hint = iosNotInstalled() ? 'На iPhone уведомления приходят только в приложение с экрана «Домой»: Поделиться → «На экран Домой», потом открой его оттуда.'
+    : !pushSupported() ? 'Этот браузер не умеет присылать уведомления.'
     : cfg === null ? 'Сначала включи синхронизацию выше: напоминания присылает твой сервер.'
     : null
 
@@ -63,6 +63,11 @@ export default function NotifyPanel({ sync }: { sync: SyncState }) {
             </>
           )}
         </>
+      )}
+      {hint && p?.on && (
+        <button className="btn ghost big" disabled={busy} onClick={act(() => disablePush(cfg ?? null), 'Уведомления выключены.')}>
+          <BellOff size={18} aria-hidden="true" />Выключить уведомления
+        </button>
       )}
       {msg && <p role="status" className={msg.ok ? 'ok' : 'err'}>{msg.text}</p>}
     </section>

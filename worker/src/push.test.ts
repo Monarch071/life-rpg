@@ -91,3 +91,13 @@ describe('эндпоинты /push', () => {
     expect((await call('/push/nope')).status).toBe(404)
   })
 })
+
+describe('окно около полуночи', () => {
+  it('23:30 продолжается после полуночи и помечается вчерашней датой', () => {
+    const r: PushRow = { ...parseSubscribe(body({ tz: 'UTC', morning: null, evening: 1410 }))!, last_morning: null, last_evening: null }
+    const at0015 = Date.UTC(2026, 10, 19, 0, 15)
+    expect(due(r, at0015)).toEqual([{ kind: 'evening', date: '2026-11-18' }])
+    expect(due({ ...r, last_evening: '2026-11-18' }, at0015)).toEqual([])
+    expect(due(r, Date.UTC(2026, 10, 19, 0, 30))).toEqual([]) // окно 23:30–00:30 закончилось
+  })
+})
