@@ -38,7 +38,6 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
   const [fallback, setFallback] = useState(false)
   useEffect(() => { getSetting('aiFallback', '').then(d => setFallback(d === today.date)).catch(() => {}) }, [today.date, today.started])
   const setLater = (v: boolean) => { deferredDay = v; setLaterState(v) }
-  const cutoffHour = useLiveQuery(() => getSetting<number>('cutoffHour', 4)) ?? 4
   const ivwSeen = useLiveQuery(() => getSetting('seenInterviewPrompt', false)) ?? true // плашка анкеты — один раз
   const hideIvw = () => void setSetting('seenInterviewPrompt', true).catch(() => {})
   useEffect(() => { pending.current.clear() }, [today.date])
@@ -90,7 +89,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
   const complete = async (id: string, xp: number) => {
     if (pending.current.has(id)) return
     // игровые сутки уже сменились: не пишем (иначе «+XP» потом исчезнет), а пересчитываем день
-    if (gameDate(now(), cutoffHour) !== today.date) return void document.dispatchEvent(new Event('visibilitychange'))
+    if (now() >= today.closesAt) return void document.dispatchEvent(new Event('visibilitychange'))
     pending.current.add(id)
     setErr(null)
     try {
@@ -105,7 +104,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
 
   const allDone = today.quests.length > 0 && today.quests.every(q => q.done)
   const hour = new Date(now()).getHours()
-  const checkinOpen = allDone || hour >= 18 || hour < cutoffHour // до cutoffHour игровой день ещё вчерашний
+  const checkinOpen = allDone || hour >= 18 || gameDate(now(), 0) !== today.date // после полуночи игровой день ещё вчерашний
   const remaining = today.quests.filter(q => !q.done).length
 
   return (

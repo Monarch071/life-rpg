@@ -13,6 +13,7 @@ test('легаси-карты покрывают все старые templateId'
   for (const id of ['pushups','steps','read','words','plan','focus','compliments','expenses','save','meditate','no_games','no_custom','ai'])
     expect(isSkillId(LEGACY_SKILL_BY_TEMPLATE[id] ?? DEFAULT_SKILL_BY_STAT.str)).toBe(true);
   expect([1, 2, 3, 4, 5, 0, 'x', undefined].map(legacyRank)).toEqual(['E', 'E', 'D', 'C', 'B', 'E', 'E', 'E']);
+  expect(['constructor', '__proto__', 'toString', 'hasOwnProperty'].map(legacyRank)).toEqual(['E', 'E', 'E', 'E']);
 });
 test('параметр по рангу', () => {
   const steps = QUEST_TEMPLATES.find(t => t.id === 'steps')!;

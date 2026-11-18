@@ -39,6 +39,7 @@ export const BALANCE = {
   calibration: { up: 0.85, down: 0.6, upK: 1.1, downK: 0.85, startK: 1.1 },
   shop:    { freezePerMonth: 2 },
   achievementGold: 25, weeklyXp: 150,
+  metricAbsMax: 1e9,   // предел накопительной суммы metric_logged 'add'
   dayTypes: DEFAULT_DAY_TYPES,
   legacyRank: { 1: 'E', 2: 'E', 3: 'D', 4: 'C', 5: 'B' },
   legacy:  { questXpMax: 10_000, weeklyXpMax: 1000, bossStageXp: 100, bossDefeatXp: 200 },   // старый журнал: XP как сохранено, в пределах

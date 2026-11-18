@@ -1,4 +1,6 @@
 import { expect, test } from 'vitest';
+import { addDays } from './day';
+import { closesAtTs, DEFAULT_DAY_TYPES } from './dayType';
 import { baseFromXp, startBase } from './progression';
 import { DEFAULT_AVATAR, normQuest, replay } from './replay';
 import { seededRng } from './rng';
@@ -6,7 +8,7 @@ import { scoreFrom20 } from './startProfile';
 import type { SkillId } from './skillCatalog';
 import type { GameEvent, Profile, Quest, Rank, Stat } from './types';
 
-const at = (date: string, h = 12) => { const [y, m, d] = date.split('-').map(Number); return new Date(y, m - 1, d, h).getTime(); };
+const at = (date: string, h = 12, m = 0) => { const [y, mo, d] = date.split('-').map(Number); return new Date(y, mo - 1, d, h, m).getTime(); };
 const NOW = at('2026-11-17');
 let seq = 0;
 type Draft = Record<string, unknown> & { type: string; ts?: number; id?: string; date?: string };
@@ -31,7 +33,7 @@ test('легаси-журнал 17–19 ноября: XP как есть, ран
     quests: [{ id: '2026-11-16:w:shadow_wins', weekStart: '2026-11-16', kind: 'shadow_wins', stat: null, target: 3, title: 'Победи Тень 3 раза', xp: 150 }] });
   const s = replay([onboard, issue('2026-11-17', [q('a', '2026-11-17', 35, 'str', 3, 'pushups')]), done('2026-11-17', 'a'),
     ev({ type: 'skill_unlocked', skillId: 'str1' }), weeklyLegacyShadow], at('2026-11-19'));
-  expect(s.totalXp).toBe(35); expect(s.gold).toBe(7 + 25 * s.achievements.length);
+  expect(s.totalXp).toBe(35 + 50); expect(s.gold).toBe(7 + 10 + 25 * s.achievements.length); // + идеальный день 17-го
   expect(s.skills.strength.xp).toBe(35); expect(s.statInfo.str.xp).toBe(35);
   expect(s.history[0]).toMatchObject({ date: '2026-11-17', xp: 35, completed: 1, issued: 1 });
   expect(s.season).toMatchObject({ kind: 'prologue', xp: 0 });
@@ -42,7 +44,7 @@ test('легаси-журнал 17–19 ноября: XP как есть, ран
 
 test('новое задание C, честное слово, Пролог → 49 XP, 10 золота, в сезон 0', () => {
   const s = replay([onboard, issue('2026-11-20', [nq('b', '2026-11-20', 'C', ['strength'])]), done('2026-11-20', 'b')], at('2026-11-21'));
-  expect(s.ledger.at(-1)).toMatchObject({ base: 70, k: 0.7, xp: 49, gold: 10 });
+  expect(s.ledger.find(r => r.source === 'quest')).toMatchObject({ base: 70, k: 0.7, xp: 49, gold: 10 });
   expect(s.season.xp).toBe(0); expect(s.level).toBe(s.startLevel);
 });
 
@@ -66,12 +68,12 @@ test('season_theme_set меняет тему с даты события до к�
 
 test('слабейшая +25%: D Кардио → 35', () => {
   const s = replay([onboard, issue('2026-11-20', [nq('d', '2026-11-20', 'D', ['cardio'])]), done('2026-11-20', 'd')], at('2026-11-21'));
-  expect(s.ledger.at(-1)).toMatchObject({ base: 40, bonus: 0.25, xp: 35, gold: 7 });
+  expect(s.ledger.find(r => r.source === 'quest')).toMatchObject({ base: 40, bonus: 0.25, xp: 35, gold: 7 });
 });
 
 test('два тега 60/40 → навыки и характеристики', () => {
   const s = replay([onboard, issue('2026-11-20', [nq('b', '2026-11-20', 'B', ['strength', 'cardio'])]), done('2026-11-20', 'b')], at('2026-11-21'));
-  expect(s.ledger.at(-1)).toMatchObject({ xp: 84, skills: [['strength', 50], ['cardio', 34]], stats: { str: 50, end: 34 } });
+  expect(s.ledger.find(r => r.source === 'quest')).toMatchObject({ xp: 84, skills: [['strength', 50], ['cardio', 34]], stats: { str: 50, end: 34 } });
   expect(s.skills.strength.xp).toBe(50); expect(s.skills.cardio.xp).toBe(34);
   expect(s.statInfo.str.xp).toBe(50); expect(s.statInfo.end.xp).toBe(34);
   expect(s.today.quests).toEqual([]);
@@ -85,7 +87,7 @@ test('Основа растёт от XP характеристики, старт
   expect(start).toBe(63);
   expect(s.stats.str).toBe(baseFromXp(start, s.statInfo.str.xp).value);
   expect(s.stats.str).toBe(64);
-  expect(s.statInfo.str).toMatchObject({ base: 64, into: 400 - 365, need: 50 + 5 * 64, form: null, status: 'new' });
+  expect(s.statInfo.str).toMatchObject({ base: 64, into: 400 - 365, need: 50 + 5 * 64, form: 1, status: 'in_form' }); // закрыт 1 день: 400 XP при норме из плана 280
   expect(s.statHistory).toEqual([{ date: '2026-11-17', stats: s.stats }]);
 });
 
@@ -117,7 +119,7 @@ test('легаси-покупка остаётся валидной после �
     ev({ type: 'reward_created', rewardId: 'r', title: 'Кино', price: 30, ts: at('2026-11-12', 9) }),
     ev({ type: 'reward_purchased', rewardId: 'r', ts: at('2026-11-12', 10) })], NOW);
   expect(s.purchases).toHaveLength(1);
-  expect(s.gold).toBe(60 + 25 * s.achievements.length - 30);
+  expect(s.gold).toBe(60 + 10 + 25 * s.achievements.length - 30); // 10 — золото идеального дня
 });
 
 test('interview из сети: поля анализа проходят validAnalysis', () => {
@@ -207,7 +209,7 @@ test('3 дня без открытия: финализируются один р
   expect(s1).toEqual(s2);
   expect(s1.streak).toBe(0);
   expect(s1.history).toEqual([
-    { date: '2026-11-13', xp: 50, completed: 1, issued: 2, counted: true, perfect: false, rest: false, streak: 1 },
+    { date: '2026-11-13', xp: 50, completed: 1, issued: 2, counted: false, perfect: false, rest: false, streak: 0 }, // 1/2 < 60%
     { date: '2026-11-14', xp: 0, completed: 0, issued: 1, counted: false, perfect: false, rest: false, streak: 0 },
   ]);
 });
@@ -250,14 +252,14 @@ test('выполнение задним числом не засчитывает
   expect(replay([done('2026-11-17', 'zzz')], NOW).totalXp).toBe(0);
 });
 
-test('день без quests_issued рвёт серию', () => {
+test('день без quests_issued — пропуск: серия ×0,5', () => {
   const s = replay([
     issue('2026-11-14', [q('a', '2026-11-14', 100)]), done('2026-11-14', 'a'),
     issue('2026-11-16', [q('b', '2026-11-16', 30)]), done('2026-11-16', 'b'),
     issue('2026-11-17', [q('c', '2026-11-17', 10), q('d', '2026-11-17', 10)]), done('2026-11-17', 'c'),
   ], NOW);
-  expect(s.history.map(h => [h.date, h.streak])).toEqual([['2026-11-14', 1], ['2026-11-16', 1]]);
-  expect(s.streak).toBe(2); // 16-е (1) + сегодня
+  expect(s.history.map(h => [h.date, h.streak])).toEqual([['2026-11-14', 1], ['2026-11-16', 1]]); // 15-е: floor(1·0,5) = 0
+  expect(s.streak).toBe(1); // сегодня 1/2 < 60% — не прибавляется
   expect(s.today.xp).toBe(10);
 });
 
@@ -340,12 +342,14 @@ test('повторная анкета с меньшей самооценкой �
   expect(replay([ev({ type: 'onboarding_completed', profile: { ...low, selfRating: { str: 'x' } } })], NOW).profile).toBeNull();
 });
 
-test('смена часа конца суток не стирает заработанное', () => {
-  const evs = [issue('2026-11-16', [q('a', '2026-11-16', 50)]), done('2026-11-16', 'a', new Date(2026, 10, 17, 2, 30).getTime())];
-  for (const cutoff of [4, 2, 6, 0]) expect(replay(evs, NOW, cutoff).history[0].completed).toBe(1);
+test('окно засчёта не зависит от закрытия дня: 02:30 следующих суток — ещё в окне', () => {
+  for (const dayType of [DEFAULT_DAY_TYPES[0], DEFAULT_DAY_TYPES[1]]) {
+    const evs = [startDay('2026-11-16', { dayType }), issue('2026-11-16', [q('a', '2026-11-16', 50)]), done('2026-11-16', 'a', at('2026-11-17', 2, 30))];
+    expect(replay(evs, NOW).history[0].completed).toBe(1);
+  }
   // на два дня позже — не засчитывается
-  const late = [issue('2026-11-15', [q('b', '2026-11-15', 50)]), done('2026-11-15', 'b', new Date(2026, 10, 17, 2, 30).getTime())];
-  for (const cutoff of [4, 2, 6]) expect(replay(late, NOW, cutoff).totalXp).toBe(0);
+  const late = [issue('2026-11-15', [q('b', '2026-11-15', 50)]), done('2026-11-15', 'b', at('2026-11-17', 2, 30))];
+  expect(replay(late, NOW).totalXp).toBe(0);
 });
 
 // ---- health_packet ----
@@ -458,10 +462,10 @@ test('weekly: active_days и stat_quests, XP +150 ровно один раз', (
     issue(W, [q('a', W, 10)]), done(W, 'a'), issue('2026-11-17', [q('b', '2026-11-17', 10), q('c', '2026-11-17', 10)]), done('2026-11-17', 'b')];
   const s = replay(evs, NOW);
   expect(s.weekly.quests.map(x => [x.kind, x.progress, x.done])).toEqual([['active_days', 2, true], ['stat_quests', 2, true]]);
-  expect(s.totalXp).toBe(20 + 300);
+  expect(s.totalXp).toBe(20 + 300 + 50); // + идеальный день 16-го
   expect(s.ledger.filter(r => r.source === 'weekly').map(r => r.stats)).toEqual([{}, { str: 150 }]);
   const more = replay([...evs, done('2026-11-17', 'c')], NOW);
-  expect(more.totalXp).toBe(30 + 300);
+  expect(more.totalXp).toBe(30 + 300 + 50);
 });
 
 test('weekly: легаси shadow_wins считает засчитанные дни', () => {
@@ -516,7 +520,7 @@ test('босс: брошенный скрыт, XP остаётся', () => {
 test('weekly_issued: дубли id оплачиваются раз, не-понедельник и мусор игнорируются, XP зажат', () => {
   const dup = replay([weekly([wq('active_days', 1, null, 5000), wq('active_days', 1, null, 5000)]), issue(W, [q('a', W, 10)]), done(W, 'a')], NOW);
   expect(dup.weekly.quests.length).toBe(1);
-  expect(dup.totalXp).toBe(1010);
+  expect(dup.totalXp).toBe(1010 + 50);
   const bad = replay([ev({ type: 'weekly_issued', weekStart: '2026-11-17', quests: [wq('active_days', 1)], ts: at(W, 7) })], NOW);
   expect(bad.weekly.quests).toEqual([]);
   expect(replay([weekly([wq('bogus', 1), wq('active_days', 1e12)])], NOW).weekly.quests).toEqual([]);
@@ -708,4 +712,177 @@ test('невалидный analysis → ruleStats; повреждённые answ
 
 test('без анкеты character и interviewAnswers — null', () => {
   const s = replay([], NOW); expect(s.character).toBeNull(); expect(s.interviewAnswers).toBeNull();
+});
+
+// ---- T6: закрытие дня по типу, серия, штрафы, Форма, «День изменился» ----
+const DT = DEFAULT_DAY_TYPES;
+const startDay = (date: string, extra: Record<string, unknown> = {}, h = 8) =>
+  ev({ type: 'day_started', date, work: null, wakeAt: '08:00', dayType: DT[0], ts: at(date, h), ...extra });
+const span = (from: string, n: number) => Array.from({ length: n }, (_, i) => addDays(from, i));
+const doneDays = (from: string, n: number, skill: SkillId, rank: Rank = 'E') =>
+  span(from, n).flatMap(d => [issue(d, [nq(`${skill}${d}`, d, rank, [skill])]), done(d, `${skill}${d}`)]);
+
+test('Дневная смена (отбой 00:00): 00:30 ещё вчера, 01:00 уже сегодня', () => {
+  const evs = [onboard, ev({ type: 'day_started', date: '2026-12-01', work: null, wakeAt: '08:00', dayType: DEFAULT_DAY_TYPES[0], ts: at('2026-12-01', 8) })];
+  expect(replay(evs, at('2026-12-02', 0, 30)).today).toMatchObject({ date: '2026-12-01', closesAt: at('2026-12-02', 1, 0) });
+  expect(replay(evs, at('2026-12-02', 1, 0)).today.date).toBe('2026-12-02');
+});
+
+test('Вечерняя смена (отбой 03:00): 03:59 ещё вчера; день без старта закрывается в 04:00', () => {
+  const evs = [onboard, startDay('2026-12-01', { dayType: DT[1] })];
+  expect(replay(evs, at('2026-12-02', 3, 59)).today).toMatchObject({ date: '2026-12-01', closesAt: at('2026-12-02', 4, 0), dayType: DT[1], started: true });
+  expect(replay(evs, at('2026-12-02', 4, 0)).today.date).toBe('2026-12-02');
+  expect(replay(evs, at('2026-12-03', 3, 59)).today).toMatchObject({ date: '2026-12-02', closesAt: at('2026-12-03', 4, 0), dayType: null, started: false });
+  expect(replay(evs, at('2026-12-03', 4, 0)).today.date).toBe('2026-12-03');
+});
+
+test('день без старта и старый day_started без dayType → синтез типа и закрытие 04:00', () => {
+  expect(replay([], at('2026-12-02', 3, 59)).today).toMatchObject({ date: '2026-12-01', closesAt: closesAtTs('2026-12-01', 240) });
+  const old = ev({ type: 'day_started', date: '2026-12-01', work: { start: '09:00', end: '18:00' }, wakeAt: '07:00', ts: at('2026-12-01', 7) });
+  const s = replay([old], at('2026-12-02', 3, 59)); // без профиля отбоя нет → 04:00
+  expect(s.today).toMatchObject({ date: '2026-12-01', closesAt: at('2026-12-02', 4, 0) });
+  expect(s.today.dayType).toMatchObject({ kind: 'day', wake: '07:00', busy: { start: '09:00', end: '18:00' }, bed: null, slots: 4 });
+  // с профилем: отбой 23:00 → закрытие 00:00
+  expect(replay([onboard, old], at('2026-12-01', 23, 59)).today).toMatchObject({ date: '2026-12-01', closesAt: at('2026-12-02', 0, 0) });
+  expect(replay([onboard, old], at('2026-12-02', 0, 0)).today.date).toBe('2026-12-02');
+});
+
+test('серия: 5 засчитанных дней, затем 2/5 → 2, затем пустой день → 1', () => {
+  const d6 = '2026-11-15', qs = [1, 2, 3, 4, 5].map(i => nq(`b${i}`, d6, 'E', ['reading']));
+  const s = replay([...doneDays('2026-11-10', 5, 'reading'), issue(d6, qs), done(d6, 'b1'), done(d6, 'b2')], at('2026-11-17'));
+  expect(s.history.map(h => h.streak)).toEqual([1, 2, 3, 4, 5, 2]);
+  expect(s.history.at(-1)).toMatchObject({ counted: false, perfect: false });
+  expect(s.streak).toBe(1); // 16-е пустое; сегодня ещё ничего
+});
+
+test('бонус серии: серия 10 на начало дня, C честное → 59', () => {
+  const d = '2026-11-20';
+  const s = replay([onboard, ...doneDays('2026-11-10', 10, 'reading'), issue(d, [nq('c', d, 'C', ['strength'])]), done(d, 'c')], at(d, 22));
+  expect(s.ledger.find(r => r.questId === 'c')).toMatchObject({ bonus: 0.2, penalty: 0, xp: 59 }); // 70·0.7·1.2 = 58.8
+  expect(s.streak).toBe(11);
+});
+
+test('идеальный день: строка perfect_day +50 XP, 10 золота', () => {
+  const d = '2026-11-20';
+  const evs = [onboard, issue(d, [nq('a', d, 'E', ['reading']), nq('b', d, 'E', ['focus'])]), done(d, 'a'), done(d, 'b')];
+  const s = replay(evs, at('2026-11-21'));
+  expect(s.ledger.filter(r => r.source === 'perfect_day')).toMatchObject([{ date: d, xp: 50, gold: 10, stats: {}, skills: [] }]);
+  expect(s.history[0]).toMatchObject({ counted: true, perfect: true });
+  expect(replay(evs, at(d, 22)).ledger.some(r => r.source === 'perfect_day')).toBe(false); // день ещё не закрыт
+});
+
+test('Ослабление: 3 дня без выполненного → D Режим 22', () => {
+  const idle = span('2026-11-10', 3).map(d => issue(d, [nq(`i${d}`, d, 'E', ['reading'])]));
+  const d = '2026-11-13', r = [issue(d, [nq('r', d, 'D', ['routine'])]), done(d, 'r')];
+  expect(replay([onboard, ...idle, ...r], at(d, 22)).ledger.find(x => x.questId === 'r')).toMatchObject({ penalty: 0.2, xp: 22 }); // 40·0.7·0.8 = 22.4
+  // только два прошлых дня игры — ещё нет
+  expect(replay([onboard, ...idle.slice(1), ...r], at(d, 22)).ledger.find(x => x.questId === 'r')).toMatchObject({ penalty: 0, xp: 28 });
+});
+
+test('Перекос: 7 дней только Силой (≥200 XP, Сила сильнейшая) → −20% к Силе', () => {
+  const d = '2026-11-17';
+  const s = replay([onboard, ...doneDays('2026-11-10', 7, 'strength', 'C'),
+    issue(d, [nq('s', d, 'C', ['strength']), nq('i', d, 'C', ['reading'])]), done(d, 's'), done(d, 'i')], at(d, 22));
+  const row = (id: string) => s.ledger.find(r => r.questId === id)!;
+  expect(row('s')).toMatchObject({ bonus: 0.14, penalty: 0.2, xp: 45 }); // 70·0.7·1.14·0.8 = 44.7
+  expect(row('i')).toMatchObject({ bonus: 0.14, penalty: 0 });
+});
+
+test('день отдыха: серия не меняется и день не в окне формы; 15-й за месяц — обычный', () => {
+  const two = doneDays('2026-11-29', 2, 'strength', 'C');
+  const rest = span('2026-12-01', 15).flatMap(d => [startDay(d, { dayType: DT[3] }), issue(d, [nq(`r${d}`, d, 'E', ['rest'])])]);
+  const s = replay([onboard, ...two, ...rest], at('2026-12-16'));
+  const h = (d: string) => s.history.find(x => x.date === d)!;
+  expect(h('2026-11-30').streak).toBe(2);
+  expect(h('2026-12-14')).toMatchObject({ rest: true, streak: 2 });
+  expect(h('2026-12-15')).toMatchObject({ rest: false, streak: 1 });
+  expect(s.today.restDaysLeft).toBe(0);
+  expect(s.statInfo.str.form).toBe(1); // окно: 29–30 ноября и 15 декабря, без 14 дней отдыха
+  expect(replay([onboard, ...two, ...rest.slice(0, 4)], at('2026-12-02')).today.restDaysLeft).toBe(12);
+});
+
+test('Форма из плана в первые 30 дней: 14 дней по 49 выдано, сделано 2 → ~20%, «Заброшена»', () => {
+  const evs = span('2026-11-10', 14).flatMap((d, i) => [issue(d, [nq(`f${d}`, d, 'C', ['strength'], { xp: 49 })]), ...(i < 2 ? [done(d, `f${d}`)] : [])]);
+  const s = replay([onboard, ...evs], at('2026-11-24'));
+  /* норма = 0.7·49 = 34.3; 98 / (14·34.3) = 0.204 */
+  expect(s.statInfo.str.norm).toBeCloseTo(34.3, 6);
+  expect(s.statInfo.str.status).toBe('abandoned'); expect(s.statInfo.str.form!).toBeGreaterThan(0.19); expect(s.statInfo.str.form!).toBeLessThan(0.22); // бонус серии может дать 49→50
+  expect(s.statInfo.str.xp14).toBe(99);
+  expect(s.statInfo.int).toMatchObject({ norm: 15, form: 0, status: 'abandoned' });
+  expect(replay([onboard], at('2026-11-24')).statInfo.str).toMatchObject({ form: null, status: 'new' });
+});
+
+test('Форма после 30 дней: норма — среднее фактического за прошлые (до 60) закрытых дней', () => {
+  const s = replay([onboard, ...doneDays('2026-10-01', 40, 'reading', 'C')], at('2026-11-10'));
+  expect(s.statInfo.int.norm).toBeCloseTo(Math.max(15, 0.7 * s.statInfo.int.xp / 40), 6); // все 40 закрытых дней в 60-дневном окне
+  expect(s.statInfo.int.status).toBe('in_form');
+});
+
+test('«Вернуть форму» ×2: E честное → 28', () => {
+  const d = '2026-11-20';
+  const s = replay([onboard, issue(d, [nq('v', d, 'E', ['strength'], { kind: 'restore' })]), done(d, 'v')], at(d, 22));
+  expect(s.ledger.at(-1)).toMatchObject({ mult: 2, xp: 28 });
+  expect(s.statInfo.str.lastRestore).toBe(d);
+});
+
+test('«День изменился»: дневная (4) → вечерняя (3), 1 сделано → 1 dropped; +20 один раз; закрытие по новому отбою', () => {
+  const d = '2026-12-01';
+  const qs = ['a', 'b', 'c', 'e'].map(id => nq(id, d, 'E', ['reading']));
+  const chg = (h: number) => ev({ type: 'day_changed', date: d, dayType: DT[1], at: `${h}:00`, ts: at(d, h) });
+  const evs = [onboard, startDay(d), issue(d, qs), done(d, 'a'), chg(13), chg(14)];
+  const s = replay(evs, at(d, 15));
+  expect(s.today.quests.map(q => q.dropped)).toEqual([false, false, false, true]);
+  expect(s.today).toMatchObject({ changed: true, dayType: DT[1], closesAt: at('2026-12-02', 4, 0) });
+  /* два day_changed за дату → одна строка source 'day_changed' xp 20 gold 4 */
+  expect(s.ledger.filter(r => r.source === 'day_changed')).toMatchObject([{ date: d, xp: 20, gold: 4, ts: at(d, 13), stats: {}, skills: [] }]);
+  expect(replay(evs, at('2026-12-02', 3, 30)).today.date).toBe(d);
+  // 3 из 3 оставшихся — засчитан и идеален
+  expect(replay([...evs, done(d, 'b'), done(d, 'c')], at('2026-12-03')).history[0]).toMatchObject({ issued: 4, completed: 3, counted: true, perfect: true });
+  // мусорный тип или время — событие игнорируется; без старта дня — тоже
+  expect(replay([onboard, startDay(d), ev({ type: 'day_changed', date: d, dayType: { id: 'x' }, at: '13:00' })], at(d, 15)).today.changed).toBe(false);
+  expect(replay([onboard, startDay(d), ev({ type: 'day_changed', date: d, dayType: DT[1], at: 13 })], at(d, 15)).today.changed).toBe(false);
+  expect(replay([onboard, chg(13)], at(d, 15)).ledger.some(r => r.source === 'day_changed')).toBe(false);
+});
+
+test('неверные dayType/energy игнорируются', () => {
+  const d = '2026-12-01';
+  const bad = startDay(d, { dayType: { ...DT[0], slots: 99 }, energy: 11 });
+  const s = replay([onboard, bad], at(d, 12));
+  expect(s.today.started).toBe(true);
+  expect(s.today.dayType).toMatchObject({ kind: 'off', bed: '23:00' }); // синтез: без смены — выходной, отбой из профиля
+  expect(s.today.energy).toBe(50);
+  const ci = ev({ type: 'checkin', date: '2026-11-30', went: '', notWent: '', energy: 7, ts: at('2026-11-30', 21) });
+  expect(replay([onboard, bad, ci], at(d, 12)).today.energy).toBe(70);
+  expect(replay([onboard, startDay(d, { energy: 8 }), ci], at(d, 12)).today.energy).toBe(80);
+  expect(replay([onboard, startDay(d, { energy: 2.5 })], at(d, 12)).today.energy).toBe(50);
+  expect(replay([onboard], at(d, 12)).today).toMatchObject({ dayType: null, energy: null, changed: false });
+});
+
+test('day_types_set: последнее побеждает, невалидные элементы отброшены, пустой список → умолчания', () => {
+  const mine = { ...DT[0], id: 'mine', label: 'Моя', slots: 3 };
+  const set = (types: unknown, h: number) => ev({ type: 'day_types_set', types, ts: at('2026-11-15', h) });
+  expect(replay([], NOW).dayTypes).toEqual(DT);
+  expect(replay([set([mine, { id: 'bad' }], 9), set([DT[1]], 8)], NOW).dayTypes).toEqual([mine]);
+  expect(replay([set([DT[1]], 8), set([{ id: 'bad' }], 9)], NOW).dayTypes).toEqual(DT);
+  expect(replay([set('x', 9)], NOW).dayTypes).toEqual(DT);
+});
+
+test('битые формы из сети: аватар, время, работа, сумма метрики', () => {
+  const d = '2026-11-17';
+  for (const params of [null, 5, 'x', { hair: 5 }, { ...DEFAULT_AVATAR, eyes: null }])
+    expect(replay([ev({ type: 'avatar_updated', params })], NOW).avatar).toEqual(DEFAULT_AVATAR);
+  for (const wakeAt of [7, '7:00', null]) expect(replay([ev({ type: 'day_started', date: d, work: null, wakeAt, ts: at(d, 7) })], NOW).today.started).toBe(false);
+  for (const work of [{ start: 'x', end: '18:00' }, 'x', { start: '09:00' }, undefined])
+    expect(replay([ev({ type: 'day_started', date: d, work, wakeAt: '07:00', ts: at(d, 7) })], NOW).today).toMatchObject({ started: true, work: null });
+  expect(replay([ev({ type: 'busy_until', date: d, until: 5 }), ev({ type: 'busy_until', date: d, until: '1500' })], NOW).today.busyUntil).toBeNull();
+  const big = (value: number) => [1, 2, 3].map(i => ev({ type: 'metric_logged', date: d, metric: 'water', value, mode: 'add', ts: at(d, 9) + i }));
+  expect(replay(big(1e308), NOW).today.metrics.water).toBe(1e9);
+  expect(replay(big(-1e308), NOW).today.metrics.water).toBe(-1e9);
+});
+
+test('выдача с древней датой игнорируется; с 2020 года плотный цикл по дням быстрый', () => {
+  expect(replay([issue('1900-01-01', [nq('z', '1900-01-01', 'E', ['reading'])])], NOW).history).toEqual([]);
+  const t = performance.now();
+  expect(replay([issue('2020-01-01', [nq('z', '2020-01-01', 'E', ['reading'])])], NOW).history).toHaveLength(1);
+  expect(performance.now() - t).toBeLessThan(300);
 });

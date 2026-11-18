@@ -55,7 +55,7 @@ export function closesAtTs(date: ISODate, closeMin: number): number {
 }
 
 /** Старые события без типа дня: смена с началом до 12:00 — дневная, позже — вечерняя, нет смены — выходной. */
-export function legacyDayType(work: Win | null, wakeAt: HHMM, bed: HHMM): DayType {
+export function legacyDayType(work: Win | null, wakeAt: HHMM, bed: HHMM | null): DayType {
   const kind: DayKind = !work ? 'off' : toMin(work.start) < 720 ? 'day' : 'evening';
   const base = DEFAULT_DAY_TYPES.find(d => d.kind === kind)!;
   return { ...base, wake: wakeAt, busy: work ? { start: work.start, end: work.end } : null, bed };

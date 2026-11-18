@@ -25,13 +25,11 @@ function Confirm({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
 }
 
 export default function Settings({ state, sync }: { state: GameState; sync: SyncState }) {
-  const [cutoff, setCutoff] = useState(4)
   const [file, setFile] = useState<File | null>(null)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const input = useRef<HTMLInputElement>(null)
   const [lastExport, setLastExport] = useState<number | null>(null)
   useEffect(() => {
-    void getSetting<number>('cutoffHour', 4).then(setCutoff)
     void getSetting<number | null>('lastExportAt', null).then(setLastExport)
   }, [])
 
@@ -69,11 +67,6 @@ export default function Settings({ state, sync }: { state: GameState; sync: Sync
             onChange={e => { setFile(e.target.files?.[0] ?? null); setMsg(null) }} />
         </label>
         {msg && <p role="status" className={msg.ok ? 'ok' : 'err'}>{msg.text}</p>}
-        <label className="field">Час конца игровых суток
-          <select value={cutoff} style={{ fontSize: 16, minHeight: 44 }} onChange={e => { const n = +e.target.value; setCutoff(n); void setSetting('cutoffHour', n) }}>
-            {[0, 1, 2, 3, 4, 5, 6].map(h => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
-          </select>
-        </label>
       </section>
       <SyncPanel state={state} sync={sync} />
       <div id="ai-panel"><AiPanel /></div>

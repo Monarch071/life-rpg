@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, getSetting, type StoredEvent } from './db'
+import { db, type StoredEvent } from './db'
 import { replay } from './domain/replay'
 import { now as clock } from './now'
 import type { GameEvent, GameState } from './domain/types'
@@ -9,7 +9,7 @@ const toGameEvents = (es: StoredEvent[]) => es.map(({ pending: _p, seq: _s, ...e
 
 export async function loadState(): Promise<GameState> {
   const events = toGameEvents(await db.events.orderBy('ts').toArray())
-  return replay(events, clock(), await getSetting<number>('cutoffHour', 4))
+  return replay(events, clock())
 }
 
 export function useGame(): GameState | undefined {
@@ -24,12 +24,9 @@ export function useGame(): GameState | undefined {
       clearInterval(t)
     }
   }, [])
-  const data = useLiveQuery(async () => ({
-    events: await db.events.orderBy('ts').toArray(),
-    cutoffHour: await getSetting<number>('cutoffHour', 4),
-  }))
+  const data = useLiveQuery(async () => ({ events: await db.events.orderBy('ts').toArray() }))
   return useMemo(() => {
     if (!data) return undefined
-    return replay(toGameEvents(data.events), now, data.cutoffHour)
+    return replay(toGameEvents(data.events), now)
   }, [data, now])
 }

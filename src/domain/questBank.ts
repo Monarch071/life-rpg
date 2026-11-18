@@ -123,4 +123,4 @@ export const LEGACY_SKILL_BY_TEMPLATE: Record<string, SkillId> = {
 };
 
 /** Старая сложность 1–5 → ранг; всё непонятное — E. */
-export const legacyRank = (d: unknown): Rank => (BALANCE.legacyRank as Record<string, Rank>)[String(d)] ?? 'E';
+export const legacyRank = (d: unknown): Rank => (Object.hasOwn(BALANCE.legacyRank, String(d)) ? (BALANCE.legacyRank as Record<string, Rank>)[String(d)] : 'E');

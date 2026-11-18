@@ -1,4 +1,5 @@
 import type { ThemeId } from './calendar';
+import type { DayType } from './dayType';
 import type { SkillId } from './skillCatalog';
 export type Stat = 'str'|'end'|'int'|'dis'|'cha'|'fin'|'spi';
 export type HHMM = string;            // '09:30'
@@ -32,7 +33,9 @@ export interface Analysis { archetype: string; summary: string; strengths: strin
   scores?: Record<Stat, number>; startLevel?: number; levelWhy?: Partial<Record<Stat, string>>; skillLevels?: Partial<Record<SkillId, number>> }
 export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'onboarding_completed'; profile: Profile }
-  | { type: 'day_started'; date: ISODate; work: { start: HHMM; end: HHMM } | null; wakeAt: HHMM }
+  | { type: 'day_started'; date: ISODate; work: { start: HHMM; end: HHMM } | null; wakeAt: HHMM; dayType?: DayType; energy?: number /* 1–10 */ }
+  | { type: 'day_types_set'; types: DayType[] }
+  | { type: 'day_changed'; date: ISODate; dayType: DayType; at: HHMM }
   | { type: 'busy_until'; date: ISODate; until: HHMM }
   | { type: 'quests_issued'; date: ISODate; quests: Quest[] }
   | { type: 'quest_completed'; date: ISODate; questId: string; verify?: 'photo'; photo?: string }
@@ -81,7 +84,12 @@ export interface GameState {
   today: { date: ISODate; started: boolean; work: {start:HHMM;end:HHMM}|null; wakeAt: HHMM|null;
            quests: DayQuest[]; xp: number;
            metrics: Partial<Record<Metric, number>>; checkedIn: boolean; lastEnergy: number|null;
-           busyUntil: HHMM|null; aiNote: string|null; calendar: { title: string; start: HHMM; end: HHMM }[] };
+           busyUntil: HHMM|null; aiNote: string|null; calendar: { title: string; start: HHMM; end: HHMM }[];
+           closesAt: number;              // ts закрытия игрового дня (по отбою его типа)
+           dayType: DayType | null;       // из последнего day_changed, иначе day_started; день не начат — null
+           energy: number | null;         // 0–100: утренняя оценка ×10 → чек-ин ×10 → fallback; день не начат — null
+           changed: boolean;              // был «День изменился»
+           restDaysLeft: number };        // дней отдыха в этом календарном месяце осталось
   character: { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; focus: string[]; questGuidance: string; date: ISODate; ai: boolean } | null;   // по последней валидной анкете
   interviewAnswers: Answers | null;   // последние ответы анкеты (для промпта заданий)
   lastHealth: { ts: number; date: ISODate; health: HealthData } | null;
@@ -93,6 +101,7 @@ export interface GameState {
   reports: { weekStart: ISODate; text: string }[];   // недельные отчёты ИИ, по убыванию недели
   genWeekly: WeeklyCtx;   // контекст для generateWeeklyQuests текущей недели
   season: { id: string; kind: 'prologue' | 'winter' | 'spring' | 'summer' | 'autumn'; name: string; start: ISODate; end: ISODate; theme: ThemeId | null; xp: number; step: number };
+  dayTypes: DayType[];    // шаблоны дней: последний day_types_set, иначе умолчания
   ledger: LedgerEntry[];  // начисления XP/золота, по дате
   history: DayResult[];   // финализированные дни, по возрастанию
   achievements: { id: string; date: ISODate }[];   // в порядке получения
