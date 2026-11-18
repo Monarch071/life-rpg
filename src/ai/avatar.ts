@@ -12,15 +12,20 @@ const TIER_LOOK: Record<Tier, string> = {
 }
 
 export function avatarPrompt(params: AvatarParams, tier: Tier, _name: string): string {
-  return `Anime-style full-body character portrait of the person in the photo. Keep their facial features, face shape and skin tone recognizable. `
+  return `Semi-realistic anime illustration, full-body portrait of the person in the photo standing confidently, head to shoes visible. `
+    + `Keep their facial features, face shape and skin tone recognizable. `
     + `Hair: ${params.hair} ${params.hairColor}. Outfit main color ${params.outfitColor}. Tier ${tier}: ${TIER_LOOK[tier]} `
-    + `Dark neon background, vertical 2:3, single character, no text, no watermark, safe for work.`
+    + `Place the character in the right half of the frame, leave the left side open. `
+    + `Background: modern city at night, skyscrapers with warm window lights, deep blue sky, wet reflective pavement, cinematic lighting. `
+    + `Vertical 2:3, single character, no text, no UI, no logos, no watermark, safe for work.`
 }
 
 export class PhotoError extends Error {}
 export const PHOTO_ERROR_TEXT = 'Не удалось прочитать фото. Выбери фото в формате JPEG или PNG.'
 
 const MAX_BYTES = 600 * 1024
+/** Сторона арта на весь экран. */
+export const ART_SIDE = 1280
 
 /** Следующее качество для повторного сжатия или null, если размер уже подходит / качество на минимуме. */
 export function nextQuality(size: number, q: number): number | null {
@@ -56,7 +61,7 @@ export async function shrinkImage(blob: Blob, maxSide = 768): Promise<Blob> {
 export async function generateAvatar(cfg: AiConfig, photo: Blob, params: AvatarParams, tier: Tier, name: string, shrink = shrinkImage): Promise<Blob> {
   const small = await shrink(photo, 1024).catch(() => { throw new PhotoError('photo') })
   const raw = await generateImage(cfg, small, avatarPrompt(params, tier, name))
-  return shrink(raw)
+  return shrink(raw, ART_SIDE)
 }
 
 /** Картинка текущего тира или ближайшего меньшего. */

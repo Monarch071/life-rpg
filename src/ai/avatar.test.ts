@@ -32,6 +32,6 @@ test('generateAvatar: ужать фото → картинка → ужать р
   gen.mockImplementation(async () => { calls.push('gen'); return raw })
   const res = await generateAvatar(cfg, photo, params, 2, 'Эд', shrink)
   expect(res).toBe(out)
-  expect(calls).toEqual(['shrink1024', 'gen', 'shrink'])
+  expect(calls).toEqual(['shrink1024', 'gen', 'shrink1280'])
   expect(gen).toHaveBeenCalledWith(cfg, small, expect.stringContaining('Tier 2'))
 })

@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Crown } from 'lucide-react'
 import Avatar, { EYE_OPTIONS, HAIR_OPTIONS } from '../ui/Avatar'
 import { STATS } from '../domain/stats'
-import LevelBadge from '../ui/LevelBadge'
 import { StatIcon } from '../ui/icons'
 import { appendEvent } from '../db'
 import { imageNameFor } from '../ai/avatar'
@@ -78,18 +77,20 @@ export default function Character({ state, go, interview }: { state: GameState; 
   const radarPrev = prev && state.statHistory.length >= 2 && (Object.keys(STATS) as Stat[]).some(k => prev[k] !== state.stats[k]) ? prev : null
   return (
     <div className="home stack">
-      <section className="hero">
-        <Avatar params={state.avatar} tier={state.tier} size={220} image={img} />
-      </section>
-      {!img && <PhotoCta go={go} />}
-      <section className="panel rating">
-        <LevelBadge level={state.level} big />
-        <div className="title">
-          <div className="rank">{state.className}</div>
-          <span className="ttl"><Crown size={14} aria-hidden="true" />{state.title}</span>
-          <span className="muted">Очки навыков: {state.skills.points} · Тир {state.tier}</span>
+      <section className="hero-banner" aria-label="Герой">
+        <div className="stage-art" aria-hidden="true">
+          {img ? <img src={img} alt="" /> : <div className="stage-fallback"><Avatar params={state.avatar} tier={state.tier} size={300} decorative /></div>}
+        </div>
+        <div className="glass banner-card">
+          <b><small>Lv.</small>{state.level}</b>
+          <div>
+            <div className="rank">{state.className}</div>
+            <span className="ttl"><Crown size={14} aria-hidden="true" />{state.title}</span>
+            <small className="muted">Очки навыков: {state.skills.points} · Тир {state.tier}</small>
+          </div>
         </div>
       </section>
+      {!img && <PhotoCta go={go} />}
       <section className="panel stats" aria-label="Характеристики">
         <div className="sec"><h3>Характеристики</h3>
           <div className="seg-toggle" role="group" aria-label="Вид">

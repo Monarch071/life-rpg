@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Image as ImageIcon } from 'lucide-react'
-import { generateAvatar, PHOTO_ERROR_TEXT, PhotoError } from '../ai/avatar'
+import { Camera, Image as ImageIcon, Upload } from 'lucide-react'
+import { ART_SIDE, generateAvatar, PHOTO_ERROR_TEXT, PhotoError, shrinkImage } from '../ai/avatar'
 import { getAiConfig, PROVIDER_NAMES, type AiConfig } from '../ai/config'
 import { aiErrorText } from '../ai/providers'
 import { saveBlob, useBlobUrl } from '../blobs'
@@ -21,8 +21,8 @@ export function PhotoCta({ go }: { go: Go }) {
   return (
     <section className="photo-cta" aria-label="Образ по фото">
       <span className="ic" aria-hidden="true"><Camera size={20} /></span>
-      <div><b>Создай героя по своему фото</b><small>{ready ? 'ИИ нарисует тебя в стиле игры' : 'Сначала подключи ИИ с картинками'}</small></div>
-      <button type="button" className="btn primary" onClick={() => go(ready ? 'Герой' : 'Настройки', ready ? 'avatar-ai' : 'ai-panel')}>{ready ? 'Создать' : 'Настроить'}</button>
+      <div><b>Поставь своего героя на главный экран</b><small>{ready ? 'ИИ нарисует тебя по фото в полный рост' : 'Загрузи свой арт или подключи ИИ'}</small></div>
+      <button type="button" className="btn primary" onClick={() => go('Герой', 'avatar-ai')}>{ready ? 'Создать' : 'Добавить'}</button>
     </section>
   )
 }
@@ -31,8 +31,8 @@ function Slot({ tier, name }: { tier: number; name: string | undefined }) {
   const url = useBlobUrl(name ?? null)
   return (
     <figure>
-      {url ? <img src={url} alt={`Образ тира ${tier}`} style={{ width: 80, height: 120, objectFit: 'cover', borderRadius: 8 }} />
-        : <div className="muted" style={{ width: 80, height: 120, display: 'grid', placeItems: 'center' }}>—</div>}
+      {url ? <img src={url} alt={`Образ тира ${tier}`} style={{ width: '100%', aspectRatio: '2 / 3', objectFit: 'cover', borderRadius: 8 }} />
+        : <div className="muted" style={{ width: '100%', aspectRatio: '2 / 3', display: 'grid', placeItems: 'center', border: '1px dashed var(--line)', borderRadius: 8 }}>—</div>}
       <figcaption className="muted center">Тир {tier}</figcaption>
     </figure>
   )
@@ -57,20 +57,18 @@ export default function AvatarAi({ state }: { state: GameState }) {
   }, [result])
 
   if (cfg === undefined) return null
-  if (!cfg?.imageModel) {
-    return (
-      <section className="panel stack" aria-label="Аватар от ИИ">
-        <h2><ImageIcon size={18} aria-hidden="true" /> Аватар от ИИ</h2>
-        <p className="muted">Подключи Gemini или OpenAI в настройках, чтобы создать аватар по фото</p>
-      </section>
-    )
+  const ai = cfg?.imageModel ? cfg : null
+  const upload = async (f: File | undefined) => {
+    if (!f) return
+    setErr(null); setPhoto(null)
+    try { setResult(await shrinkImage(f, ART_SIDE)) } catch { setErr(PHOTO_ERROR_TEXT) }
   }
 
   const run = async () => {
-    if (!photo) return
+    if (!photo || !ai) return
     setAsk(false); setBusy(true); setErr(null); setResult(null)
     try {
-      const b = await generateAvatar(cfg, photo, state.avatar, state.tier, state.profile?.name ?? '')
+      const b = await generateAvatar(ai, photo, state.avatar, state.tier, state.profile?.name ?? '')
       if (alive.current) setResult(b)
     } catch (e) { if (alive.current) setErr(e instanceof PhotoError ? PHOTO_ERROR_TEXT : aiErrorText(e)) }
     if (alive.current) setBusy(false)
@@ -91,24 +89,30 @@ export default function AvatarAi({ state }: { state: GameState }) {
 
   return (
     <section className="panel stack" aria-label="Аватар от ИИ">
-      <h2><ImageIcon size={18} aria-hidden="true" /> Аватар от ИИ</h2>
+      <h2><ImageIcon size={18} aria-hidden="true" /> Арт героя</h2>
+      <p className="muted">Картинка в полный рост встанет фоном главного экрана. Лучше всего — вертикальная, герой справа.</p>
       {newTier && <p role="status">Новый тир! Создай новый образ</p>}
       <label className="btn big" style={{ cursor: 'pointer' }}>
-        Выбрать фото
+        <Upload size={18} aria-hidden="true" />Загрузить свою картинку
+        <input type="file" accept="image/*" hidden disabled={busy} onChange={e => { void upload(e.target.files?.[0]); e.target.value = '' }} />
+      </label>
+      {!ai && <p className="muted">Чтобы ИИ нарисовал героя по твоему фото, подключи Gemini или OpenAI в настройках.</p>}
+      {ai && <label className="btn big" style={{ cursor: 'pointer' }}>
+        <Camera size={18} aria-hidden="true" />Нарисовать по фото (ИИ)
         <input type="file" accept="image/*" hidden disabled={busy}
           onChange={e => { setPhoto(e.target.files?.[0] ?? null); setResult(null); setErr(null); e.target.value = '' }} />
-      </label>
+      </label>}
       {photo && !result && <button className="btn primary big" disabled={busy} onClick={() => setAsk(true)}>Создать аватар</button>}
       {busy && <p role="status">Рисую аватар… это может занять до минуты</p>}
       {err && <p role="alert">{err}</p>}
       {url && (<>
         <div className="center"><img src={url} alt="Новый аватар" style={{ width: 160, height: 240, objectFit: 'cover', borderRadius: 12 }} /></div>
         <button className="btn primary big" disabled={saving} onClick={save}>Сохранить для тира {state.tier}</button>
-        <button className="btn ghost big" disabled={busy} onClick={() => setAsk(true)}>Попробовать ещё раз</button>
+        {photo && <button className="btn ghost big" disabled={busy} onClick={() => setAsk(true)}>Попробовать ещё раз</button>}
       </>)}
       {msg && <p role={msg.ok ? 'status' : 'alert'} className="center">{msg.text}</p>}
-      <div className="chips">{TIERS.map(t => <Slot key={t} tier={t} name={state.avatarImages[t]} />)}</div>
-      {ask && <Confirm title={`Фото будет отправлено в ${PROVIDER_NAMES[cfg.provider]} для создания аватара. Исходное фото нигде не сохраняется. Продолжить?`}
+      <div className="tier-slots">{TIERS.map(t => <Slot key={t} tier={t} name={state.avatarImages[t]} />)}</div>
+      {ask && ai && <Confirm title={`Фото будет отправлено в ${PROVIDER_NAMES[ai.provider]} для создания аватара. Исходное фото нигде не сохраняется. Продолжить?`}
         yes="Продолжить" onYes={() => void run()} onNo={() => setAsk(false)} />}
     </section>
   )
