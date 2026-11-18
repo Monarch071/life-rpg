@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, Download, Upload } from 'lucide-react'
+import { Download, Upload } from 'lucide-react'
 import { exportData, importData } from '../backup'
 import { getSetting, setSetting } from '../db'
 import { now } from '../now'
@@ -8,6 +8,7 @@ import { useDialog } from '../ui/useDialog'
 import type { GameState } from '../domain/types'
 import type { SyncState } from '../useSync'
 import AiPanel from './AiPanel'
+import NotifyPanel from './NotifyPanel'
 import SyncPanel from './SyncPanel'
 
 function Confirm({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
@@ -76,9 +77,7 @@ export default function Settings({ state, sync }: { state: GameState; sync: Sync
       </section>
       <SyncPanel state={state} sync={sync} />
       <div id="ai-panel"><AiPanel /></div>
-      <section className="panel stack">
-        <button className="btn ghost" disabled><Bell size={18} aria-hidden="true" />Уведомления — этап 5</button>
-      </section>
+      <NotifyPanel sync={sync} />
       <p className="muted center">Версия {__APP_VERSION__}</p>
       {file && <Confirm onYes={doImport} onNo={reset} />}
     </div>

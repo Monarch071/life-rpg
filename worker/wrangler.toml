@@ -4,9 +4,14 @@ compatibility_date = "2025-09-01"
 
 [vars]
 ALLOWED_ORIGINS = "https://monarch071.github.io,http://localhost:5173,http://localhost:4173"
+VAPID_PUBLIC = "BOFqTQvIn6QknYVj2KbSowp_y7HwXDEXsocTQX-N76ry17oK7QryN1XV-bkOf_BRE8mT9UXrVMrw7mZqh-R1M6Y"
+VAPID_SUBJECT = "https://monarch071.github.io/life-rpg/"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "life-rpg"
 database_id = "ce9c7937-1550-4244-b489-e9148b663cd1"
 migrations_dir = "migrations"
+
+[triggers]
+crons = ["*/15 * * * *"]

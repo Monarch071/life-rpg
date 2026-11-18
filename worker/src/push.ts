@@ -1,0 +1,90 @@
+import type { Store } from './store'
+import { isPushEndpoint, sendPush, unb64u, type Vapid } from './webpush'
+
+export interface PushRow {
+  endpoint: string; p256dh: string; auth: string; tz: string
+  morning: number | null; evening: number | null
+  last_morning: string | null; last_evening: string | null
+}
+export type Kind = 'morning' | 'evening'
+
+const WINDOW = 60 // минут после назначенного времени, когда ещё можно прислать
+
+export function validTz(tz: unknown): tz is string {
+  if (typeof tz !== 'string' || tz.length > 64) return false
+  try { new Intl.DateTimeFormat('en', { timeZone: tz }); return true } catch { return false }
+}
+const validMin = (m: unknown): m is number | null => m === null || (Number.isInteger(m) && (m as number) >= 0 && (m as number) < 1440)
+const keyLen = (s: unknown, n: number) => {
+  if (typeof s !== 'string' || s.length > 200) return false
+  try { return unb64u(s).length === n } catch { return false }
+}
+
+/** Разбор тела /push/subscribe; null — некорректно. */
+export function parseSubscribe(b: any): Omit<PushRow, 'last_morning' | 'last_evening'> | null {
+  const s = b?.subscription
+  if (!isPushEndpoint(s?.endpoint) || !keyLen(s?.keys?.p256dh, 65) || !keyLen(s?.keys?.auth, 16)) return null
+  if (!validTz(b.tz) || !validMin(b.morning) || !validMin(b.evening)) return null
+  return { endpoint: s.endpoint, p256dh: s.keys.p256dh, auth: s.keys.auth, tz: b.tz, morning: b.morning, evening: b.evening }
+}
+
+export function localNow(tz: string, now: number): { date: string; min: number } {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(now)).map(x => [x.type, x.value]))
+  return { date: `${p.year}-${p.month}-${p.day}`, min: +p.hour * 60 + +p.minute }
+}
+
+export function due(r: PushRow, now: number): { kind: Kind; date: string }[] {
+  const { date, min } = localNow(r.tz, now)
+  const out: { kind: Kind; date: string }[] = []
+  for (const kind of ['morning', 'evening'] as const) {
+    const t = r[kind]
+    if (t !== null && min >= t && min < t + WINDOW && r[`last_${kind}`] !== date) out.push({ kind, date })
+  }
+  return out
+}
+
+const TEXTS: Record<Kind | 'test', { title: string; body: string[] }> = {
+  morning: { title: 'Утро, герой', body: [
+    'Тень уже проснулась. Отметь чек-ин и возьми задания дня.',
+    'Новый день — новые очки. Открой «Мой день» и опереди Тень.',
+    'Тень тренируется с утра. Начни день с одного задания.',
+  ] },
+  evening: { title: 'Итоги дня', body: [
+    'Отметь, что сделал сегодня, пока Тень не забрала очки.',
+    'День почти закончен. Проверь счёт против Тени.',
+    'Пара минут на отметки — и опыт твой.',
+  ] },
+  test: { title: 'Life RPG', body: ['Уведомления работают. Тень на связи.'] },
+}
+
+export function message(kind: Kind | 'test', date = '') {
+  const t = TEXTS[kind]
+  const day = Number(date.slice(-2)) || 0
+  return { title: t.title, body: t.body[day % t.body.length], tag: kind, url: '/life-rpg/' }
+}
+
+const dead = (status: number) => status === 404 || status === 410
+
+/** Отправка одного сообщения; мёртвую подписку удаляет. */
+export async function pushTo(store: Store, r: PushRow, payload: object, v: Vapid, fetcher?: typeof fetch): Promise<number> {
+  const status = await sendPush(r, payload, v, fetcher)
+  if (dead(status)) await store.deletePushSub(r.endpoint)
+  return status
+}
+
+export async function runCron(store: Store, v: Vapid, now: number, fetcher?: typeof fetch): Promise<number> {
+  let sent = 0
+  for (const r of await store.listPushSubs()) {
+    for (const { kind, date } of due(r, now)) {
+      try {
+        const status = await pushTo(store, r, message(kind, date), v, fetcher)
+        if (dead(status)) break
+        // при временной ошибке (5xx, 429) не отмечаем — повторим через 15 минут в пределах окна
+        if (status < 300) { await store.markPushSent(r.endpoint, kind, date); sent++ }
+      } catch { /* сеть — повторим на следующем тике */ }
+    }
+  }
+  return sent
+}

@@ -1,3 +1,5 @@
+import type { Kind, PushRow } from './push'
+
 export interface Store {
   getTokenHash(): Promise<string | null>
   setTokenHashIfAbsent(hash: string): Promise<boolean>
@@ -7,6 +9,11 @@ export interface Store {
   lastHealthAt(): Promise<number | null>
   putBlob(name: string, mime: string, dataB64: string): Promise<void>
   getBlob(name: string): Promise<{ mime: string; data: string } | null>
+  upsertPushSub(r: Omit<PushRow, 'last_morning' | 'last_evening'>): Promise<void>
+  deletePushSub(endpoint: string): Promise<void>
+  getPushSub(endpoint: string): Promise<PushRow | null>
+  listPushSubs(): Promise<PushRow[]>
+  markPushSent(endpoint: string, kind: Kind, date: string): Promise<void>
 }
 
 export interface D1Stmt {
@@ -55,5 +62,23 @@ export class D1Store implements Store {
   }
   async getBlob(name: string) {
     return this.db.prepare('SELECT mime, data FROM blobs WHERE name = ?').bind(name).first<{ mime: string; data: string }>()
+  }
+  async upsertPushSub(r: Omit<PushRow, 'last_morning' | 'last_evening'>) {
+    await this.db.prepare(`INSERT INTO push_subs (endpoint, p256dh, auth, tz, morning, evening) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh, auth=excluded.auth, tz=excluded.tz, morning=excluded.morning, evening=excluded.evening`)
+      .bind(r.endpoint, r.p256dh, r.auth, r.tz, r.morning, r.evening).run()
+  }
+  async deletePushSub(endpoint: string) {
+    await this.db.prepare('DELETE FROM push_subs WHERE endpoint = ?').bind(endpoint).run()
+  }
+  async getPushSub(endpoint: string) {
+    return this.db.prepare('SELECT * FROM push_subs WHERE endpoint = ?').bind(endpoint).first<PushRow>()
+  }
+  async listPushSubs() {
+    return (await this.db.prepare('SELECT * FROM push_subs').all<PushRow>()).results
+  }
+  async markPushSent(endpoint: string, kind: Kind, date: string) {
+    const col = kind === 'morning' ? 'last_morning' : 'last_evening'
+    await this.db.prepare(`UPDATE push_subs SET ${col} = ? WHERE endpoint = ?`).bind(date, endpoint).run()
   }
 }

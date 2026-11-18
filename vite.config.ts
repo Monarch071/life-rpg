@@ -12,7 +12,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'apple-touch-icon-180x180.png'],
-      workbox: { globPatterns: ['**/*.{js,css,html,woff2}'] },
+      workbox: { globPatterns: ['**/*.{js,css,html,woff2}'], importScripts: ['push-sw.js'] },
       manifest: {
         name: 'Life RPG',
         short_name: 'Life RPG',

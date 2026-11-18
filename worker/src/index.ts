@@ -1,7 +1,9 @@
 import { parseSyncPayload } from './parse'
 import { D1Store, type D1Like, type Store } from './store'
+import { message, parseSubscribe, pushTo, runCron } from './push'
+import type { Vapid } from './webpush'
 
-export interface Env { DB: D1Like; ALLOWED_ORIGINS: string }
+export interface Env { DB: D1Like; ALLOWED_ORIGINS: string; VAPID_PUBLIC?: string; VAPID_PRIVATE?: string; VAPID_SUBJECT?: string }
 
 const SYNC_MAX = 256 * 1024
 const EVENTS_MAX = 1024 * 1024
@@ -49,7 +51,7 @@ async function authorize(req: Request, store: Store): Promise<void> {
 
 type Out = { status: number; body: unknown; mime?: string }
 
-async function route(req: Request, store: Store): Promise<Out> {
+async function route(req: Request, store: Store, vapid?: Vapid): Promise<Out> {
   const url = new URL(req.url)
   const key = `${req.method} ${url.pathname}`
 
@@ -77,6 +79,29 @@ async function route(req: Request, store: Store): Promise<Out> {
     if (bytes.length > BLOB_MAX) throw new HttpError(413, 'Файл больше 1 МБ')
     await store.putBlob(name, mime, toB64(bytes))
     return { status: 200, body: { ok: true } }
+  }
+
+  if (url.pathname.startsWith('/push/')) {
+    if (!['GET /push/key', 'POST /push/subscribe', 'POST /push/unsubscribe', 'POST /push/test'].includes(key)) throw new HttpError(404, 'Не найдено')
+    await authorize(req, store)
+    if (!vapid) throw new HttpError(503, 'Уведомления на сервере не настроены')
+    if (key === 'GET /push/key') return { status: 200, body: { key: vapid.publicKey } }
+    const b = await readJson(req, SMALL_MAX)
+    if (key === 'POST /push/subscribe') {
+      const sub = parseSubscribe(b)
+      if (!sub) throw new HttpError(400, 'Некорректная подписка')
+      await store.upsertPushSub(sub)
+      return { status: 200, body: { ok: true } }
+    }
+    if (typeof b?.endpoint !== 'string') throw new HttpError(400, 'Нужен endpoint')
+    if (key === 'POST /push/unsubscribe') {
+      await store.deletePushSub(b.endpoint)
+      return { status: 200, body: { ok: true } }
+    }
+    const sub = await store.getPushSub(b.endpoint)
+    if (!sub) throw new HttpError(404, 'Подписка не найдена')
+    const status = await pushTo(store, sub, message('test'), vapid).catch(() => { throw new HttpError(502, 'Push-сервис недоступен') })
+    return { status: 200, body: { ok: status < 300, status } }
   }
 
   if (!['POST /token', 'POST /sync', 'POST /events', 'GET /events', 'GET /ping'].includes(key)) throw new HttpError(404, 'Не найдено')
@@ -125,7 +150,7 @@ async function route(req: Request, store: Store): Promise<Out> {
   }
 }
 
-export async function handle(req: Request, store: Store, allowedOrigins: string[]): Promise<Response> {
+export async function handle(req: Request, store: Store, allowedOrigins: string[], vapid?: Vapid): Promise<Response> {
   const headers: Record<string, string> = { 'content-type': 'application/json; charset=utf-8' }
   const origin = req.headers.get('origin')
   if (origin) {
@@ -143,7 +168,7 @@ export async function handle(req: Request, store: Store, allowedOrigins: string[
 
   let status: number, body: unknown, mime: string | undefined
   try {
-    ({ status, body, mime } = await route(req, store))
+    ({ status, body, mime } = await route(req, store, vapid))
   } catch (e) {
     if (e instanceof HttpError) { status = e.status; body = { ok: false, error: e.message } }
     else { status = 500; body = { ok: false, error: 'Внутренняя ошибка' } }
@@ -152,8 +177,16 @@ export async function handle(req: Request, store: Store, allowedOrigins: string[
   return new Response(JSON.stringify(body), { status, headers })
 }
 
+const vapidOf = (env: Env): Vapid | undefined =>
+  env.VAPID_PUBLIC && env.VAPID_PRIVATE && env.VAPID_SUBJECT
+    ? { publicKey: env.VAPID_PUBLIC, privateD: env.VAPID_PRIVATE, subject: env.VAPID_SUBJECT } : undefined
+
 export default {
   fetch(req: Request, env: Env): Promise<Response> {
-    return handle(req, new D1Store(env.DB), env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean))
+    return handle(req, new D1Store(env.DB), env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean), vapidOf(env))
+  },
+  async scheduled(_ev: unknown, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<void> {
+    const v = vapidOf(env)
+    if (v) ctx.waitUntil(runCron(new D1Store(env.DB), v, Date.now()))
   },
 }

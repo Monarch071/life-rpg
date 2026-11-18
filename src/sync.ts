@@ -23,7 +23,7 @@ export async function getSyncConfig(): Promise<SyncConfig | null> {
   return url && token ? { url, token } : null
 }
 
-async function call(cfg: SyncConfig, method: string, path: string, body?: unknown): Promise<any> {
+export async function call(cfg: SyncConfig, method: string, path: string, body?: unknown): Promise<any> {
   let res: Response
   try {
     res = await fetch(cfg.url.replace(/\/+$/, '') + path, {
