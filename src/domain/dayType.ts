@@ -11,7 +11,8 @@ export const DEFAULT_DAY_TYPES = BALANCE.dayTypes as unknown as DayType[];
 
 const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const KINDS: readonly string[] = ['day', 'evening', 'off', 'rest'];
-const hm = (x: unknown): x is HHMM => typeof x === 'string' && HM.test(x);
+export const isHM = (x: unknown): x is HHMM => typeof x === 'string' && HM.test(x);
+const hm = isHM;
 
 export function validDayType(x: unknown): DayType | null {
   if (!x || typeof x !== 'object') return null;

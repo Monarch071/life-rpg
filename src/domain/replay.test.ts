@@ -886,3 +886,48 @@ test('выдача с древней датой игнорируется; с 202
   expect(replay([issue('2020-01-01', [nq('z', '2020-01-01', 'E', ['reading'])])], NOW).history).toHaveLength(1);
   expect(performance.now() - t).toBeLessThan(300);
 });
+
+// ---- T6 fix round 1: границы времени, плохие часы, строгий HH:MM ----
+test('day_changed после закрытия дня (устаревшее устройство) игнорируется; игровая дата не идёт назад', () => {
+  const d = '2026-12-01', d2 = '2026-12-02';
+  const late = ev({ type: 'day_changed', date: d, dayType: DT[1], at: '02:00', ts: at(d2, 2) }); // дневная закрылась в 01:00
+  const s = replay([onboard, startDay(d), late], at(d2, 2, 30));
+  expect(s.today.date).toBe(d2);
+  expect(s.ledger.some(r => r.source === 'day_changed')).toBe(false);
+  // устаревший перевод вчерашнего дня в «отдых» не замораживает пропуск
+  const evs = [onboard, ...doneDays('2026-11-29', 2, 'reading'), startDay(d), issue(d, [nq('x', d, 'E', ['reading'])]),
+    ev({ type: 'day_changed', date: d, dayType: DT[3], at: '12:00', ts: at('2026-12-02', 9) })];
+  const h = replay(evs, at('2026-12-02', 12)).history.find(x => x.date === d)!;
+  expect(h).toMatchObject({ rest: false, streak: 1 });
+  // смена до старта — тоже игнорируется
+  expect(replay([onboard, ev({ type: 'day_changed', date: d, dayType: DT[1], at: '07:00', ts: at(d, 7) }), startDay(d)], at(d, 12)).today.changed).toBe(false);
+  // в пределах дня — принимается
+  expect(replay([onboard, startDay(d), ev({ type: 'day_changed', date: d, dayType: DT[1], at: '00:30', ts: at(d2, 0, 30) })], at(d2, 0, 40)).today).toMatchObject({ date: d, changed: true });
+});
+
+test('day_started задним числом для закрытого дня игнорируется', () => {
+  const back = startDay('2026-11-15', { dayType: DT[3] }, 12);
+  const moved = { ...back, ts: at('2026-11-17', 9) } as GameEvent; // 15-е давно закрыто
+  expect(replay([moved], NOW).history).toEqual([]);
+  expect(replay([onboard, issue('2026-11-15', [nq('x', '2026-11-15', 'E', ['reading'])]), moved], NOW).history[0].rest).toBe(false);
+});
+
+test('выдача с датой далеко от времени события игнорируется: первый день не сдвигается, цикл короткий', () => {
+  const stray = [ev({ type: 'quests_issued', date: '2024-01-01', quests: [nq('old', '2024-01-01', 'E', ['reading'])], ts: at('2026-11-10', 8) }),
+    ev({ type: 'quests_issued', date: '2099-01-01', quests: [nq('fut', '2099-01-01', 'E', ['reading'])], ts: at('2026-11-10', 9) })];
+  const evs = span('2026-11-10', 14).flatMap((d, i) => [issue(d, [nq(`f${d}`, d, 'C', ['strength'], { xp: 49 })]), ...(i < 2 ? [done(d, `f${d}`)] : [])]);
+  const t = performance.now();
+  const s = replay([onboard, ...stray, ...evs], at('2026-11-24'));
+  expect(performance.now() - t).toBeLessThan(300);
+  expect(s.statInfo.str.norm).toBeCloseTo(34.3, 6); // норма из плана — первый день 10 ноября
+  expect(s.history[0].date).toBe('2026-11-10');
+  // вчерашняя дата после полуночи — допустима
+  expect(replay([ev({ type: 'quests_issued', date: '2026-11-16', quests: [nq('y', '2026-11-16', 'E', ['reading'])], ts: at('2026-11-17', 0, 30) })], NOW).history).toHaveLength(1);
+});
+
+test('строгий HH:MM: 99:99 отбрасывается', () => {
+  const d = '2026-11-17';
+  expect(replay([ev({ type: 'day_started', date: d, work: null, wakeAt: '99:99', ts: at(d, 7) })], NOW).today.started).toBe(false);
+  expect(replay([ev({ type: 'day_started', date: d, work: { start: '25:00', end: '18:00' }, wakeAt: '07:00', ts: at(d, 7) })], NOW).today.work).toBeNull();
+  expect(replay([ev({ type: 'busy_until', date: d, until: '24:00' })], NOW).today.busyUntil).toBeNull();
+});

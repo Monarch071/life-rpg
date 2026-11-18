@@ -2,7 +2,7 @@ import { ACHIEVEMENTS, earnAchievements, type Delta } from './achievements';
 import { BALANCE, RANKS } from './balance';
 import { seasonOf, THEMES, themeBonusApplies, type ThemeId } from './calendar';
 import { addDays, gameDate, weekStart } from './day';
-import { closeMinutes, closesAtTs, DEFAULT_DAY_TYPES, gameDateAt, legacyDayType, validDayType, type DayType } from './dayType';
+import { closeMinutes, closesAtTs, DEFAULT_DAY_TYPES, gameDateAt, isHM, legacyDayType, validDayType, type DayType } from './dayType';
 import { adjustMultipliers } from './difficulty';
 import { cleanAnswers, validAnalysis } from './interview';
 import { METRIC_INFO } from './metricInfo';
@@ -30,7 +30,8 @@ const isDate = (x: unknown): x is ISODate => typeof x === 'string' && /^\d{4}-\d
 const BLOB = /^[a-z0-9-]{1,64}$/;
 // shortcut: дни от первой выдачи идут плотным циклом; выдачи раньше этой даты — мусор (иначе 1900 год = 46 тыс. итераций)
 const MIN_ISSUE_DATE = '2020-01-01';
-const isHM = (x: unknown): x is HHMM => typeof x === 'string' && /^\d\d:\d\d$/.test(x);
+/** Дата дневного события — в пределах ±1 дня от календарной даты его ts (плохие часы устройства, мусор). */
+const nearTs = (date: ISODate, ts: number) => { const c = gameDate(ts, 0); return date >= addDays(c, -1) && date <= addDays(c, 1); };
 const validProfile = (p: any): p is Profile => !!p && typeof p === 'object' && !!p.selfRating && typeof p.selfRating === 'object'
   && STAT_KEYS.every(k => typeof p.selfRating[k] === 'number' && Number.isFinite(p.selfRating[k]));
 const validAvatar = (p: any): p is AvatarParams => !!p && typeof p === 'object' && (['hair', 'hairColor', 'outfitColor', 'eyes'] as const).every(k => typeof p[k] === 'string');
@@ -113,19 +114,27 @@ export function replay(events: GameEvent[], now: number): GameState {
   const evs = normalize(events);
   // Проход 1: старт/смена дня и отбой профиля → закрытие каждого дня → игровые даты.
   let sleep: HHMM | null = null; // отбой последнего валидного профиля — для синтеза типа старых day_started
+  for (const e of evs) if (e.type === 'onboarding_completed' && validProfile(e.profile)) sleep = isHM(e.profile.sleep) ? e.profile.sleep : null;
   const dayStart = new Map<ISODate, { work: { start: HHMM; end: HHMM } | null; wakeAt: HHMM; dayType: DayType | null; energy: number | null }>();
   const dayChange = new Map<ISODate, { type: DayType; ts: number }>();
   let dayTypes: DayType[] = DEFAULT_DAY_TYPES;
+  // Тип дня: последний принятый day_changed, иначе day_started (старый — синтез).
+  const typeNow = (d: ISODate): DayType | null => {
+    const st = dayStart.get(d);
+    return st ? dayChange.get(d)?.type ?? st.dayType ?? legacyDayType(st.work, st.wakeAt, sleep) : null;
+  };
   for (const e of evs) {
-    if (e.type === 'onboarding_completed') { if (validProfile(e.profile)) sleep = isHM(e.profile.sleep) ? e.profile.sleep : null; }
-    else if (e.type === 'day_started') {
-      if (!isDate(e.date) || dayStart.has(e.date) || !isHM(e.wakeAt)) continue; // побеждает первый
+    if (e.type === 'day_started') {
+      // побеждает первый; старт задним числом для уже закрытого (даже по позднему 04:00) дня отбрасывается
+      if (!isDate(e.date) || dayStart.has(e.date) || !isHM(e.wakeAt) || !nearTs(e.date, e.ts) || e.ts >= closesAtTs(e.date, BALANCE.day.closeLatestMin)) continue;
       const w = e.work as { start?: unknown; end?: unknown } | null;
       dayStart.set(e.date, { work: w && typeof w === 'object' && isHM(w.start) && isHM(w.end) ? { start: w.start, end: w.end } : null, wakeAt: e.wakeAt,
         dayType: validDayType(e.dayType), energy: Number.isInteger(e.energy) && e.energy! >= 1 && e.energy! <= 10 ? e.energy! : null });
     } else if (e.type === 'day_changed') {
-      const t = validDayType(e.dayType);
-      if (isDate(e.date) && t && isHM(e.at)) dayChange.set(e.date, { type: t, ts: dayChange.get(e.date)?.ts ?? e.ts }); // тип — последний, ts строки XP — первый
+      // только после старта и до закрытия дня по типу, действующему до смены (события идут по ts) — иначе устаревшее устройство
+      const t = validDayType(e.dayType), cur = isDate(e.date) ? typeNow(e.date) : null;
+      if (t && isHM(e.at) && cur && e.ts < closesAtTs(e.date, closeMinutes(cur)))
+        dayChange.set(e.date, { type: t, ts: dayChange.get(e.date)?.ts ?? e.ts }); // тип — последний, ts строки XP — первый
     } else if (e.type === 'day_types_set' && Array.isArray(e.types)) {
       const ts = e.types.map(validDayType).filter((t): t is DayType => !!t);
       dayTypes = ts.length ? ts : DEFAULT_DAY_TYPES; // последний по ts
@@ -133,7 +142,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   }
   // Тип дня: последний day_changed, иначе day_started (старый — синтез); смена без старта не действует.
   const types = new Map<ISODate, DayType>();
-  for (const [d, st] of dayStart) types.set(d, dayChange.get(d)?.type ?? st.dayType ?? legacyDayType(st.work, st.wakeAt, sleep));
+  for (const d of dayStart.keys()) types.set(d, typeNow(d)!);
   const closeOf = (d: ISODate) => closeMinutes(types.get(d) ?? null);
   const gd = (ts: number) => gameDateAt(ts, closeOf);
   const today = gd(now);
@@ -187,7 +196,7 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (Number.isInteger(e.tier) && e.tier >= 1 && e.tier <= 4 && typeof e.blob === 'string' && BLOB.test(e.blob)) avatarImages[e.tier] = e.blob; // последний по ts
         break;
       case 'quests_issued': {
-        if (!isDate(e.date) || e.date < MIN_ISSUE_DATE || issued.has(e.date) || !Array.isArray(e.quests)) break; // побеждает первый
+        if (!isDate(e.date) || e.date < MIN_ISSUE_DATE || !nearTs(e.date, e.ts) || issued.has(e.date) || !Array.isArray(e.quests)) break; // побеждает первый
         const qs: DayQuest[] = [];
         for (const raw of e.quests) { const q = normQuest(raw, e.date); if (q && !questById.has(q.id)) { qs.push(q); questById.set(q.id, q); } }
         issued.set(e.date, qs); issuedTs.set(e.date, e.ts);
@@ -358,7 +367,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const history: DayResult[] = [], statHistory: GameState['statHistory'] = [];
   const finalized: { stat: Stat; done: boolean }[][] = [];
   const closed: { date: ISODate; done: number; rest: boolean }[] = []; // все закрытые дни от первого дня с заданиями (пустые тоже)
-  let streak = 0, multipliers = fill(1);
+  let streak = 0, idleRun = 0, multipliers = fill(1); // idleRun — подряд закрытых не-отдыхающих дней без выполненного
   // Даты: каждый день от первого дня с заданиями до сегодня (пропуски тоже закрываются) + выдачи и строки вне его.
   const firstDay = [...issued.keys()].sort()[0] as ISODate | undefined;
   const dates = new Set([...issued.keys(), ...extra.keys()]);
@@ -368,8 +377,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     if (qs.some(q => q.done)) {
       // снимок на начало дня
       const base = baseNow(), weak = weakestStat(base), strong = strongestStat(base), theme = themeOn(d);
-      const idle = closed.filter(c => !c.rest).slice(-BALANCE.penalty.weakeningIdleDays);
-      const weakening = idle.length === BALANCE.penalty.weakeningIdleDays && idle.every(c => c.done === 0);
+      const weakening = idleRun >= BALANCE.penalty.weakeningIdleDays;
       let total = 0, top = 0;
       for (let i = 1; i <= BALANCE.penalty.imbalanceWindow; i++) {
         const sd = statByDate.get(addDays(d, -i));
@@ -395,6 +403,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     streak = nextStreak(streak, o, false); // «Заморозка» из магазина — с эффектами наград (T7)
     if (o.perfect) add(flatRow(`perfect:${d}`, closesAtTs(d, closeOf(d)), d, 'perfect_day', BALANCE.streak.perfectXp, null));
     closed.push({ date: d, done: dq.length, rest });
+    if (!rest) idleRun = dq.length ? 0 : idleRun + 1;
     if (!qs.length) continue;
     history.push({ date: d, xp: dq.reduce((a, q) => a + q.xpFinal!, 0), completed: dq.length, issued: qs.length, counted: o.counted, perfect: o.perfect, rest, streak });
     dayOf(d).streak = streak;
