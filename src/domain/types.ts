@@ -18,7 +18,7 @@ export interface Quest {
   difficulty: 1|2|3|4|5; minutes: number;
   window: { start: HHMM; end: HHMM } | null;   // null — «в течение дня»
   xp: number;
-  auto: { metric: 'steps'|'sleepHours'|'weightKg'; op: '>='|'<='; value: number } | null;
+  auto: { metric: 'steps'|'sleepHours'|'weightKg'|'workoutMin'; op: '>='|'<='; value: number } | null;
   templateId: string;
 }
 export type Metric = 'steps'|'sleepHours'|'weightKg'|'screenMin'|'spend'|'mood'|'water'|'readPages'|'workoutMin';
