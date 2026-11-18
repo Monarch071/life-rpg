@@ -1,0 +1,36 @@
+import type { Rank } from './types';
+
+// Все числа баланса живут здесь (dayTypes/rewards добавятся в T3/T7).
+export const BALANCE = {
+  level:   { max: 100, costK: 100, costPow: 1.5, startRulesDiv: 2, startRulesMax: 50, startAiMax: 60 },
+  rank: {
+    base:      { E: 20, D: 40, C: 70, B: 120, A: 200, S: 350 },
+    levelCap:  { E: 1, D: 10, C: 20, B: 35, A: 50, S: 70 },
+    skillCap:  { E: 1, D: 1, C: 3, B: 5, A: 7, S: 9 },
+    paramScale:{ E: 1, D: 2, C: 3.5, B: 6, A: 10, S: 16 },
+    ownShare: 0.6,
+  },
+  verify:  { auto: 1.0, photo: 0.9, honest: 0.7 },
+  bonus:   { cap: 1.0, streakPerDay: 0.02, streakMax: 0.5, theme: 0.2, weakest: 0.25 },
+  penalty: { cap: 0.5, fatiguePerPoint: 0.003, weakening: 0.2, weakeningIdleDays: 3,
+             imbalance: 0.2, imbalanceShare: 0.5, imbalanceMinXp: 200, imbalanceWindow: 7 },
+  goldShare: 0.2,
+  stat:    { max: 100, startBase: 5, startK: 0.65, startMax: 70, pointBase: 50, pointK: 5 },
+  form:    { window: 14, normShare: 0.7, normMin: 15, normDays: 60, planDays: 30, inForm: 0.8, sagging: 0.4 },
+  restore: { mult: 2, cooldownDays: 7 },
+  skill:   { maxLevel: 10, costK: 100, rulesStartMax: 4, aiStartMax: 7, mainShare: 0.6, nearRustDays: 23 },
+  day:     { closeAfterBedMin: 60, closeLatestMin: 240, closeDefaultMin: 240, minWindowMin: 20, workoutBeforeBedMin: 120 },
+  energy:  { low: 40, high: 70, fallback: 50 },
+  assembly:{ maxPerStat: 2, statEveryDays: 3, p: { boss: 3, form: 2, theme: 1.5, idle: 1, idleDays: 7, repeat: -2 } },
+  streak:  { countShare: 0.6, missFactor: 0.5, perfectXp: 50, restDaysPerMonth: 14 },
+  reroll:  { free: 1, cost: 50 },
+  custom:  { perDay: 2, dayShare: 0.25 },
+  dayChangedXp: 20,
+  season:  { prologueEnd: '2026-11-30', stepXp: 600, steps: 30 },
+  calibration: { up: 0.85, down: 0.6, upK: 1.1, downK: 0.85, startK: 1.1 },
+  shop:    { freezePerMonth: 2 },
+  achievementGold: 25, weeklyXp: 150,
+  legacyRank: { 1: 'E', 2: 'E', 3: 'D', 4: 'C', 5: 'B' },
+} as const;
+
+export const RANKS: readonly Rank[] = ['E', 'D', 'C', 'B', 'A', 'S'];

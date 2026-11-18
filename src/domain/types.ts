@@ -86,3 +86,7 @@ export interface GameState {
     // для generateDailyQuests: лучший 7‑дневный средний по шагам (из metric_logged steps), сон за последний день с данными, templateId заданий за 2 прошлых дня
 }
 export type DistributiveOmit<T, K extends keyof any> = T extends any ? Omit<T, K> : never;
+
+export type Rank = 'E' | 'D' | 'C' | 'B' | 'A' | 'S';
+export type Verify = 'auto' | 'photo' | 'honest';
+export type QuestKind = 'daily' | 'challenge' | 'restore' | 'custom';
