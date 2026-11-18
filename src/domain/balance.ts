@@ -8,7 +8,20 @@ const DEFAULT_DAY_TYPES: DayType[] = [
   { id: 'rest',    kind: 'rest',    label: 'Отдых',           wake: null,    busy: null, bed: null,    slots: 1 },
 ];
 
-// Все числа баланса живут здесь (dayTypes/rewards добавятся в T3/T7).
+export type RewardEffect = 'streak_freeze' | 'day_off';
+/** Стартовый набор магазина (спека §7.6): rewardId = 'default:<slug>'. */
+export const DEFAULT_REWARDS: { slug: string; title: string; price: number; effect?: RewardEffect }[] = [
+  { slug: 'episode',   title: 'Серия аниме или дунхуа',     price: 50 },
+  { slug: 'games',     title: 'Вечер игр без чувства вины', price: 150 },
+  { slug: 'match',     title: 'Посмотреть матч',            price: 200 },
+  { slug: 'cheatmeal', title: 'Читмил',                     price: 200 },
+  { slug: 'freeze',    title: 'Заморозка серии',            price: 300, effect: 'streak_freeze' },
+  { slug: 'book',      title: 'Новая книга',                price: 400 },
+  { slug: 'dayoff',    title: 'День без заданий',           price: 600, effect: 'day_off' },
+  { slug: 'treat',     title: 'Покупка для себя',           price: 1000 },
+];
+
+// Все числа баланса живут здесь.
 export const BALANCE = {
   level:   { max: 100, costK: 100, costPow: 1.5, startRulesDiv: 2, startRulesMax: 50, startAiMax: 60 },
   rank: {
@@ -41,6 +54,7 @@ export const BALANCE = {
   achievementGold: 25, weeklyXp: 150,
   metricAbsMax: 1e9,   // предел накопительной суммы metric_logged 'add'
   dayTypes: DEFAULT_DAY_TYPES,
+  rewards: DEFAULT_REWARDS,
   legacyRank: { 1: 'E', 2: 'E', 3: 'D', 4: 'C', 5: 'B' },
   legacy:  { questXpMax: 10_000, weeklyXpMax: 1000, bossStageXp: 100, bossDefeatXp: 200 },   // старый журнал: XP как сохранено, в пределах
 } as const;

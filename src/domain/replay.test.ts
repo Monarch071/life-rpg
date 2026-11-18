@@ -1,8 +1,9 @@
 import { expect, test } from 'vitest';
 import { addDays } from './day';
 import { closesAtTs, DEFAULT_DAY_TYPES } from './dayType';
-import { baseFromXp, startBase } from './progression';
+import { baseFromXp, rankCap, startBase } from './progression';
 import { DEFAULT_AVATAR, normQuest, replay } from './replay';
+import { missingDefaultRewards } from './shopDefaults';
 import { seededRng } from './rng';
 import { scoreFrom20 } from './startProfile';
 import type { SkillId } from './skillCatalog';
@@ -448,7 +449,7 @@ test('награды: покупка, перерасход игнорирует�
   ], NOW);
   expect(bad.rewards).toEqual([]);
   const trimmed = replay([ev({ type: 'reward_created', rewardId: 't', title: '  Кино ', price: 5 })], NOW);
-  expect(trimmed.rewards).toEqual([{ id: 't', title: 'Кино', price: 5 }]);
+  expect(trimmed.rewards).toEqual([{ id: 't', title: 'Кино', price: 5, effect: null }]);
 });
 
 // ---- недельные и боссы ----
@@ -932,4 +933,117 @@ test('строгий HH:MM: 99:99 отбрасывается', () => {
   expect(replay([ev({ type: 'day_started', date: d, work: null, wakeAt: '99:99', ts: at(d, 7) })], NOW).today.started).toBe(false);
   expect(replay([ev({ type: 'day_started', date: d, work: { start: '25:00', end: '18:00' }, wakeAt: '07:00', ts: at(d, 7) })], NOW).today.work).toBeNull();
   expect(replay([ev({ type: 'busy_until', date: d, until: '24:00' })], NOW).today.busyUntil).toBeNull();
+});
+
+// ---- T7: переброс, свои задания, магазин с эффектами ----
+const D10 = '2026-11-10';
+const reroll = (questId: string, replacement: Quest, ts: number) => ev({ type: 'quest_rerolled', date: replacement.date, questId, replacement, ts });
+const custom = (quest: Quest, ts: number) => ev({ type: 'custom_quest_added', date: quest.date, quest: { ...quest, kind: 'custom' }, ts });
+/** 09.11: легаси 300 XP сделано + несделанное (не идеальный день) → 60 золота прошлых дней. */
+const gold60 = [issue('2026-11-09', [q('l1', '2026-11-09', 300), q('l2', '2026-11-09', 10)]), done('2026-11-09', 'l1')];
+
+test('переброс: 1-й бесплатно, 2-й за 50 при золоте прошлых дней, 3-й отклонён', () => {
+  const evs = [...gold60, issue(D10, ['x1', 'x2', 'x3'].map(id => nq(id, D10, 'C', ['strength']))),
+    reroll('x1', nq('r1', D10, 'C', ['cardio']), at(D10, 10)), reroll('x2', nq('r2', D10, 'C', ['cardio']), at(D10, 10, 1)),
+    reroll('x3', nq('r3', D10, 'C', ['cardio']), at(D10, 10, 2))];
+  const s = replay(evs, at(D10, 12));
+  expect(s.today.quests.map(q => q.id)).toEqual(['r1', 'r2', 'x3']);
+  expect(s.gold).toBe(60 - 50 + 25 * s.achievements.length); expect(s.today.nextRerollCost).toBe(50);
+  expect(s.today.rerollsUsed).toBe(2);
+  expect(replay([...evs].reverse(), at(D10, 12))).toEqual(s);
+});
+
+test('переброс: сегодняшний заработок не считается; сделанное, restore и custom не перебрасываются; другой ранг замены — отказ', () => {
+  const evs = [issue(D10, [q('L', D10, 300), ...['x1', 'x2', 'x3'].map(id => nq(id, D10, 'C', ['strength'])), nq('rs', D10, 'C', ['strength'], { kind: 'restore' })]),
+    done(D10, 'L', at(D10, 9)), custom(nq('c1', D10, 'E', ['reading']), at(D10, 9, 30)),
+    reroll('L', nq('rL', D10, 'D', ['cardio']), at(D10, 10)), reroll('rs', nq('rR', D10, 'C', ['cardio']), at(D10, 10, 1)),
+    reroll('c1', nq('rC', D10, 'E', ['cardio']), at(D10, 10, 2)), reroll('x3', nq('rX', D10, 'D', ['cardio']), at(D10, 10, 3)),
+    reroll('x3', { ...nq('rT', D10, 'C', ['cardio']), templateId: 't-x3' }, at(D10, 10, 4)),
+    reroll('x1', nq('r1', D10, 'C', ['cardio']), at(D10, 10, 5)), reroll('x2', nq('r2', D10, 'C', ['cardio']), at(D10, 10, 6))];
+  const s = replay(evs, at(D10, 12));
+  expect(s.today.quests.map(q => q.id)).toEqual(['L', 'r1', 'x2', 'x3', 'rs', 'c1']);
+  expect(s.today).toMatchObject({ rerollsUsed: 1, nextRerollCost: 50, customCount: 1 });
+  // переброс вчерашнего задания — отказ
+  const y = replay([issue('2026-11-09', [nq('y', '2026-11-09', 'C', ['strength'])]), reroll('y', nq('ry', '2026-11-09', 'C', ['cardio']), at(D10, 10))], at(D10, 12));
+  expect(y.history[0].issued).toBe(1); expect(y.ledger).toEqual([]);
+});
+
+test('второй переброс той же questId (второе устройство) игнорируется', () => {
+  const evs = [...gold60, issue(D10, [nq('x1', D10, 'C', ['strength'])]),
+    reroll('x1', nq('r1', D10, 'C', ['cardio']), at(D10, 10)), reroll('x1', nq('r2', D10, 'C', ['mobility']), at(D10, 10, 1)), done(D10, 'r2', at(D10, 11))];
+  const s = replay(evs, at(D10, 12));
+  expect(s.today.quests.map(q => q.id)).toEqual(['r1']); expect(s.today.rerollsUsed).toBe(1);
+  expect(s.gold).toBe(60 + 25 * s.achievements.length);
+  // цепочка: замену можно перебросить дальше (платно)
+  const ch = replay([...gold60, issue(D10, [nq('x1', D10, 'C', ['strength'])]), reroll('x1', nq('r1', D10, 'C', ['cardio']), at(D10, 10)),
+    reroll('r1', nq('r9', D10, 'C', ['mobility']), at(D10, 10, 1)), done(D10, 'r9', at(D10, 11))], at(D10, 12));
+  expect(ch.today.quests.map(q => q.id)).toEqual(['r9']); expect(ch.today.quests[0].done).toBe(true);
+});
+
+// ИИ-анкета: уровень 40, Сила 6 → потолок B для Силы
+const strongAi = ev({ type: 'interview_completed', answers: {}, followups: [], ts: at('2026-11-01'), analysis: { archetype: 'А', summary: 'с', strengths: [], weaknesses: [], focus: [], questGuidance: '',
+  stats: { str: 20, end: 10, int: 10, dis: 10, cha: 10, fin: 10, spi: 10 }, startLevel: 40, skillLevels: { strength: 6 } } });
+const D20 = '2026-11-20';
+
+test('своё задание: 3-е за день игнор; XP своих ≤ треть остальных', () => {
+  const s = replay([strongAi, issue(D20, [nq('n', D20, 'B', ['strength'])]), done(D20, 'n'),
+    custom(nq('c1', D20, 'B', ['strength']), at(D20, 9)), custom(nq('c2', D20, 'E', ['strength']), at(D20, 9, 1)), custom(nq('c3', D20, 'E', ['strength']), at(D20, 9, 2)),
+    done(D20, 'c1', at(D20, 21))], at(D20, 22));
+  expect(s.today.quests.map(q => q.id)).toEqual(['n', 'c1', 'c2']); expect(s.today.customCount).toBe(2);
+  expect(s.ledger.find(r => r.questId === 'n')!.xp).toBe(84);
+  expect(s.ledger.find(r => r.questId === 'c1')).toMatchObject({ xp: 28, gold: 6 });
+  expect(s.today.xp).toBe(112);
+  // свои не в знаменателе 60%: обычное не сделано, своё сделано — день не засчитан
+  const t = replay([strongAi, issue(D20, [nq('n', D20, 'B', ['strength'])]), custom(nq('c1', D20, 'B', ['strength']), at(D20, 9)), done(D20, 'c1')], at('2026-11-21'));
+  expect(t.history[0]).toMatchObject({ counted: false }); expect(t.ledger.find(r => r.questId === 'c1')!.xp).toBe(0);
+});
+
+test('своё задание выше потолка режется до потолка', () => {
+  const s = replay([onboard, issue(D20, [nq('n', D20, 'E', ['strength'])]), custom(nq('c1', D20, 'S', ['strength']), at(D20, 9))], at(D20, 12));
+  const cap = rankCap(s.startLevel, s.skills.strength.start);
+  expect(cap).not.toBe('S'); expect(s.today.quests[1]).toMatchObject({ id: 'c1', rank: cap, kind: 'custom' });
+  // ИИ-потолок B: своё A → B
+  expect(replay([strongAi, issue(D20, []), custom(nq('c1', D20, 'A', ['strength']), at(D20, 9))], at(D20, 12)).today.quests[0].rank).toBe('B');
+});
+
+const freezeR = ev({ type: 'reward_created', rewardId: 'default:freeze', title: 'Заморозка серии', price: 300, effect: 'streak_freeze', ts: at('2026-11-01') });
+const dayoffR = ev({ type: 'reward_created', rewardId: 'default:dayoff', title: 'День без заданий', price: 600, effect: 'day_off', ts: at('2026-11-01') });
+const buy = (rewardId: string, ts: number) => ev({ type: 'reward_purchased', rewardId, ts });
+/** 09.11 — легаси 10 000 XP (2000 золота), 10.11 — сделано, 11.11 и 12.11 — пропуски. */
+const streakDays = [issue('2026-11-09', [q('a', '2026-11-09', 10000)]), done('2026-11-09', 'a'), issue(D10, [q('b', D10, 35)]), done(D10, 'b'),
+  issue('2026-11-11', [q('c', '2026-11-11', 35)]), issue('2026-11-12', [q('d', '2026-11-12', 35)])];
+
+test('заморозка: пропуск после покупки не режет серию; 3-я покупка в месяц отклонена', () => {
+  const N = at('2026-11-13');
+  expect(replay([...streakDays, freezeR], N).history.map(h => h.streak)).toEqual([1, 2, 1, 0]);
+  const s = replay([...streakDays, freezeR, buy('default:freeze', at(D10, 13))], N);
+  expect(s.history.map(h => h.streak)).toEqual([1, 2, 2, 1]);
+  expect(s.rewards[0]).toMatchObject({ id: 'default:freeze', effect: 'streak_freeze' });
+  const three = replay([...streakDays, freezeR, ...[13, 14, 15].map(h => buy('default:freeze', at(D10, h)))], N);
+  expect(three.purchases).toHaveLength(2); expect(three.history.map(h => h.streak)).toEqual([1, 2, 2, 2]);
+  expect(three.gold).toBe(s.gold - 300);
+  // купить на золото сегодняшнего дня нельзя
+  expect(replay([...streakDays, freezeR, buy('default:freeze', at('2026-11-09', 21))], N).purchases).toEqual([]);
+});
+
+test('«день без заданий»: день покупки нейтрален для серии', () => {
+  const evs = [issue('2026-11-09', [q('a', '2026-11-09', 10000)]), done('2026-11-09', 'a'), issue(D10, [q('b', D10, 35)]),
+    issue('2026-11-11', [q('c', '2026-11-11', 35)]), done('2026-11-11', 'c'), dayoffR];
+  expect(replay(evs, at('2026-11-12')).history.map(h => h.streak)).toEqual([1, 0, 1]);
+  const s = replay([...evs, buy('default:dayoff', at(D10, 13))], at('2026-11-12'));
+  expect(s.history.map(h => h.streak)).toEqual([1, 1, 2]); expect(s.history[1].rest).toBe(true);
+  expect(s.purchases).toHaveLength(1);
+});
+
+test('стартовый магазин: 8 наград; двойной посев → 8; удалённая не возвращается', () => {
+  const seed = missingDefaultRewards([]);
+  expect(seed.map(e => [e.rewardId, e.price])).toEqual([['default:episode', 50], ['default:games', 150], ['default:match', 200],
+    ['default:cheatmeal', 200], ['default:freeze', 300], ['default:book', 400], ['default:dayoff', 600], ['default:treat', 1000]]);
+  const evs = [...seed, ...seed].map((e, i) => ev({ ...e, ts: i + 1 }));
+  expect(replay(evs, NOW).rewards).toHaveLength(8);
+  const del = [...evs, ev({ type: 'reward_deleted', rewardId: 'default:games' })];
+  expect(missingDefaultRewards(del)).toEqual([]);
+  expect(replay(del, NOW).rewards).toHaveLength(7);
+  // effect вне двух значений отбрасывается, награда остаётся
+  expect(replay([ev({ type: 'reward_created', rewardId: 'z', title: 'Z', price: 5, effect: 'magic' })], NOW).rewards).toEqual([{ id: 'z', title: 'Z', price: 5, effect: null }]);
 });
