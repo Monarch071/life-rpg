@@ -1,4 +1,12 @@
+import type { DayType } from './dayType';
 import type { Rank } from './types';
+
+const DEFAULT_DAY_TYPES: DayType[] = [
+  { id: 'day',     kind: 'day',     label: 'Дневная смена',   wake: '08:00', busy: { start: '10:00', end: '19:00' }, bed: '00:00', slots: 4 },
+  { id: 'evening', kind: 'evening', label: 'Вечерняя смена',  wake: '11:00', busy: { start: '16:00', end: '02:00' }, bed: '03:00', slots: 3 },
+  { id: 'off',     kind: 'off',     label: 'Выходной',        wake: '11:00', busy: null, bed: '01:00', slots: 5 },
+  { id: 'rest',    kind: 'rest',    label: 'Отдых',           wake: null,    busy: null, bed: null,    slots: 1 },
+];
 
 // Все числа баланса живут здесь (dayTypes/rewards добавятся в T3/T7).
 export const BALANCE = {
@@ -19,7 +27,7 @@ export const BALANCE = {
   form:    { window: 14, normShare: 0.7, normMin: 15, normDays: 60, planDays: 30, inForm: 0.8, sagging: 0.4 },
   restore: { mult: 2, cooldownDays: 7 },
   skill:   { maxLevel: 10, costK: 100, rulesStartMax: 4, aiStartMax: 7, mainShare: 0.6, nearRustDays: 23 },
-  day:     { closeAfterBedMin: 60, closeLatestMin: 240, closeDefaultMin: 240, minWindowMin: 20, workoutBeforeBedMin: 120 },
+  day:     { closeAfterBedMin: 60, closeLatestMin: 240, closeDefaultMin: 240, maxSlots: 7, minWindowMin: 20, workoutBeforeBedMin: 120 },
   energy:  { low: 40, high: 70, fallback: 50 },
   assembly:{ maxPerStat: 2, statEveryDays: 3, p: { boss: 3, form: 2, theme: 1.5, idle: 1, idleDays: 7, repeat: -2 } },
   streak:  { countShare: 0.6, missFactor: 0.5, perfectXp: 50, restDaysPerMonth: 14 },
@@ -30,6 +38,7 @@ export const BALANCE = {
   calibration: { up: 0.85, down: 0.6, upK: 1.1, downK: 0.85, startK: 1.1 },
   shop:    { freezePerMonth: 2 },
   achievementGold: 25, weeklyXp: 150,
+  dayTypes: DEFAULT_DAY_TYPES,
   legacyRank: { 1: 'E', 2: 'E', 3: 'D', 4: 'C', 5: 'B' },
 } as const;
 
