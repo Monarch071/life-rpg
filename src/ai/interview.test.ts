@@ -41,3 +41,11 @@ test('aiAnalysis: stats вне 1..20 или мусор → AiError', async () =>
   gen.mockResolvedValueOnce('мусор')
   await expect(aiAnalysis(cfg, {}, [])).rejects.toMatchObject({ kind: 'bad_response' })
 })
+
+test('aiAnalysis: новые поля (scores, startLevel, skillLevels) проходят валидацию', async () => {
+  const sc = { str: 40, end: 50, int: 60, dis: 30, cha: 45, fin: 20, spi: 55 }
+  gen.mockResolvedValueOnce({ ...analysis, scores: sc, startLevel: 22, levelWhy: { str: 'зал 2 года' }, skillLevels: { strength: 5, reading: 3 } })
+  const r = await aiAnalysis(cfg, {}, [])
+  expect(r.scores).toEqual(sc); expect(r.startLevel).toBe(22); expect(r.skillLevels).toEqual({ strength: 5, reading: 3 })
+  expect(r.levelWhy).toEqual({ str: 'зал 2 года' })
+})

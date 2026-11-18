@@ -1,3 +1,4 @@
+import type { SkillId } from './skillCatalog';
 export type Stat = 'str'|'end'|'int'|'dis'|'cha'|'fin'|'spi';
 export type HHMM = string;            // '09:30'
 export type ISODate = string;         // '2026-11-17' — игровая дата
@@ -24,7 +25,8 @@ export interface Quest {
 export type Metric = 'steps'|'sleepHours'|'weightKg'|'screenMin'|'spend'|'mood'|'water'|'readPages'|'workoutMin';
 export interface HealthData { steps?: number; sleepHours?: number; workoutMin?: number; activeKcal?: number; restingHR?: number; weightKg?: number }
 export type Answers = Record<string, string | number | string[]>;
-export interface Analysis { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; stats: Record<Stat, number>; focus: string[]; questGuidance: string }
+export interface Analysis { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; stats: Record<Stat, number>; focus: string[]; questGuidance: string;
+  scores?: Record<Stat, number>; startLevel?: number; levelWhy?: Partial<Record<Stat, string>>; skillLevels?: Partial<Record<SkillId, number>> }
 export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'onboarding_completed'; profile: Profile }
   | { type: 'day_started'; date: ISODate; work: { start: HHMM; end: HHMM } | null; wakeAt: HHMM }

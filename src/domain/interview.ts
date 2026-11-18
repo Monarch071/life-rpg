@@ -1,3 +1,5 @@
+import { BALANCE as B } from './balance';
+import { isSkillId, type SkillId } from './skillCatalog';
 import { STATS } from './stats';
 import type { Analysis, Answers, Stat } from './types';
 
@@ -173,7 +175,25 @@ export function validAnalysis(x: unknown): Analysis | null {
   }
   const archetype = a.archetype.trim().slice(0, 40);
   if (!archetype) return null;
-  return { archetype, summary: a.summary.trim().slice(0, 1200), strengths, weaknesses, stats, focus, questGuidance: a.questGuidance.trim().slice(0, 600) };
+  const out: Analysis = { archetype, summary: a.summary.trim().slice(0, 1200), strengths, weaknesses, stats, focus, questGuidance: a.questGuidance.trim().slice(0, 600) };
+  // Новые поля необязательны: плохое поле отбрасывается по одному, разбор остаётся.
+  const sc = a.scores;
+  if (sc && typeof sc === 'object' && STAT_KEYS.every(k => typeof sc[k] === 'number' && Number.isFinite(sc[k]) && sc[k] >= 0 && sc[k] <= 100))
+    out.scores = Object.fromEntries(STAT_KEYS.map(k => [k, Math.round(sc[k])])) as Record<Stat, number>;
+  if (Number.isInteger(a.startLevel) && a.startLevel >= 1 && a.startLevel <= B.startLevel.aiMax) out.startLevel = a.startLevel;
+  const lw = a.levelWhy;
+  if (lw && typeof lw === 'object') {
+    const why: Partial<Record<Stat, string>> = {};
+    for (const k of STAT_KEYS) if (typeof lw[k] === 'string' && lw[k].trim()) why[k] = lw[k].trim().slice(0, 200);
+    if (Object.keys(why).length) out.levelWhy = why;
+  }
+  const sl = a.skillLevels;
+  if (sl && typeof sl === 'object') {
+    const lv: Partial<Record<SkillId, number>> = {};
+    for (const [k, v] of Object.entries(sl)) if (isSkillId(k) && Number.isInteger(v) && (v as number) >= 1 && (v as number) <= B.skill.aiStartMax) lv[k] = v as number;
+    if (Object.keys(lv).length) out.skillLevels = lv;
+  }
+  return out;
 }
 
 /**

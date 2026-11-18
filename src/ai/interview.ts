@@ -1,4 +1,5 @@
 import { QUESTIONS, SECTIONS, validAnalysis, type Analysis, type Answers, type SectionId } from '../domain/interview'
+import { SKILL_CATALOG } from '../domain/skillCatalog'
 import { STATS } from '../domain/stats'
 import type { Stat } from '../domain/types'
 import type { AiConfig } from './config'
@@ -36,11 +37,18 @@ const STAT_KEYS = Object.keys(STATS) as Stat[]
 const ANALYSIS_SYSTEM = `Ты — наставник в приложении-игре по прокачке личных характеристик. По анкете составь портрет героя по-русски: уважительно, без медицинских диагнозов, без давления на тему веса и денег.
 Оцени 7 характеристик целыми числами от 1 до 20: ${STAT_KEYS.map(s => `${s} — ${STATS[s].name}`).join(', ')}.
 Шкала: 5 — новичок, 10 — средний взрослый, 15 — заметно выше среднего, 20 — топ. Будь честным: не завышай и не занижай, опирайся на ответы.
+Также оцени каждую сферу по шкале 0–100 в scores (сила — силовые показатели и стаж; end — сон, шаги, кардио, питание, вредные привычки; int — образование, чтение, языки, профессия; dis — стабильность режима, доведённые цели; cha — круг общения, выступления, управление людьми; fin — доход с поправкой на возраст и город, подушка, долги, контроль трат; spi — стресс, отдых, практики, удовлетворённость жизнью). stats (1–20) выведи из scores.
+startLevel — общий стартовый уровень героя, целое 1–60 (студент-новичок ~3–10, опытный профессионал выше); levelWhy — по одной короткой фразе на сферу, почему так.
+skillLevels — стартовые уровни только тех навыков, где человек реально занимался (${SKILL_CATALOG.map(s => `${s.id} — ${s.title}`).join(', ')}): не занимался — 1, меньше 6 месяцев — 2, 6–12 месяцев — 3, 1–3 года — 4–5, 3+ лет — 6, профессия — 7. Выше 7 не ставь.
 Верни: archetype — аниме-класс или архетип героя («Тихий стратег»); summary — 4–6 предложений, обращение на «ты»; strengths и weaknesses — короткие списки; focus — 3 зоны роста; questGuidance — как давать задания этому человеку: темп, что мотивирует, чего избегать.`
 const list = { type: 'array', items: { type: 'string' } }
 const ANALYSIS_SCHEMA = { type: 'object', required: ['archetype', 'summary', 'strengths', 'weaknesses', 'stats', 'focus', 'questGuidance'],
   properties: { archetype: { type: 'string' }, summary: { type: 'string' }, strengths: list, weaknesses: list, focus: list, questGuidance: { type: 'string' },
-    stats: { type: 'object', required: STAT_KEYS, properties: Object.fromEntries(STAT_KEYS.map(s => [s, { type: 'integer', minimum: 1, maximum: 20 }])) } } }
+    stats: { type: 'object', required: STAT_KEYS, properties: Object.fromEntries(STAT_KEYS.map(s => [s, { type: 'integer', minimum: 1, maximum: 20 }])) },
+    scores: { type: 'object', required: STAT_KEYS, properties: Object.fromEntries(STAT_KEYS.map(s => [s, { type: 'integer', minimum: 0, maximum: 100 }])) },
+    startLevel: { type: 'integer', minimum: 1, maximum: 60 },
+    levelWhy: { type: 'object', properties: Object.fromEntries(STAT_KEYS.map(s => [s, { type: 'string' }])) },
+    skillLevels: { type: 'object', properties: Object.fromEntries(SKILL_CATALOG.map(s => [s.id, { type: 'integer', minimum: 1, maximum: 7 }])) } } }
 
 export async function aiAnalysis(cfg: AiConfig, answers: Answers, followups: { q: string; a: string }[]): Promise<Analysis> {
   const user = `Ответы анкеты:\n${lines(answers)}\n\nУточнения:\n${followups.map(f => `- ${f.q} → ${f.a}`).join('\n') || 'нет'}`
