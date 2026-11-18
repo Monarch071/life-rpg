@@ -105,7 +105,7 @@ export const QUEST_TEMPLATES: QuestTemplate[] = [
   H('no_social', 'social', 'dis', 'Без соцсетей сегодня'),
   H('no_late', 'late', 'spi', 'Лечь спать вовремя', ['rest']),
   H('no_junk', 'junk', 'end', 'Без фастфуда сегодня', ['nutrition']),
-  H('no_smoke', 'smoke', 'end', 'Не курить сегодня'),
+  H('no_smoke', 'smoke', 'dis', 'Не курить сегодня'),
   H('no_procr', 'procr', 'dis', 'Не откладывать дела на потом'),
 ];
 
