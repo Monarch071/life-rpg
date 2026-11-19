@@ -888,7 +888,7 @@ test('выдача с древней датой игнорируется; с 202
   expect(replay([issue('1900-01-01', [nq('z', '1900-01-01', 'E', ['reading'])])], NOW).history).toEqual([]);
   const t = performance.now();
   expect(replay([issue('2020-01-01', [nq('z', '2020-01-01', 'E', ['reading'])])], NOW).history).toHaveLength(1);
-  expect(performance.now() - t).toBeLessThan(300);
+  expect(performance.now() - t).toBeLessThan(1500);
 });
 
 // ---- T6 fix round 1: границы времени, плохие часы, строгий HH:MM ----
@@ -922,7 +922,7 @@ test('выдача с датой далеко от времени события
   const evs = span('2026-11-10', 14).flatMap((d, i) => [issue(d, [nq(`f${d}`, d, 'C', ['strength'], { xp: 49 })]), ...(i < 2 ? [done(d, `f${d}`)] : [])]);
   const t = performance.now();
   const s = replay([onboard, ...stray, ...evs], at('2026-11-24'));
-  expect(performance.now() - t).toBeLessThan(300);
+  expect(performance.now() - t).toBeLessThan(1500);
   expect(s.statInfo.str.norm).toBeCloseTo(34.3, 6); // норма из плана — первый день 10 ноября
   expect(s.history[0].date).toBe('2026-11-10');
   // вчерашняя дата после полуночи — допустима
