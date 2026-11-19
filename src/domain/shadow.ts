@@ -61,7 +61,8 @@ export function facetStart(kind: FacetKind, answers: Answers | null, freq?: Freq
 /** Серьёзная зависимость (решение контролёра): наркотики/вещества — всегда; алкоголь — от «несколько раз в неделю»
  *  (явная частота often/daily, иначе ответ анкеты); прочие привычки — нет. Грань не предлагается, UI советует специалиста. */
 export function isSerious(name: string, kind: FacetKind, answers: Answers | null, freq?: Freq): boolean {
-  if (/наркот|веществ/i.test(String(name))) return true;
+  // всегда серьёзно: вещества, азартные игры на деньги, самоповреждение — не игра, а повод обратиться за помощью
+  if (/наркот|веществ|ставк|казино|азарт|самоповрежд|порез|суицид/i.test(String(name))) return true;
   if (kind !== 'alcohol' && !/алког/i.test(String(name))) return false;
   return freq ? freq === 'often' || freq === 'daily' : answers?.alcohol === 'Несколько раз в неделю';
 }

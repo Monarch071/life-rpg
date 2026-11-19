@@ -38,7 +38,9 @@ test('старт из анкеты, безопасность, предложен
   expect(facetStart('procr', null)).toBe(50);
   expect(facetStart('custom', null, 'daily')).toBe(80);
   expect(facetStart('smoke', { smoking: 'Регулярно' }, 'rare')).toBe(30);   // явная частота важнее анкеты
-  expect(isSerious('Ставки на спорт', 'custom', null)).toBe(false);
+  expect(isSerious('Ставки на спорт', 'custom', null)).toBe(true);
+  expect(isSerious('Казино', 'custom', null, 'rare')).toBe(true);
+  expect(isSerious('Самоповреждение', 'custom', null)).toBe(true);
   expect(isSerious('Наркотики', 'custom', null)).toBe(true);
   expect(isSerious('Вещества', 'custom', null, 'rare')).toBe(true);
   expect(isSerious('Алкоголь', 'custom', null, 'rare')).toBe(false);
