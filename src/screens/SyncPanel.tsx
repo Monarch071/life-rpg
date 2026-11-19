@@ -110,6 +110,7 @@ export default function SyncPanel({ state, sync }: { state: GameState; sync: Syn
         <button className="btn ghost" onClick={() => setShow(!show)}>{show ? 'Скрыть' : 'Показать'}</button>
         <button className="btn" onClick={() => copy(`${cfg.url}/sync`, 'Адрес')}>Скопировать адрес</button>
         <button className="btn" onClick={() => copy(cfg.token, 'Токен')}>Скопировать токен</button>
+        <p><a href="https://github.com/Monarch071/life-rpg/blob/main/docs/shortcuts.md" target="_blank" rel="noreferrer">Как настроить автоматизации</a></p>
         <p className="muted">
           Последние данные из «Команд»: {h
             ? `${new Date(h.ts).toLocaleString('ru-RU')}${h.health.steps != null ? `, шаги ${h.health.steps}` : ''}${h.health.sleepHours != null ? `, сон ${h.health.sleepHours} ч` : ''}`
