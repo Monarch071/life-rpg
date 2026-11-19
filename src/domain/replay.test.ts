@@ -1047,3 +1047,56 @@ test('стартовый магазин: 8 наград; двойной посе
   // effect вне двух значений отбрасывается, награда остаётся
   expect(replay([ev({ type: 'reward_created', rewardId: 'z', title: 'Z', price: 5, effect: 'magic' })], NOW).rewards).toEqual([{ id: 'z', title: 'Z', price: 5, effect: null }]);
 });
+
+// ---- T7 fix round 1 ----
+test('эффект — только у стартовых наград, цена из BALANCE; своя награда с effect — обычная', () => {
+  const evs = [issue('2026-11-09', [q('a', '2026-11-09', 10000)]), done('2026-11-09', 'a'), issue(D10, [q('b', D10, 35)]),
+    issue('2026-11-11', [q('c', '2026-11-11', 35)]), done('2026-11-11', 'c')];
+  const cheat = ev({ type: 'reward_created', rewardId: 'mine', title: 'Хак', price: 1, effect: 'day_off', ts: at('2026-11-01') });
+  const s = replay([...evs, cheat, buy('mine', at(D10, 13))], at('2026-11-12'));
+  expect(s.rewards[0].effect).toBeNull(); expect(s.purchases).toHaveLength(1);
+  expect(s.history.map(h => h.streak)).toEqual([1, 0, 1]);
+  const cheap = ev({ type: 'reward_created', rewardId: 'default:dayoff', title: 'Д', price: 1, ts: at('2026-11-01') });
+  const t = replay([...evs, cheap, buy('default:dayoff', at(D10, 13))], at('2026-11-12'));
+  expect(t.rewards[0]).toMatchObject({ price: 600, effect: 'day_off' }); expect(t.purchases[0].price).toBe(600);
+  expect(t.history.map(h => h.streak)).toEqual([1, 1, 2]);
+});
+
+test('день без заданий: повтор на ту же дату и на день отдыха — отказ без списания; входит в лимит 14 в месяц', () => {
+  const evs = [issue('2026-11-09', [q('a', '2026-11-09', 10000)]), done('2026-11-09', 'a'), issue(D10, [q('b', D10, 35)]), dayoffR];
+  const one = replay([...evs, buy('default:dayoff', at(D10, 13))], at(D10, 22));
+  const two = replay([...evs, buy('default:dayoff', at(D10, 13)), buy('default:dayoff', at(D10, 14))], at(D10, 22));
+  expect(two.purchases).toHaveLength(1); expect(two.gold).toBe(one.gold);
+  expect(one.today).toMatchObject({ dayOff: true, restDaysLeft: 13 });
+  // 14 дней отдыха в декабре → день без заданий 15-го отклонён
+  const rest = span('2026-12-01', 14).flatMap(d => [startDay(d, { dayType: DT[3] }), issue(d, [nq(`r${d}`, d, 'E', ['rest'])])]);
+  const base = [issue('2026-11-30', [q('g', '2026-11-30', 10000)]), done('2026-11-30', 'g'), ...rest, dayoffR];
+  expect(replay([...base, buy('default:dayoff', at('2026-12-15', 13))], at('2026-12-15', 22)).purchases).toEqual([]);
+  // на день отдыха — отказ
+  expect(replay([...base, buy('default:dayoff', at('2026-12-03', 13))], at('2026-12-15', 22)).purchases).toEqual([]);
+});
+
+test('свои задания не дают недельный прогресс и счётчик заданий достижений', () => {
+  const wk = ev({ type: 'weekly_issued', weekStart: '2026-11-16', ts: at('2026-11-16', 7),
+    quests: [{ id: 'w1', weekStart: '2026-11-16', kind: 'active_days', stat: null, target: 1, title: 'w', xp: 150 }] });
+  const s = replay([onboard, wk, issue(D20, [nq('n', D20, 'E', ['strength'])]), custom(nq('c1', D20, 'E', ['strength']), at(D20, 9)), done(D20, 'c1')], at(D20, 22));
+  expect(s.weekly.quests[0]).toMatchObject({ progress: 0, done: false });
+  expect(s.achievements.map(a => a.id)).not.toContain('first_quest');
+});
+
+test('today.spendable совпадает с проверкой трат; freezesLeft', () => {
+  const s = replay([...gold60, issue(D10, [nq('x1', D10, 'C', ['strength'])]), done(D10, 'x1', at(D10, 9)), freezeR], at(D10, 12));
+  expect(s.today).toMatchObject({ spendable: 60, freezesLeft: 2, dayOff: false });
+  expect(s.gold).toBeGreaterThan(60);
+  const f = replay([...streakDays, freezeR, buy('default:freeze', at(D10, 13))], at(D10, 22));
+  expect(f.today).toMatchObject({ spendable: 2010 - 300, freezesLeft: 1 });
+});
+
+test('заморозка не тратится при нулевой серии; купленная до закрытия защищает этот день', () => {
+  const evs = [issue('2026-11-08', [q('a', '2026-11-08', 10000)]), done('2026-11-08', 'a'), issue('2026-11-09', [q('m', '2026-11-09', 35)]),
+    issue(D10, [q('b', D10, 35)]), issue('2026-11-11', [q('c', '2026-11-11', 35)]), done('2026-11-11', 'c'), issue('2026-11-12', [q('d', '2026-11-12', 35)]),
+    freezeR, buy('default:freeze', at(D10, 13))];
+  expect(replay(evs, at('2026-11-13')).history.map(h => h.streak)).toEqual([1, 0, 0, 1, 1]);
+  // купленная в день пропуска защищает его
+  expect(replay([...evs.slice(0, 3), freezeR, buy('default:freeze', at('2026-11-09', 21))], at(D10)).history.map(h => h.streak)).toEqual([1, 1]);
+});

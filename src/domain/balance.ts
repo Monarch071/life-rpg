@@ -11,7 +11,7 @@ const DEFAULT_DAY_TYPES: DayType[] = [
 export type RewardEffect = 'streak_freeze' | 'day_off';
 /** Стартовый набор магазина (спека §7.6): rewardId = 'default:<slug>'. */
 export const DEFAULT_REWARDS: { slug: string; title: string; price: number; effect?: RewardEffect }[] = [
-  { slug: 'episode',   title: 'Серия аниме или дунхуа',     price: 50 },
+  { slug: 'episode',   title: 'Серия аниме или сериала',    price: 50 },
   { slug: 'games',     title: 'Вечер игр без чувства вины', price: 150 },
   { slug: 'match',     title: 'Посмотреть матч',            price: 200 },
   { slug: 'cheatmeal', title: 'Читмил',                     price: 200 },

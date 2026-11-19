@@ -94,7 +94,10 @@ export interface GameState {
            changed: boolean;              // был «День изменился»
            restDaysLeft: number;          // дней отдыха в этом календарном месяце осталось
            rerollsUsed: number; nextRerollCost: number;   // принятые перебросы сегодня; цена следующего (0 | 50)
-           customCount: number };         // своих заданий сегодня
+           customCount: number;           // своих заданий сегодня
+           spendable: number;             // золото для платных трат (переброс, покупки с эффектом)
+           freezesLeft: number;           // заморозок можно купить в этом месяце
+           dayOff: boolean };             // сегодня — купленный «день без заданий»
   character: { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; focus: string[]; questGuidance: string; date: ISODate; ai: boolean } | null;   // по последней валидной анкете
   interviewAnswers: Answers | null;   // последние ответы анкеты (для промпта заданий)
   lastHealth: { ts: number; date: ISODate; health: HealthData } | null;

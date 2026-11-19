@@ -340,7 +340,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   }
 
   // Недельные: прогресс за 7 дней недели; XP — один раз за выполненное, в том числе за прошлые недели.
-  const doneOn = (d: ISODate) => issued.get(d)?.filter(q => q.done) ?? [];
+  const doneOn = (d: ISODate) => issued.get(d)?.filter(q => q.done && q.kind !== 'custom') ?? []; // свои дают только свой XP
   const weekProgress = (w: WeeklyQuest) => {
     let n = 0;
     for (let i = 0; i < 7; i++) {
@@ -368,7 +368,11 @@ export function replay(events: GameEvent[], now: number): GameState {
       const title = typeof e.title === 'string' ? e.title.trim() : '';
       if (typeof e.rewardId === 'string' && !shop.has(e.rewardId) && title.length > 0 && title.length <= 60
         && Number.isInteger(e.price) && e.price >= 1 && e.price <= 100000)
-        shop.set(e.rewardId, { id: e.rewardId, title, price: e.price, effect: e.effect === 'streak_freeze' || e.effect === 'day_off' ? e.effect : null, deleted: false });
+      {
+        // эффект и цена — только у стартовых наград и только из BALANCE; своя награда эффекта не имеет
+        const def = e.rewardId.startsWith('default:') ? BALANCE.rewards.find(x => `default:${x.slug}` === e.rewardId) : undefined;
+        shop.set(e.rewardId, { id: e.rewardId, title, price: def ? def.price : e.price, effect: def?.effect ?? null, deleted: false });
+      }
       continue;
     }
     const r = shop.get(e.rewardId);
@@ -427,9 +431,13 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (price) { rerollPaid.push({ ts: s.ts, price }); paidSum += price; }
       } else {
         const r = s.reward, m = d.slice(0, 7), nf = freezeMonth.get(m) ?? 0;
-        if ((r.effect === 'streak_freeze' && nf >= BALANCE.shop.freezePerMonth) || avail < r.price) continue;
+        const nr = restInMonth.get(m) ?? 0;
+        // день без заданий: в лимите дней отдыха месяца; повтор на ту же дату или на день отдыха — отказ без списания
+        if (r.effect === 'streak_freeze' ? nf >= BALANCE.shop.freezePerMonth
+          : restDays.has(d) || dayOff.has(d) || nr >= BALANCE.streak.restDaysPerMonth) continue;
+        if (avail < r.price) continue;
         acceptedFx.add(s.id); paidSum += r.price;
-        if (r.effect === 'streak_freeze') { freezes++; freezeMonth.set(m, nf + 1); } else dayOff.add(d);
+        if (r.effect === 'streak_freeze') { freezes++; freezeMonth.set(m, nf + 1); } else { dayOff.add(d); restInMonth.set(m, nr + 1); }
       }
     }
     // «День изменился»: при меньшем числе слотов последние по выдаче невыполненные — dropped (вне знаменателя 60%); свои не трогаются.
@@ -472,7 +480,7 @@ export function replay(events: GameEvent[], now: number): GameState {
         const split = splitXp(r.xp, q.skills);
         add({ id: `quest:${q.id}`, ts: completedAt.get(q.id) ?? issuedTs.get(d)!, date: d, source: 'quest', questId: q.id, ...r,
           skills: split.skills, stats: split.stats, verified: !q.legacy && q.verify === 'auto' });
-        q.xpFinal = r.xp; bump(d, 'questsDone');
+        q.xpFinal = r.xp; if (q.kind !== 'custom') bump(d, 'questsDone');
       }
     }
     for (const { ws, ts, w } of weeklyAt.get(d) ?? []) if (weekProgress({ ...w, weekStart: ws }) >= w.target) {
@@ -482,16 +490,17 @@ export function replay(events: GameEvent[], now: number): GameState {
     if (!firstDay || d < firstDay || d >= today) continue;
     // закрытие дня: серия (заморозка гасит ближайший пропуск), идеальный день; история — для дней с выдачей
     const o = outcomeOf(d), rest = restDays.has(d) || dayOff.has(d), dq = qs.filter(q => q.done);
-    const freeze = !o.neutral && !o.counted && freezes > 0;
+    const real = qs.filter(q => q.kind !== 'custom'), realDone = real.filter(q => q.done).length;
+    const freeze = !o.neutral && !o.counted && freezes > 0 && streak > 0; // при нулевой серии заморозка не тратится
     if (freeze) freezes--;
     streak = nextStreak(streak, o, freeze);
     if (o.perfect) add(flatRow(`perfect:${d}`, closesAtTs(d, closeOf(d)), d, 'perfect_day', BALANCE.streak.perfectXp, null));
     closed.push({ date: d, done: dq.length, rest });
-    if (!rest) idleRun = dq.length ? 0 : idleRun + 1;
+    if (!rest) idleRun = realDone ? 0 : idleRun + 1;
     if (!qs.length) continue;
     history.push({ date: d, xp: dq.reduce((a, q) => a + q.xpFinal!, 0), completed: dq.length, issued: qs.length, counted: o.counted, perfect: o.perfect, rest, streak });
     dayOf(d).streak = streak;
-    if (qs.length >= 3 && dq.length === qs.length) bump(d, 'perfectDays');
+    if (real.length >= 3 && realDone === real.length) bump(d, 'perfectDays');
     statHistory.push({ date: d, stats: baseNow() });
     finalized.push(qs.map(q => ({ stat: q.stat, done: q.done })));
     multipliers = adjustMultipliers(multipliers, finalized.slice(-7).flat());
@@ -516,7 +525,8 @@ export function replay(events: GameEvent[], now: number): GameState {
   const todayQuests = issued.get(today) ?? [];
   const streakNow = streak + (outcomeOf(today).counted ? 1 : 0);
   dayOf(today).streak = streakNow;
-  if (todayQuests.length >= 3 && todayQuests.every(q => q.done)) bump(today, 'perfectDays');
+  const todayReal = todayQuests.filter(q => q.kind !== 'custom');
+  if (todayReal.length >= 3 && todayReal.every(q => q.done)) bump(today, 'perfectDays');
   for (const [d, m] of metrics) if (m.steps !== undefined) dayOf(d).steps = m.steps;
   // Золото достижений учитывается при покупках по дате покупки; first_purchase зависит от покупок, поэтому считаем дважды
   // (золото самого first_purchase на проверку покупок не влияет — баланс не уходит в минус).
@@ -582,6 +592,9 @@ export function replay(events: GameEvent[], now: number): GameState {
       date: today, started: !!st, work: st?.work ?? null, wakeAt: st?.wakeAt ?? null,
       closesAt: closesAtTs(today, closeOf(today)), dayType: types.get(today) ?? null, energy, changed: !!st && dayChange.has(today),
       restDaysLeft: Math.max(0, BALANCE.streak.restDaysPerMonth - (restInMonth.get(today.slice(0, 7)) ?? 0)),
+      // то же правило, что у платных трат: золото прошлых дней − все обычные покупки − принятые платные траты
+      spendable: Math.max(0, ledger.reduce((a, r) => a + (r.date < today ? r.gold : 0), 0) - ordinaryBuys.reduce((a, b) => a + b.r.price, 0) - paidSum),
+      freezesLeft: Math.max(0, BALANCE.shop.freezePerMonth - (freezeMonth.get(today.slice(0, 7)) ?? 0)), dayOff: dayOff.has(today),
       rerollsUsed, nextRerollCost: rerollsUsed >= BALANCE.reroll.free ? BALANCE.reroll.cost : 0, customCount: customs.get(today)?.length ?? 0,
       quests: todayQuests, xp: todayQuests.reduce((s, q) => s + (q.done ? q.xpFinal ?? 0 : 0), 0),
       metrics: metrics.get(today) ?? {}, checkedIn, lastEnergy, busyUntil, calendar,
