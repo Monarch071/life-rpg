@@ -12,9 +12,9 @@ import { isSkillId, primaryStat, SKILL_CATALOG, splitXp, type SkillId } from './
 import { startProfile } from './startProfile';
 import { dayOutcome, nextStreak } from './streak';
 import { classFor, isStat, STATS, tierFor } from './stats';
-import type { Analysis, Answers, AutoMetric, AvatarParams, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, WeeklyQuest } from './types';
+import type { Analysis, Answers, AutoMetric, AvatarParams, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, WeeklyQuest } from './types';
 import { weakestStat } from './weekly';
-import { sessionMinutes, unionMinutes, workoutKind } from './vitals';
+import { energyScore, fatigueNext, focusScore, hpScore, intFocusMult, sessionMinutes, unionMinutes, workoutKind } from './vitals';
 import { levelFromXp } from './xp';
 
 export const DEFAULT_AVATAR: AvatarParams = { hair: 'short', hairColor: '#2b1d14', outfitColor: '#4f46e5', eyes: 'round' };
@@ -220,6 +220,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const dayOf = (d: ISODate) => { const x = days.get(d) ?? {}; days.set(d, x); return x; };
   const bump = (d: ISODate, k: Exclude<keyof Delta, 'steps' | 'streak'>, n = 1) => { const x = dayOf(d); x[k] = (x[k] ?? 0) + n; };
   const checkinDates = new Set<ISODate>();
+  const checkins = new Map<ISODate, { ts: number; energy: number }[]>(); // вечерняя энергия — самочувствие HP и Усталость
   // Платные траты (переброс, покупка с эффектом) принимаются в цикле дней по золоту прошлых дней.
   type ShopItem = { id: string; title: string; price: number; effect: RewardEffect | null; deleted: boolean };
   type Spend = { id: string; ts: number; date: ISODate } & ({ orig: string; repl: DayQuest } | { reward: ShopItem });
@@ -228,7 +229,8 @@ export function replay(events: GameEvent[], now: number): GameState {
   const customs = new Map<ISODate, DayQuest[]>();
   // Авто-источники: здоровье по датам пакета; hi/lo — max/min незафлаженных значений по каждому пакету (засчёт монотонен).
   type Acc = { steps?: number; sleep?: number; rhr?: number; weight?: number; mindful?: number; legacyW?: number;
-    w: Map<string, Workout>; hi: Partial<Record<AutoMetric, number>>; lo: Partial<Record<AutoMetric, number>> };
+    w: Map<string, Workout>; hi: Partial<Record<AutoMetric, number>>; lo: Partial<Record<AutoMetric, number>>;
+    pk: { ts: number; sleep?: number; steps?: number; rhr?: number; mindful?: number }[] }; // pk — пакеты с ts: параметры закрытого дня
   const health = new Map<ISODate, Acc>();
   const sigs: Sig[] = [], sigKeys = new Set<string>();
   // Интервалы фокуса/чтения: ts — событие, которое интервал завершило (off или таймер). Только добавляются — минуты не убывают.
@@ -307,8 +309,10 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (ok(h.workoutMin)) m.workoutMin = Math.max(m.workoutMin ?? -Infinity, h.workoutMin);
         if (ok(h.sleepHours)) m.sleepHours = h.sleepHours;
         if (ok(h.weightKg)) m.weightKg = h.weightKg;
-        const a: Acc = health.get(e.date) ?? { w: new Map(), hi: {}, lo: {} };
+        const a: Acc = health.get(e.date) ?? { w: new Map(), hi: {}, lo: {}, pk: [] };
         health.set(e.date, a); seen('health', e.ts);
+        const v = (x: unknown) => (ok(x) ? x : undefined);
+        a.pk.push({ ts: e.ts, sleep: v(h.sleepHours), steps: v(h.steps), rhr: v(h.restingHR), mindful: v(h.mindfulMin) });
         const up = (k: AutoMetric, v: number) => { a.hi[k] = Math.max(a.hi[k] ?? -Infinity, v); a.lo[k] = Math.min(a.lo[k] ?? Infinity, v); };
         const P = BALANCE.plausible;
         if (ok(h.steps)) { a.steps = Math.max(a.steps ?? -Infinity, h.steps); if (h.steps <= P.stepsMax) up('steps', h.steps); }
@@ -353,6 +357,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       case 'checkin':
         if (!isDate(e.date)) break;
         if (e.date === today) checkedIn = true;
+        if (fin(e.energy)) checkins.set(e.date, [...(checkins.get(e.date) ?? []), { ts: e.ts, energy: e.energy }]);
         if (e.date <= today) { if (typeof e.energy === 'number' && Number.isFinite(e.energy)) lastEnergy = e.energy; if (!checkinDates.has(e.date)) { checkinDates.add(e.date); bump(e.date, 'checkins'); } }
         break;
       case 'season_theme_set':
@@ -417,6 +422,50 @@ export function replay(events: GameEvent[], now: number): GameState {
     const sg = appSigs(app, sigs.filter(s => s.ts < close && s.d >= from && s.d <= next));
     if (!sigs.some(s => s.kind === 'app' && s.app === app && s.ts < close && s.d >= from && s.d <= d)) return false;
     return sessionMinutes(sg).reduce((a, x) => a + (gd(x.start) === d ? x.min : 0), 0) <= value;
+  };
+  // Параметры дня (спека §5): каждая дата — по событиям, принятым до её закрытия, как данные дня выше.
+  const V = BALANCE.vitals;
+  const hvMemo = new Map<ISODate, { sleep?: number; steps?: number; rhr?: number; mindful?: number; feel?: number }>();
+  const hv = (d: ISODate) => {
+    let x = hvMemo.get(d);
+    if (x) return x;
+    x = {};
+    for (const p of health.get(d)?.pk ?? []) if (inTime(d, p.ts)) {
+      if (p.sleep !== undefined) x.sleep = p.sleep;
+      if (p.rhr !== undefined) x.rhr = p.rhr;
+      if (p.steps !== undefined) x.steps = Math.max(x.steps ?? -Infinity, p.steps);
+      if (p.mindful !== undefined) x.mindful = Math.max(x.mindful ?? -Infinity, p.mindful);
+    }
+    for (const c of checkins.get(d) ?? []) if (inTime(d, c.ts)) x.feel = c.energy;
+    if (x.sleep !== undefined && x.sleep > BALANCE.plausible.sleepMaxH) delete x.sleep; // зафлаженное не участвует
+    if (x.steps !== undefined && x.steps > BALANCE.plausible.stepsMax) delete x.steps;
+    hvMemo.set(d, x);
+    return x;
+  };
+  const avg = (xs: (number | null | undefined)[]) => { const v = xs.filter(fin); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const span = (d: ISODate, from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => addDays(d, from + i));
+  const sigsOn = new Map<ISODate, Sig[]>(), focusIvOn = new Map<ISODate, number[]>();
+  for (const s of sigs) sigsOn.set(s.d, [...(sigsOn.get(s.d) ?? []), s]);
+  for (const iv of ivList) if (iv.k === 'focusMin') { const d = gd(iv.start); focusIvOn.set(d, [...(focusIvOn.get(d) ?? []), iv.ts]); }
+  const focusOn = (d: ISODate) => {
+    if (!sigsOn.size && !focusIvOn.size) return focusScore({ focusMin: null, socialMin: null }); // плотный цикл без сигналов — без перебора окна
+    const ok = (ts: number) => inTime(d, ts), win = span(d, 1 - V.focus.sourceDays, 0);
+    const hasFocus = win.some(x => sigsOn.get(x)?.some(s => s.kind === 'focus' && ok(s.ts)) || focusIvOn.get(x)?.some(ok));
+    const hasSocial = win.some(x => sigsOn.get(x)?.some(s => s.kind === 'app' && s.app === 'social' && ok(s.ts)));
+    const social = !hasSocial ? null : sessionMinutes(appSigs('social', [d, addDays(d, 1)].flatMap(x => sigsOn.get(x) ?? []).filter(s => ok(s.ts))))
+      .reduce((a, x) => a + (gd(x.start) === d ? x.min : 0), 0);
+    return focusScore({ focusMin: hasFocus ? data.get(d)?.focusMin ?? 0 : null, socialMin: social });
+  };
+  const vitalsOn = (d: ISODate, fatigue: number): Vitals => {
+    const win = health.size || checkins.size ? span(d, 1 - V.hp.windowDays, 0).map(hv) : []; // без данных — без перебора окна (плотный цикл)
+    const rhr = avg(win.map(x => x.rhr));
+    const rhrPast = rhr === null ? [] : span(d, 1 - V.hp.windowDays - V.hp.rhrDays, -V.hp.windowDays).map(x => hv(x).rhr).filter(fin);
+    const h = hpScore({ sleepAvg: avg(win.map(x => x.sleep)), stepsAvg: avg(win.map(x => x.steps)), stepsGoal: profile?.stepsUsual ?? 0,
+      rhr, rhrMean: rhrPast.length >= V.hp.rhrMinSamples ? avg(rhrPast) : null, feel: avg(win.map(x => x.feel)) });
+    const weekMorning = dayStart.size ? avg(span(d, -V.energy.weekDays, -1).map(x => dayStart.get(x)?.energy)) : null;
+    const sleep = hv(d).sleep ?? null, f = focusOn(d);
+    return { hp: h.hp, energy: energyScore({ sleepLast: sleep, morning: dayStart.get(d)?.energy ?? null, weekMorning, hp: h.hp }), focus: f.focus, fatigue,
+      parts: { hp: h.parts, focus: f.parts }, energyInputs: { sleep, hp: h.hp, weekMorning } };
   };
   const autoOkOf = (q: DayQuest) => {
     const a = q.auto;
@@ -537,8 +586,9 @@ export function replay(events: GameEvent[], now: number): GameState {
   for (const [d, m] of metrics) if (m.steps !== undefined) dayOf(d).steps = m.steps; // до цикла: золото достижений прошлых дней
   let goldSoFar = 0, xpSoFar = 0; // цикл идёт по датам: на начало дня d — строки с датой < d
   const statByDate = new Map<ISODate, Record<Stat, number>>(); // XP характеристик по датам — для «Перекоса» и Формы
+  const rawXp = new Map<ISODate, number>(); // XP дня без штрафов — «большой день» Усталости
   const add = (r: LedgerEntry) => {
-    ledger.push(r); bump(r.date, 'xp', r.xp); goldSoFar += r.gold; xpSoFar += r.xp;
+    ledger.push(r); rawXp.set(r.date, (rawXp.get(r.date) ?? 0) + r.xp / (1 - r.penalty)); bump(r.date, 'xp', r.xp); goldSoFar += r.gold; xpSoFar += r.xp;
     const sd = statByDate.get(r.date) ?? fill(0);
     for (const k of STAT_KEYS) { statXp[k] += r.stats[k] ?? 0; sd[k] += r.stats[k] ?? 0; }
     statByDate.set(r.date, sd);
@@ -554,6 +604,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const history: DayResult[] = [], statHistory: GameState['statHistory'] = [];
   const finalized: { stat: Stat; done: boolean }[][] = [];
   const closed: { date: ISODate; done: number; rest: boolean }[] = []; // все закрытые дни от первого дня с заданиями (пустые тоже)
+  let fatigue = 0, todayVit: Vitals | null = null; // Усталость рекуррентно от первого дня с заданиями
   let streak = 0, idleRun = 0, multipliers = fill(1); // idleRun — подряд закрытых не-отдыхающих дней без выполненного
   // Даты: каждый день от первого дня с заданиями до сегодня (пропуски тоже закрываются) + выдачи и строки вне его.
   const firstDay = [...issued.keys()].sort()[0] as ISODate | undefined;
@@ -566,6 +617,23 @@ export function replay(events: GameEvent[], now: number): GameState {
     const rm = d.slice(0, 7);
     if (d <= today && types.get(d)?.kind === 'rest' && (restInMonth.get(rm) ?? 0) < BALANCE.streak.restDaysPerMonth) {
       restDays.add(d); restInMonth.set(rm, (restInMonth.get(rm) ?? 0) + 1);
+    }
+    // HP/Energy/Фокус/Усталость дня — до его строк леджера; Усталость: F(d) = f(F(d−1), день d−1, ночь d)
+    let vit: Vitals | null = null;
+    if (firstDay && d >= firstDay && d <= today) {
+      const F = V.fatigue, y = d > firstDay ? closed.at(-1) : undefined; // дни от firstDay идут подряд: последний закрытый — d−1
+      let day: Parameters<typeof fatigueNext>[1] = null;
+      if (y) {
+        const usual = closed.slice(-1 - F.bigDayWindow, -1).filter(c => !c.rest), yh = hv(y.date);
+        const norm = usual.length >= F.bigDayMinDays ? usual.reduce((a, c) => a + (rawXp.get(c.date) ?? 0), 0) / usual.length : 0;
+        day = { bigDay: norm > 0 && (rawXp.get(y.date) ?? 0) > F.bigDayShare * norm, rest: y.rest,
+          calm: (issued.get(y.date) ?? []).some(q => q.done && (q.skills.some(s => s === 'mindfulness' || s === 'rest') || q.templateId === 'stretch'))
+            || (yh.mindful ?? 0) >= F.calmMindfulMin,
+          lowEvening: yh.feel !== undefined && yh.feel <= F.lowEveningMax };
+      }
+      fatigue = fatigueNext(fatigue, day, hv(d).sleep ?? null);
+      vit = vitalsOn(d, fatigue);
+      if (d === today) todayVit = vit;
     }
     // потолок ранга: уровень и навык на начало дня
     const lvl = levelFromXp(xpSoFar, startLevel).level;
@@ -616,9 +684,11 @@ export function replay(events: GameEvent[], now: number): GameState {
       const imbalance = total >= BALANCE.penalty.imbalanceMinXp && top > BALANCE.penalty.imbalanceShare * total;
       const rows = qs.filter(q => q.done).map(q => ({ q, r: q.legacy
         ? { base: q.xp, k: 1, bonus: 0, penalty: 0, mult: 1, xp: q.xp, gold: goldFor(q.xp) }
-        : questReward({ rank: q.rank, verify: q.verify!, mult: q.kind === 'restore' ? BALANCE.restore.mult : 1,
+        : questReward({ rank: q.rank, verify: q.verify!,
+          mult: (q.kind === 'restore' ? BALANCE.restore.mult : 1) * (q.stat === 'int' ? intFocusMult(vit?.focus ?? null) : 1),
           bonuses: [streakBonus(streak), themeBonusApplies(theme, q.stat, q.skills) ? BALANCE.bonus.theme : 0, q.stat === weak ? BALANCE.bonus.weakest : 0],
-          penalties: [weakening ? BALANCE.penalty.weakening : 0, imbalance && q.stat === strong ? BALANCE.penalty.imbalance : 0] }) }));
+          penalties: [weakening ? BALANCE.penalty.weakening : 0, imbalance && q.stat === strong ? BALANCE.penalty.imbalance : 0,
+            BALANCE.penalty.fatiguePerPoint * (vit?.fatigue ?? 0)] }) }));
       // свои ≤ dayShare XP дня: min(Σ своих, round(Σ остальных × share / (1 − share))); урезание пропорционально, остаток — последней строке
       const own = rows.filter(x => x.q.kind === 'custom'), ownXp = own.reduce((a, x) => a + x.r.xp, 0);
       const share = BALANCE.custom.dayShare;
@@ -650,7 +720,8 @@ export function replay(events: GameEvent[], now: number): GameState {
     closed.push({ date: d, done: dq.length, rest });
     if (!rest) idleRun = realDone ? 0 : idleRun + 1;
     if (!qs.length) continue;
-    history.push({ date: d, xp: dq.reduce((a, q) => a + q.xpFinal!, 0), completed: dq.length, issued: qs.length, counted: o.counted, perfect: o.perfect, rest, streak });
+    history.push({ date: d, xp: dq.reduce((a, q) => a + q.xpFinal!, 0), completed: dq.length, issued: qs.length, counted: o.counted, perfect: o.perfect, rest, streak,
+      hp: vit!.hp, energy: vit!.energy, focus: vit!.focus, fatigue: vit!.fatigue });
     dayOf(d).streak = streak;
     if (real.length >= 3 && realDone === real.length) bump(d, 'perfectDays');
     statHistory.push({ date: d, stats: baseNow() });
@@ -718,8 +789,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     return [k, { base: b.value, into: b.into, need: b.need, xp: statXp[k], form, status: formStatus(form), norm, xp14, lastRestore: lastRestore[k] ?? null } satisfies StatInfo];
   })) as Record<Stat, StatInfo>;
   const st = dayStart.get(today);
-  const energy = !st ? null : st.energy !== null ? st.energy * 10
-    : lastEnergy !== null ? Math.min(100, Math.max(0, lastEnergy * 10)) : BALANCE.energy.fallback;
+  const vitals = todayVit ?? vitalsOn(today, 0);
   const skills = Object.fromEntries(SKILL_IDS.map(id => [id,
     { ...skillFromXp(start.skills[id], skillXp[id]), xp: skillXp[id], start: start.skills[id], lastDate: skillLast[id] ?? null } satisfies SkillState])) as Record<SkillId, SkillState>;
   const rewards = [...shop.values()].filter(r => !r.deleted).map(({ id, title, price, effect }) => ({ id, title, price, effect }));
@@ -741,13 +811,13 @@ export function replay(events: GameEvent[], now: number): GameState {
     className, tier: tierFor(level), multipliers,
     today: {
       date: today, started: !!st, work: st?.work ?? null, wakeAt: st?.wakeAt ?? null,
-      closesAt: closesAtTs(today, closeOf(today)), dayType: types.get(today) ?? null, energy, changed: !!st && dayChange.has(today),
+      closesAt: closesAtTs(today, closeOf(today)), dayType: types.get(today) ?? null, energy: vitals.energy ?? BALANCE.energy.fallback, changed: !!st && dayChange.has(today),
       restDaysLeft: Math.max(0, BALANCE.streak.restDaysPerMonth - (restInMonth.get(today.slice(0, 7)) ?? 0)),
       // то же правило, что у платных трат: золото строк и достижений прошлых дней − принятые обычные покупки − принятые платные траты
       spendable: Math.max(0, ledger.reduce((a, r) => a + (r.date < today ? r.gold : 0), 0) + achGoldBefore(today)
         - purchases.reduce((a, p) => a + (shop.get(p.rewardId)?.effect ? 0 : p.price), 0) - paidSum),
       freezesLeft: Math.max(0, BALANCE.shop.freezePerMonth - (freezeMonth.get(today.slice(0, 7)) ?? 0)), dayOff: dayOff.has(today),
-      data: data.get(today) ?? { flags: [] },
+      data: data.get(today) ?? { flags: [] }, vitals,
       dayStart: dayStartCaps ?? { level, skills: skillLevels() }, // сегодня не в цикле — сегодняшних строк нет
       rerollsUsed, nextRerollCost: rerollsUsed >= BALANCE.reroll.free ? BALANCE.reroll.cost : 0, customCount: customs.get(today)?.length ?? 0,
       quests: todayQuests, xp: todayQuests.reduce((s, q) => s + (q.done ? q.xpFinal ?? 0 : 0), 0),
@@ -768,7 +838,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     dayTypes, ledger, history, achievements: achs, title, statHistory, metricHistory,
     genInputs: {
       bestSteps7: best7(metrics, today, 'steps'),
-      lastSleepHours: sleepDate ? metrics.get(sleepDate)!.sleepHours! : null,
+      lastSleepHours: sleepDate ? metrics.get(sleepDate)!.sleepHours! : null, fatigue: vitals.fatigue,
       recentTemplateIds: [addDays(today, -2), addDays(today, -1)].flatMap(d => issued.get(d)?.map(q => q.templateId) ?? []),
       recent: Array.from({ length: BALANCE.assembly.statEveryDays - 1 }, (_, i) => addDays(today, i + 1 - BALANCE.assembly.statEveryDays)).filter(d => issued.get(d)?.length)
         .map(date => { const qs = issued.get(date)!; return { date, stats: [...new Set(qs.map(q => q.stat))], templateIds: qs.map(q => q.templateId) }; }),

@@ -84,7 +84,12 @@ export interface WeeklyQuest { id: string; weekStart: ISODate; kind: WeeklyKind;
 export interface Boss { id: string; title: string; stat: Stat; stages: string[]; done: number; defeated: boolean; abandoned: boolean }
 export interface WeeklyCtx { weekStart: ISODate; stats: Record<Stat, number>; multipliers: Record<Stat, number>; prevActiveDays: number; prevStatQuests: number; bestSteps7: number | null; themeStat: Stat | null }
 export interface AvatarParams { hair: string; hairColor: string; outfitColor: string; eyes: string }
-export interface DayResult { date: ISODate; xp: number; completed: number; issued: number; counted: boolean; perfect: boolean; rest: boolean; streak: number }
+/** HP, Energy, Фокус, Усталость дня (спека §5, §14). */
+export interface Vitals { hp: number | null; energy: number | null; focus: number | null; fatigue: number;
+  parts: { hp: Partial<Record<'sleep' | 'steps' | 'rhr' | 'feel', number>>; focus: Partial<Record<'focus' | 'social', number>> };
+  energyInputs: { sleep: number | null; hp: number | null; weekMorning: number | null } }
+export interface DayResult { date: ISODate; xp: number; completed: number; issued: number; counted: boolean; perfect: boolean; rest: boolean; streak: number;
+  hp: number | null; energy: number | null; focus: number | null; fatigue: number }
 export interface StatInfo { base: number; into: number; need: number; xp: number; form: number | null; status: 'new' | 'in_form' | 'sagging' | 'abandoned'; norm: number; xp14: number; lastRestore: ISODate | null }
 export interface SkillState { level: number; into: number; need: number; xp: number; start: number; lastDate: ISODate | null }
 export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss';
@@ -118,7 +123,8 @@ export interface GameState {
            spendable: number;             // золото для платных трат (переброс, покупки с эффектом)
            freezesLeft: number;           // заморозок можно купить в этом месяце
            dayOff: boolean;               // сегодня — купленный «день без заданий»
-           data: DayData };               // сегодняшние данные авто-источников
+           data: DayData;                 // сегодняшние данные авто-источников
+           vitals: Vitals };
   character: { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; focus: string[]; questGuidance: string; date: ISODate; ai: boolean } | null;   // по последней валидной анкете
   interviewAnswers: Answers | null;   // последние ответы анкеты (для промпта заданий)
   lastHealth: { ts: number; date: ISODate; health: HealthData } | null;
@@ -139,7 +145,7 @@ export interface GameState {
   title: string;          // titleReward последнего достижения с титулом, иначе 'Новичок'
   statHistory: { date: ISODate; stats: Record<Stat, number> }[];   // Основа на конец каждого финализированного дня
   metricHistory: { date: ISODate; metrics: Partial<Record<Metric, number>> }[];   // даты ≤ сегодня с метриками, по возрастанию
-  genInputs: { bestSteps7: number|null; lastSleepHours: number|null; recentTemplateIds: string[];
+  genInputs: { bestSteps7: number|null; lastSleepHours: number|null; recentTemplateIds: string[]; fatigue: number;
     recent: { date: ISODate; stats: Stat[]; templateIds: string[] }[] };
     // для сборки дня: лучший 7‑дневный средний по шагам (из metric_logged steps), сон за последний день с данными,
     // templateId заданий за 2 прошлых дня; recent — те же 2 дня (только с выдачей): характеристики и шаблоны

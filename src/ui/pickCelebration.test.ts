@@ -3,7 +3,7 @@ import { pickCelebration } from './pickCelebration'
 
 const st = (level: number, perfect = false, date = '2026-11-16') => ({
   level, today: { date: '2026-11-17' } as never,
-  history: [{ date, xp: 200, completed: 3, issued: 3, counted: true, perfect, rest: false, streak: 1 }],
+  history: [{ date, xp: 200, completed: 3, issued: 3, counted: true, perfect, rest: false, streak: 1, hp: null, energy: null, focus: null, fatigue: 0 }],
 })
 
 describe('pickCelebration', () => {

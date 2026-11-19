@@ -211,8 +211,8 @@ test('3 дня без открытия: финализируются один р
   expect(s1).toEqual(s2);
   expect(s1.streak).toBe(0);
   expect(s1.history).toEqual([
-    { date: '2026-11-13', xp: 50, completed: 1, issued: 2, counted: false, perfect: false, rest: false, streak: 0 }, // 1/2 < 60%
-    { date: '2026-11-14', xp: 0, completed: 0, issued: 1, counted: false, perfect: false, rest: false, streak: 0 },
+    { date: '2026-11-13', xp: 50, completed: 1, issued: 2, counted: false, perfect: false, rest: false, streak: 0, hp: null, energy: null, focus: null, fatigue: 0 }, // 1/2 < 60%
+    { date: '2026-11-14', xp: 0, completed: 0, issued: 1, counted: false, perfect: false, rest: false, streak: 0, hp: null, energy: null, focus: null, fatigue: 0 },
   ]);
 });
 
@@ -318,7 +318,7 @@ test('genInputs', () => {
   // 3 значения, но ни в одном 7‑дневном окне их нет трёх → null
   expect(replay([steps('2026-11-01', 9000), steps('2026-11-05', 9000), steps('2026-11-14', 9000)], NOW).genInputs.bestSteps7).toBeNull();
   const few = replay([steps('2026-11-01', 9000), steps('2026-11-02', 11000)], NOW);
-  expect(few.genInputs).toEqual({ bestSteps7: null, lastSleepHours: null, recentTemplateIds: [], recent: [] });
+  expect(few.genInputs).toEqual({ bestSteps7: null, lastSleepHours: null, recentTemplateIds: [], recent: [], fatigue: 0 });
 });
 
 test('7 идеальных дней по характеристике дают множитель ≈1.1', () => {
@@ -859,9 +859,9 @@ test('неверные dayType/energy игнорируются', () => {
   expect(s.today.energy).toBe(50);
   const ci = ev({ type: 'checkin', date: '2026-11-30', went: '', notWent: '', energy: 7, ts: at('2026-11-30', 21) });
   expect(replay([onboard, bad, ci], at(d, 12)).today.energy).toBe(70);
-  expect(replay([onboard, startDay(d, { energy: 8 }), ci], at(d, 12)).today.energy).toBe(80);
+  expect(replay([onboard, startDay(d, { energy: 8 }), ci], at(d, 12)).today.energy).toBe(76); // утро 80 и HP 70 (самочувствие 7) [спека §5.2]
   expect(replay([onboard, startDay(d, { energy: 2.5 })], at(d, 12)).today.energy).toBe(50);
-  expect(replay([onboard], at(d, 12)).today).toMatchObject({ dayType: null, energy: null, changed: false });
+  expect(replay([onboard], at(d, 12)).today).toMatchObject({ dayType: null, energy: BALANCE.energy.fallback, changed: false });
 });
 
 test('day_types_set: последнее побеждает, невалидные элементы отброшены, пустой список → умолчания', () => {
@@ -1291,4 +1291,67 @@ test('шаги выше stepsMax не идут в недельные шаги и
   expect(s.weekly.quests[0].progress).toBe(8000);
   const m = (date: string, value: number) => ev({ type: 'metric_logged', date, metric: 'steps', value, mode: 'set' });
   expect(replay([m('2026-11-25', 9000), m('2026-11-26', 60000), hp('2026-11-27', { steps: 60000 }), m('2026-11-28', 11000), m('2026-11-29', 10000)], at(D, 12)).genInputs.bestSteps7).toBe(10000);
+});
+
+// ---- Автоматика: HP, Energy, Фокус, Усталость и их влияние на XP ----
+test('HP дня из окна 3 дня; Energy утра [S§3]', () => {
+  const prof = { ...onboardProfile, stepsUsual: 6000 };
+  const evs = [ev({ ...onboard, profile: prof }),
+    ...['2026-11-30', '2026-12-01', D].map(d => hp(d, { sleepHours: 6, steps: 3000 })),
+    ev({ type: 'day_started', date: D, work: null, wakeAt: '08:00', energy: 7, ts: at(D, 8) })];
+  const s = replay(evs, at(D, 12));
+  expect(s.today.vitals.hp).toBe(67);            // (0,4·80 + 0,3·50) / 0,7
+  expect(s.today.vitals.energy).toBe(Math.round(0.6 * 80 + 0.25 * 70 + 0.15 * 67)); // 76
+  expect(s.today.energy).toBe(76);
+  expect(s.today.vitals.parts.hp).toEqual({ sleep: 80, steps: 50 });
+  expect(s.today.vitals.energyInputs).toEqual({ sleep: 6, hp: 67, weekMorning: null });
+});
+test('Усталость: шесть коротких ночей → 60, седьмая → 70', () => {
+  const days = Array.from({ length: 7 }, (_, i) => addDays('2026-12-01', i));
+  const s = replay([onboard, ...days.flatMap(d => [issue(d, [nq(`x${d}`, d, 'E', ['reading'])]), hp(d, { sleepHours: 5 })])], at(days[6], 12));
+  expect(s.history.map(h => h.fatigue)).toEqual([10, 20, 30, 40, 50, 60]);
+  expect(s.today.vitals.fatigue).toBe(70);
+  expect(s.genInputs.fatigue).toBe(70);
+});
+test('штраф Усталости 0,3% за пункт и общий потолок 0,5', () => {
+  const [d1, d2, d3] = span('2026-12-01', 3);
+  const low = (d: string) => ev({ type: 'checkin', date: d, went: '', notWent: '', energy: 2, ts: at(d, 21) });
+  // F: 0 + 15 − 5 = 10 → 10 + 5 (вечер 2) + 15 − 5 = 25 → 40
+  const s = replay([onboard, issue(d1, [nq('a1', d1, 'E', ['strength'])]), issue(d2, [nq('a2', d2, 'E', ['strength'])]),
+    issue(d3, [nq('c', d3, 'C', ['strength'])]), done(d3, 'c'), ...[d1, d2, d3].map(d => hp(d, { sleepHours: 5 })), low(d1), low(d2)], at(d3, 22));
+  expect(s.today.vitals.fatigue).toBe(40);
+  expect(s.ledger.find(r => r.questId === 'c')).toMatchObject({ penalty: 0.12, xp: 43 }); // 70·0,7·0,88
+  // F = 100 (10 коротких ночей) + ослабление 0,2 → потолок 0,5
+  const ds = span('2026-12-01', 11), last = ds[10];
+  const t = replay([onboard, ...ds.slice(0, 10).map(d => issue(d, [nq(`i${d}`, d, 'E', ['strength'])])), issue(last, [nq('z', last, 'C', ['strength'])]),
+    done(last, 'z'), ...ds.map(d => hp(d, { sleepHours: 4 }))], at(last, 22));
+  expect(t.today.vitals.fatigue).toBe(100);
+  expect(t.ledger.find(r => r.questId === 'z')).toMatchObject({ penalty: 0.5, xp: 25 });
+});
+test('Фокус умножает XP Интеллекта того же дня [S§3]', () => {
+  const s = replay([onboard, issue(D, [nq('i', D, 'C', ['reading'], { auto: { metric: 'readMin', op: '>=', value: 10 } })]),
+    ev({ type: 'timer_logged', timer: 'reading', start: at(D, 9), end: at(D, 9, 30), ts: at(D, 9, 30) }),
+    ev({ type: 'timer_logged', timer: 'focus', start: at(D, 10), end: at(D, 11, 30), ts: at(D, 11, 30) }),
+    sig(at(D, 12), { kind: 'app', app: 'social', state: 'open' }), sig(at(D, 12, 10), { kind: 'app', app: 'social', state: 'close' })], at(D, 20));
+  expect(s.today.vitals.focus).toBe(100);
+  expect(s.today.vitals.parts.focus).toEqual({ focus: 100, social: 100 });
+  expect(s.ledger.find(r => r.questId === 'i')).toMatchObject({ mult: 1.2 });   // база 70 × 1,0 × бонусы × 1,2
+});
+test('нет данных — параметры null, Energy = fallback, множитель 1', () => {
+  const s = replay([onboard], at(D, 12));
+  expect(s.today.vitals).toMatchObject({ hp: null, focus: null, fatigue: 0 });
+  expect(s.today.energy).toBe(BALANCE.energy.fallback);
+});
+test('закрытый день окончателен: поздние сон и соцсети не меняют штраф и множитель', () => {
+  const n = addDays(D, 1);
+  const base = [onboard, issue(D, [nq('i', D, 'C', ['reading'])]), done(D, 'i'), hp(D, { sleepHours: 8 }),
+    ev({ type: 'timer_logged', timer: 'focus', start: at(D, 10), end: at(D, 11, 30), ts: at(D, 11, 30) })];
+  const late = [ev({ type: 'health_packet', date: D, kind: 'other', health: { sleepHours: 4 }, calendar: [], ts: at(n, 10), deviceId: 'shortcuts' }),
+    ev({ type: 'signal_logged', at: at(D, 13), signal: { kind: 'app', app: 'social', state: 'open' }, ts: at(n, 10), deviceId: 'shortcuts' }),
+    ev({ type: 'signal_logged', at: at(D, 15), signal: { kind: 'app', app: 'social', state: 'close' }, ts: at(n, 10, 1), deviceId: 'shortcuts' })];
+  const a = replay(base, at(n, 12)), b = replay([...base, ...late], at(n, 12));
+  const row = (s: ReturnType<typeof replay>) => s.ledger.find(r => r.questId === 'i');
+  expect(row(a)).toMatchObject({ mult: 1.2 });
+  expect(row(b)).toEqual(row(a));
+  expect(b.history.at(-1)).toEqual(a.history.at(-1));
 });
