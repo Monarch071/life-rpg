@@ -45,6 +45,12 @@ export function parseRunning(raw: string | null): Running | null {
   } catch { return null }
 }
 /** Интервал для timer_logged: по часам, не длиннее BALANCE.timer.maxMin; короче минуты — null (не пишем). */
+/** Забытый таймер: дольше лимита — главное действие «Сбросить», а не запись потолка. */
+export const timerOverdue = (start: number, end: number) => end - start > BALANCE.timer.maxMin * 60e3
+
+/** Ключ скрытия баннера Главной: вид подсказки или причина флага (текст меняется вместе с числами). */
+export const bannerKey = (t: { suggest: string | null; data: Pick<DayData, 'flags'> }): string | null => t.suggest ?? t.data.flags[0]?.reason ?? null
+
 export function timerSpan(start: number, end: number): { start: number; end: number; capped: boolean } | null {
   if (end - start < 60e3) return null
   const max = start + BALANCE.timer.maxMin * 60e3

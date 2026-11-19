@@ -26,7 +26,7 @@ import QuickInput from './QuickInput'
 import { replanToday } from './replan'
 import Recovery from './Recovery'
 import Timer, { readRunning, type TimerKind } from './Timer'
-import { autoHint, VITAL_LABEL, type VitalId } from '../ui/vitalsView'
+import { autoHint, bannerKey, VITAL_LABEL, type VitalId } from '../ui/vitalsView'
 
 type Sheet = null | 'quick' | 'busy' | 'checkin' | 'changed' | 'custom' | 'timer' | 'recovery' | VitalId
 
@@ -298,13 +298,14 @@ function Banner({ state, hidden, onHide, busy, onRecovery, onLeave, onChangeDay 
     : suggest === 'day_change_work' ? { text: 'Похоже, ты на работе — сменить тип дня?', act: 'Сменить тип дня', go: onChangeDay }
     : data.flags[0] ? { text: FLAG_TEXT[data.flags[0].reason], act: null, go: null }
     : null
-  if (!b || hidden === b.text) return null
+  const key = bannerKey(state.today)
+  if (!b || hidden === key) return null
   return (
     <div className="glass banner" role="status">
       <TriangleAlert size={20} aria-hidden="true" />
       <p>{b.text}</p>
       {b.act && b.go && <button className="btn primary sm" disabled={busy} onClick={b.go}>{b.act}</button>}
-      <button className="icon-btn" aria-label="Скрыть подсказку" onClick={() => onHide(b.text)}><X size={18} aria-hidden="true" /></button>
+      <button className="icon-btn" aria-label="Скрыть подсказку" onClick={() => key && onHide(key)}><X size={18} aria-hidden="true" /></button>
     </div>
   )
 }

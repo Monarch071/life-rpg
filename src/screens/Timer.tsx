@@ -4,7 +4,7 @@ import { appendEvent } from '../db'
 import { BALANCE } from '../domain/balance'
 import { now } from '../now'
 import { useDialog } from '../ui/useDialog'
-import { parseRunning, timerSpan, type Running } from '../ui/vitalsView'
+import { parseRunning, timerOverdue, timerSpan, type Running } from '../ui/vitalsView'
 
 export type TimerKind = Running['timer']
 const KEY = 'lifeRpgTimer'
@@ -78,8 +78,16 @@ export default function Timer({ initial, onClose }: { initial: TimerKind; onClos
         {!run
           ? <button className="btn primary big" onClick={start}><Play size={18} aria-hidden="true" /> Старт</button>
           : <>
-            <button className="btn primary big" disabled={busy} onClick={() => void stop()}><Square size={18} aria-hidden="true" /> Стоп и записать</button>
-            <button className="btn ghost" disabled={busy} onClick={reset}>Сбросить без записи</button>
+            {timerOverdue(run.start, t)
+              ? <>
+                <p className="muted center">Таймер идёт дольше {BALANCE.timer.maxMin} мин — похоже, его забыли остановить.</p>
+                <button className="btn primary big" disabled={busy} onClick={reset}><X size={18} aria-hidden="true" /> Сбросить</button>
+                <button className="btn ghost" disabled={busy} onClick={() => void stop()}>Записать {BALANCE.timer.maxMin} мин</button>
+              </>
+              : <>
+                <button className="btn primary big" disabled={busy} onClick={() => void stop()}><Square size={18} aria-hidden="true" /> Стоп и записать</button>
+                <button className="btn ghost" disabled={busy} onClick={reset}>Сбросить без записи</button>
+              </>}
           </>}
         {msg && <p role="status" className={msg.ok ? 'ok' : 'err'}>{msg.text}</p>}
       </div>

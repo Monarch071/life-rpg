@@ -66,6 +66,7 @@ export const BALANCE = {
   plausible: { stepsMax: 50_000, sleepMaxH: 14 },
   autoLeMaxMin: 5, autoLeSourceDays: 3,
   timer:     { maxMin: 240, skewMin: 1 },
+  automationSince: '2026-11-20',   // игровая дата старта Автоматики: раньше — без Усталости и множителя Фокуса
   freshnessStaleH: 36,
   metricAbsMax: 1e9,   // предел накопительной суммы metric_logged 'add'
   dayTypes: DEFAULT_DAY_TYPES,

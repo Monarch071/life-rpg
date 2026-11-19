@@ -235,7 +235,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const sigs: Sig[] = [], sigKeys = new Set<string>();
   // Интервалы фокуса/чтения: ts — событие, которое интервал завершило (off или таймер). Только добавляются — минуты не убывают.
   const ivList: { k: 'focusMin' | 'readMin'; start: number; end: number; ts: number }[] = [];
-  let pendingOn: number[] = []; // on «Фокусирования», ещё не закрытые принятым off
+  let pendingOn: number | null = null; // последний on «Фокусирования», ещё не закрытый принятым off
   const sync: GameState['sync'] = { last: null, bySource: {} };
   const seen = (k: keyof GameState['sync']['bySource'], t: number) => { sync.bySource[k] = Math.max(sync.bySource[k] ?? -Infinity, t); };
   // Режим восстановления: recOn — активный (с даты since), recSpans — завершённые [from, to) с хотя бы одним днём.
@@ -323,7 +323,7 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (ok(h.weightKg)) { a.weight = h.weightKg; up('weightKg', h.weightKg); }
         if (ok(h.restingHR)) a.rhr = h.restingHR;
         if (ok(h.mindfulMin)) { a.mindful = Math.max(a.mindful ?? -Infinity, h.mindfulMin); up('mindfulMin', h.mindfulMin); }
-        if (ok(h.workoutMin)) { a.legacyW = Math.max(a.legacyW ?? -Infinity, h.workoutMin); up('workoutMin', h.workoutMin); }
+        if (ok(h.workoutMin)) { a.legacyW = Math.max(a.legacyW ?? -Infinity, h.workoutMin); if (!Array.isArray(h.workouts)) up('workoutMin', h.workoutMin); } // при списке — только его (проверка пересечений)
         if (Array.isArray(h.workouts) && h.workouts.length) {
           // одна тренировка в нескольких пакетах — один раз (ключ start|end|type, без start — type|minutes)
           for (const x of h.workouts) { const w = workoutOf(x); if (w) a.w.set(w.start !== undefined ? `${w.start}|${w.end}|${w.type}` : `${w.type}|${w.minutes}`, w); }
@@ -341,11 +341,11 @@ export function replay(events: GameEvent[], now: number): GameState {
         const x = fin(e.at) ? signalOf(e.signal) : null, d = x ? gd(e.at) : '';
         if (!x || !isDate(d) || sigKeys.has(`${e.at}|${x.key}`)) break; // повтор от «Команд» — один сигнал
         sigKeys.add(`${e.at}|${x.key}`); sigs.push({ ...x.s, at: e.at, ts: e.ts, d }); seen(x.s.kind, e.at);
-        // on закрывается первым пришедшим (по ts) off позже него; запоздавший off с ранним at уже закрытый интервал не укорачивает
-        if (x.s.kind === 'focus' && x.s.state === 'on') pendingOn.push(e.at);
-        else if (x.s.kind === 'focus') {
-          for (const on of pendingOn) if (on < e.at) ivList.push({ k: 'focusMin', start: on, end: e.at, ts: e.ts });
-          pendingOn = pendingOn.filter(on => on >= e.at);
+        // ждёт только последний on (потерянный off не раздувает минуты); его закрывает первый пришедший (по ts) off позже него;
+        // запоздавший off с ранним at уже закрытый интервал не укорачивает
+        if (x.s.kind === 'focus' && x.s.state === 'on') pendingOn = Math.max(pendingOn ?? -Infinity, e.at);
+        else if (x.s.kind === 'focus' && pendingOn !== null && pendingOn < e.at) {
+          ivList.push({ k: 'focusMin', start: pendingOn, end: e.at, ts: e.ts }); pendingOn = null;
         }
         break;
       }
@@ -600,7 +600,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const skillLast: Partial<Record<SkillId, ISODate>> = {};
   const baseNow = () => Object.fromEntries(STAT_KEYS.map(k => [k, baseFromXp(start.base[k], statXp[k]).value])) as Record<Stat, number>;
   const ledger: LedgerEntry[] = [];
-  for (const [d, m] of metrics) if (m.steps !== undefined) dayOf(d).steps = m.steps; // до цикла: золото достижений прошлых дней
+  for (const [d, m] of metrics) if (plausibleSteps(m.steps) !== undefined) dayOf(d).steps = plausibleSteps(m.steps); // до цикла: золото достижений прошлых дней
   let goldSoFar = 0, xpSoFar = 0; // цикл идёт по датам: на начало дня d — строки с датой < d
   const statByDate = new Map<ISODate, Record<Stat, number>>(); // XP характеристик по датам — для «Перекоса» и Формы
   const rawXp = new Map<ISODate, number>(); // XP дня без штрафов — «большой день» Усталости
@@ -655,7 +655,8 @@ export function replay(events: GameEvent[], now: number): GameState {
             || (yh.mindful ?? 0) >= F.calmMindfulMin,
           lowEvening: yh.feel !== undefined && yh.feel <= F.lowEveningMax };
       }
-      fatigue = fatigueNext(fatigue, day, hv(d).sleep ?? null);
+      // до старта Автоматики Усталость 0, штрафа и множителя Фокуса нет: закрытые дни старого журнала не меняются
+      fatigue = d < BALANCE.automationSince ? 0 : fatigueNext(fatigue, day, hv(d).sleep ?? null);
       vit = vitalsOn(d, fatigue);
       if (d === today) todayVit = vit;
     }
@@ -709,7 +710,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       const rows = qs.filter(q => q.done).map(q => ({ q, r: q.legacy
         ? { base: q.xp, k: 1, bonus: 0, penalty: 0, mult: 1, xp: q.xp, gold: goldFor(q.xp) }
         : questReward({ rank: q.rank, verify: q.verify!,
-          mult: (q.kind === 'restore' ? BALANCE.restore.mult : 1) * (q.stat === 'int' ? intFocusMult(vit?.focus ?? null) : 1),
+          mult: (q.kind === 'restore' ? BALANCE.restore.mult : 1) * (q.stat === 'int' && d >= BALANCE.automationSince ? intFocusMult(vit?.focus ?? null) : 1),
           bonuses: [streakBonus(streak), themeBonusApplies(theme, q.stat, q.skills) ? BALANCE.bonus.theme : 0, q.stat === weak ? BALANCE.bonus.weakest : 0],
           penalties: [weakening ? BALANCE.penalty.weakening : 0, imbalance && q.stat === strong ? BALANCE.penalty.imbalance : 0,
             fatiguePenalty(vit?.fatigue ?? 0)] }) }));

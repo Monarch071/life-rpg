@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { autoHint, freshness, parseRunning, timerSpan, vitalChips } from './vitalsView'
+import { autoHint, bannerKey, freshness, parseRunning, timerOverdue, timerSpan, vitalChips } from './vitalsView'
 import type { DayQuest, Vitals } from '../domain/types'
 
 const v: Vitals = { hp: null, energy: 76, focus: 50, fatigue: 72, parts: { hp: {}, focus: {} }, energyInputs: { sleep: null, hp: null, weekMorning: null } }
@@ -43,4 +43,17 @@ test('timerSpan: конец по часам, не длиннее лимита; �
 test('parseRunning: только валидная запись таймера', () => {
   expect(parseRunning('{"timer":"reading","start":123}')).toEqual({ timer: 'reading', start: 123 })
   for (const bad of [null, '', 'x', '{"timer":"walk","start":1}', '{"timer":"focus","start":"1"}', '{"timer":"focus"}']) expect(parseRunning(bad)).toBeNull()
+})
+
+test('timerOverdue: дольше лимита — предлагаем сбросить', () => {
+  const s = 1_000_000
+  expect(timerOverdue(s, s + 240 * 60e3)).toBe(false)
+  expect(timerOverdue(s, s + 241 * 60e3)).toBe(true)
+})
+
+test('bannerKey: по виду подсказки или причине флага, не по тексту с числами', () => {
+  const flags = [{ metric: 'steps', reason: 'too_many_steps' }] as never
+  expect(bannerKey({ suggest: 'recovery_enter', data: { flags } })).toBe('recovery_enter')
+  expect(bannerKey({ suggest: null, data: { flags } })).toBe('too_many_steps')
+  expect(bannerKey({ suggest: null, data: { flags: [] } })).toBeNull()
 })

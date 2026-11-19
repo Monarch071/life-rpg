@@ -1464,3 +1464,31 @@ test('штраф Усталости округлён: F 95 → 0,285', () => {
   expect(s.today.vitals.fatigue).toBe(95);
   expect(s.ledger.find(r => r.questId === `reading${ds[10]}`)!.penalty).toBe(0.285);
 });
+
+// ---- финальное ревью Автоматики ----
+test('до automationSince Усталость 0, без штрафа и множителя Фокуса: леджер и траты старых дней как без данных', () => {
+  const ds = span('2026-11-10', 9); // 10–18 ноября, до старта Автоматики
+  const base = [onboard, freezeR, ...doneDays(ds[0], 9, 'reading', 'C'), buy('default:freeze', at(ds[8], 21))];
+  const vitals = [...ds.map(d => hp(d, { sleepHours: 4 })),
+    ...ds.map(d => ev({ type: 'timer_logged', timer: 'focus', start: at(d, 10), end: at(d, 11, 30), ts: at(d, 11, 30) }))];
+  const a = replay(base, at('2026-11-19', 22)), b = replay([...base, ...vitals], at('2026-11-19', 22));
+  expect(b.ledger).toEqual(a.ledger); expect(b.purchases).toEqual(a.purchases); expect(b.gold).toBe(a.gold);
+  expect(b.history.every(h => h.fatigue === 0)).toBe(true);
+});
+test('workoutMin пакета не засчитывается, если есть массив workouts (overlap)', () => {
+  const a = { type: 'Бег', start: at(D, 18), end: at(D, 19), minutes: 60 }, b = { type: 'Велосипед', start: at(D, 18, 30), end: at(D, 19, 30), minutes: 60 };
+  const s = replay([onboard, issue(D, [nq('w', D, 'D', ['cardio'], { auto: { metric: 'workoutMin', op: '>=', value: 30 } })]),
+    hp(D, { workouts: [a, b], workoutMin: 120 })], at(D, 20));
+  expect(s.today.quests[0].done).toBe(false);
+  expect(replay([onboard, issue(D, [nq('w', D, 'D', ['cardio'], { auto: { metric: 'workoutMin', op: '>=', value: 30 } })]),
+    hp(D, { workoutMin: 40 })], at(D, 20)).today.quests[0].done).toBe(true);
+});
+test('фокус: потерянный off — off закрывает только последний on', () => {
+  const s = replay([onboard, sig(at(D, 10), { kind: 'focus', state: 'on' }), sig(at(D, 15), { kind: 'focus', state: 'on' }),
+    sig(at(D, 16), { kind: 'focus', state: 'off' })], at(D, 20));
+  expect(s.today.data.focusMin).toBe(60);
+});
+test('достижения шагов не открываются глюком 60 000', () => {
+  const s = replay([onboard, issue(D, [nq('x', D, 'E', ['reading'])]), hp(D, { steps: 60000 })], at('2026-12-03', 12));
+  expect(s.achievements.map(a => a.id)).not.toContain('steps_10k');
+});
