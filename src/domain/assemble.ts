@@ -118,15 +118,22 @@ export function assembleDay(ctx: AssembleCtx): Quest[] {
   const due = STAT_KEYS.filter(s => ctx.statInfo[s].status === 'abandoned'
     && (!ctx.statInfo[s].lastRestore || daysSince(ctx.statInfo[s].lastRestore!, ctx.date) >= B.restore.cooldownDays))
     .sort((a, b) => (ctx.statInfo[a].form ?? 1) - (ctx.statInfo[b].form ?? 1));
-  if (due.length) take(cands.find(c => c.stat === due[0] && can(c)), true, `Вернуть форму: ${STATS[due[0]].name}, ×${B.restore.mult} XP`);
+  // обязательное — первое, для которого нашёлся шаблон
+  for (const st of due) {
+    const c = cands.find(c => c.stat === st && can(c));
+    if (c) { take(c, true, `Вернуть форму: ${STATS[st].name}, ×${B.restore.mult} XP`); break; }
+  }
   const rusty = (Object.keys(ctx.skills) as SkillId[])
     .map(id => ({ id, d: ctx.skills[id].lastDate ? daysSince(ctx.skills[id].lastDate!, ctx.date) : -1 }))
-    .filter(x => x.d >= B.skill.nearRustDays).sort((a, b) => b.d - a.d)[0];
-  if (rusty) take(cands.find(c => c.skill === rusty.id && can(c)), false, `Навык «${skillTitle(rusty.id)}» на грани ржавчины`);
+    .filter(x => x.d >= B.skill.nearRustDays).sort((a, b) => b.d - a.d);
+  for (const r of rusty) {
+    const c = cands.find(c => c.skill === r.id && can(c));
+    if (c) { take(c, false, `Навык «${skillTitle(r.id)}» на грани ржавчины`); break; }
+  }
   if (low(ctx) && perStat('spi') === 0) take(cands.find(c => c.stat === 'spi' && can(c)), false, 'Сил мало — день для Духа');
 
-  // 2. характеристики без заданий вчера и позавчера — раньше остальных
-  const seen = new Set(ctx.recent.filter(r => r.date >= addDays(ctx.date, -2) && r.date < ctx.date).flatMap(r => r.stats));
+  // 2. характеристики без заданий за statEveryDays − 1 прошлых дня — раньше остальных (каждая — хотя бы раз в 3 дня)
+  const seen = new Set(ctx.recent.filter(r => r.date >= addDays(ctx.date, 1 - A.statEveryDays) && r.date < ctx.date).flatMap(r => r.stats));
   for (const c of cands) if (!seen.has(c.stat) && perStat(c.stat) === 0 && can(c)) take(c, false, `${STATS[c.stat].name}: два дня без заданий`);
   // 3. остальные по P
   for (const c of cands) if (can(c)) take(c, false, null);
@@ -153,7 +160,8 @@ export function assembleDay(ctx: AssembleCtx): Quest[] {
 export function rerollCandidate(ctx: AssembleCtx, q: Quest, today: Quest[]): Quest | null {
   if (!q.rank || (q.kind !== 'daily' && q.kind !== 'challenge')) return null;
   const used = new Set(today.map(x => x.templateId));
-  const pool = candidates(ctx).filter(c => !used.has(c.t.id) && ri(c.limit) >= ri(q.rank!));
+  // тот же ранг, но не выше потолка нового навыка (+1, только если заменяется вызов)
+  const pool = candidates(ctx).filter(c => !used.has(c.t.id) && ri(c.limit) >= ri(q.rank!) && ri(c.cap) + (q.kind === 'challenge' ? 1 : 0) >= ri(q.rank!));
   const c = pool.find(c => c.skill !== q.skills?.[0]) ?? pool[0];
   if (!c) return null;
   const x = build(c, q.rank, q.kind, ruleWhy(c, ctx), ctx, `${q.id}>${c.t.id}`);

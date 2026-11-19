@@ -944,9 +944,9 @@ const custom = (quest: Quest, ts: number) => ev({ type: 'custom_quest_added', da
 const gold60 = [issue('2026-11-09', [q('l1', '2026-11-09', 300), q('l2', '2026-11-09', 10)]), done('2026-11-09', 'l1')];
 
 test('переброс: 1-й бесплатно, 2-й за 50 при золоте прошлых дней, 3-й отклонён', () => {
-  const evs = [...gold60, issue(D10, ['x1', 'x2', 'x3'].map(id => nq(id, D10, 'C', ['strength']))),
-    reroll('x1', nq('r1', D10, 'C', ['cardio']), at(D10, 10)), reroll('x2', nq('r2', D10, 'C', ['cardio']), at(D10, 10, 1)),
-    reroll('x3', nq('r3', D10, 'C', ['cardio']), at(D10, 10, 2))];
+  const evs = [...gold60, issue(D10, ['x1', 'x2', 'x3'].map(id => nq(id, D10, 'E', ['strength']))),
+    reroll('x1', nq('r1', D10, 'E', ['cardio']), at(D10, 10)), reroll('x2', nq('r2', D10, 'E', ['cardio']), at(D10, 10, 1)),
+    reroll('x3', nq('r3', D10, 'E', ['cardio']), at(D10, 10, 2))];
   const s = replay(evs, at(D10, 12));
   expect(s.today.quests.map(q => q.id)).toEqual(['r1', 'r2', 'x3']);
   expect(s.gold).toBe(60 - 50 + 25 * s.achievements.length); expect(s.today.nextRerollCost).toBe(50);
@@ -955,29 +955,29 @@ test('переброс: 1-й бесплатно, 2-й за 50 при золот�
 });
 
 test('переброс: сегодняшний заработок не считается; сделанное, restore и custom не перебрасываются; другой ранг замены — отказ', () => {
-  const evs = [issue(D10, [q('L', D10, 300), ...['x1', 'x2', 'x3'].map(id => nq(id, D10, 'C', ['strength'])), nq('rs', D10, 'C', ['strength'], { kind: 'restore' })]),
+  const evs = [issue(D10, [q('L', D10, 300), ...['x1', 'x2', 'x3'].map(id => nq(id, D10, 'E', ['strength'])), nq('rs', D10, 'E', ['strength'], { kind: 'restore' })]),
     done(D10, 'L', at(D10, 9)), custom(nq('c1', D10, 'E', ['reading']), at(D10, 9, 30)),
-    reroll('L', nq('rL', D10, 'D', ['cardio']), at(D10, 10)), reroll('rs', nq('rR', D10, 'C', ['cardio']), at(D10, 10, 1)),
+    reroll('L', nq('rL', D10, 'D', ['cardio']), at(D10, 10)), reroll('rs', nq('rR', D10, 'E', ['cardio']), at(D10, 10, 1)),
     reroll('c1', nq('rC', D10, 'E', ['cardio']), at(D10, 10, 2)), reroll('x3', nq('rX', D10, 'D', ['cardio']), at(D10, 10, 3)),
-    reroll('x3', { ...nq('rT', D10, 'C', ['cardio']), templateId: 't-x3' }, at(D10, 10, 4)),
-    reroll('x1', nq('r1', D10, 'C', ['cardio']), at(D10, 10, 5)), reroll('x2', nq('r2', D10, 'C', ['cardio']), at(D10, 10, 6))];
+    reroll('x3', { ...nq('rT', D10, 'E', ['cardio']), templateId: 't-x3' }, at(D10, 10, 4)),
+    reroll('x1', nq('r1', D10, 'E', ['cardio']), at(D10, 10, 5)), reroll('x2', nq('r2', D10, 'E', ['cardio']), at(D10, 10, 6))];
   const s = replay(evs, at(D10, 12));
   expect(s.today.quests.map(q => q.id)).toEqual(['L', 'r1', 'x2', 'x3', 'rs', 'c1']);
   expect(s.today).toMatchObject({ rerollsUsed: 1, nextRerollCost: 50, customCount: 1 });
   // переброс вчерашнего задания — отказ
-  const y = replay([issue('2026-11-09', [nq('y', '2026-11-09', 'C', ['strength'])]), reroll('y', nq('ry', '2026-11-09', 'C', ['cardio']), at(D10, 10))], at(D10, 12));
+  const y = replay([issue('2026-11-09', [nq('y', '2026-11-09', 'E', ['strength'])]), reroll('y', nq('ry', '2026-11-09', 'E', ['cardio']), at(D10, 10))], at(D10, 12));
   expect(y.history[0].issued).toBe(1); expect(y.ledger).toEqual([]);
 });
 
 test('второй переброс той же questId (второе устройство) игнорируется', () => {
-  const evs = [...gold60, issue(D10, [nq('x1', D10, 'C', ['strength'])]),
-    reroll('x1', nq('r1', D10, 'C', ['cardio']), at(D10, 10)), reroll('x1', nq('r2', D10, 'C', ['mobility']), at(D10, 10, 1)), done(D10, 'r2', at(D10, 11))];
+  const evs = [...gold60, issue(D10, [nq('x1', D10, 'E', ['strength'])]),
+    reroll('x1', nq('r1', D10, 'E', ['cardio']), at(D10, 10)), reroll('x1', nq('r2', D10, 'E', ['mobility']), at(D10, 10, 1)), done(D10, 'r2', at(D10, 11))];
   const s = replay(evs, at(D10, 12));
   expect(s.today.quests.map(q => q.id)).toEqual(['r1']); expect(s.today.rerollsUsed).toBe(1);
   expect(s.gold).toBe(60 + 25 * s.achievements.length);
   // цепочка: замену можно перебросить дальше (платно)
-  const ch = replay([...gold60, issue(D10, [nq('x1', D10, 'C', ['strength'])]), reroll('x1', nq('r1', D10, 'C', ['cardio']), at(D10, 10)),
-    reroll('r1', nq('r9', D10, 'C', ['mobility']), at(D10, 10, 1)), done(D10, 'r9', at(D10, 11))], at(D10, 12));
+  const ch = replay([...gold60, issue(D10, [nq('x1', D10, 'E', ['strength'])]), reroll('x1', nq('r1', D10, 'E', ['cardio']), at(D10, 10)),
+    reroll('r1', nq('r9', D10, 'E', ['mobility']), at(D10, 10, 1)), done(D10, 'r9', at(D10, 11))], at(D10, 12));
   expect(ch.today.quests.map(q => q.id)).toEqual(['r9']); expect(ch.today.quests[0].done).toBe(true);
 });
 
@@ -985,6 +985,20 @@ test('второй переброс той же questId (второе устро
 const strongAi = ev({ type: 'interview_completed', answers: {}, followups: [], ts: at('2026-11-01'), analysis: { archetype: 'А', summary: 'с', strengths: [], weaknesses: [], focus: [], questGuidance: '',
   stats: { str: 20, end: 10, int: 10, dis: 10, cha: 10, fin: 10, spi: 10 }, startLevel: 40, skillLevels: { strength: 6 } } });
 const D20 = '2026-11-20';
+
+test('переброс: замена не выше потолка своего навыка (+1 только для вызова)', () => {
+  const ids = (evs: GameEvent[]) => replay([strongAi, ...evs], at(D20, 12)).today.quests.map(q => q.id);
+  // Сила 6 → B, Кардио 1 → D (уровень 40)
+  expect(ids([issue(D20, [nq('x', D20, 'B', ['strength'])]), reroll('x', nq('r', D20, 'B', ['cardio']), at(D20, 10))])).toEqual(['x']);
+  expect(ids([issue(D20, [nq('x', D20, 'B', ['strength'])]), reroll('x', nq('r', D20, 'B', ['mobility', 'strength']), at(D20, 10))])).toEqual(['x']);
+  expect(ids([issue(D20, [nq('x', D20, 'B', ['strength'])]), reroll('x', nq('r', D20, 'B', ['strength']), at(D20, 10))])).toEqual(['r']);
+  // вызов: A по Силе (B+1) — можно; A по Кардио (D+1 = C) — нет; daily → challenge не даёт +1
+  const ch = (rk: Rank, sk: SkillId[], kind: Quest['kind'] = 'challenge') =>
+    ids([issue(D20, [nq('x', D20, rk, ['strength'], { kind })]), reroll('x', nq('r', D20, rk, sk, { kind: 'challenge' }), at(D20, 10))]);
+  expect(ch('A', ['strength'])).toEqual(['r']);
+  expect(ch('A', ['cardio'])).toEqual(['x']);
+  expect(ch('A', ['strength'], 'daily')).toEqual(['x']);
+});
 
 test('своё задание: 3-е за день игнор; XP своих ≤ треть остальных', () => {
   const s = replay([strongAi, issue(D20, [nq('n', D20, 'B', ['strength'])]), done(D20, 'n'),

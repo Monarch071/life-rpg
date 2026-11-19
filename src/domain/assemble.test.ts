@@ -3,8 +3,9 @@ import { assembleDay, priority, rankPlan, rerollCandidate, slotsFor, type Assemb
 import { RANKS } from './balance';
 import { toMin } from './day';
 import { DEFAULT_DAY_TYPES } from './dayType';
+import { rankCap } from './progression';
 import { QUEST_TEMPLATES } from './questBank';
-import { SKILL_CATALOG, type SkillId } from './skillCatalog';
+import { primaryStat, SKILL_CATALOG, type SkillId } from './skillCatalog';
 import { STATS } from './stats';
 import type { Profile, Stat, StatInfo } from './types';
 
@@ -75,6 +76,16 @@ test('«Вернуть форму»: Заброшена → restore D; был 3 
   expect(assembleDay(ctx({ level: 5, statInfo: withForm('str', 0.2, 'abandoned') })).find(q => q.kind === 'restore')!.rank).toBe('E');
 });
 
+test('обязательные: если шаблон занят, берётся следующий в списке', () => {
+  // все шаблоны Харизмы, кроме «переговоров», были вчера → «Вернуть форму» Харизмы берёт negotiate;
+  // самый ржавый навык — «Переговоры» (шаблон занят) → берётся следующий, «Выступления»
+  const yest = QUEST_TEMPLATES.filter(t => primaryStat(t.skills) === 'cha' && t.id !== 'negotiate').map(t => t.id);
+  const qs = assembleDay(ctx({ statInfo: withForm('cha', 0.1, 'abandoned'), recent: [{ date: '2026-11-19', stats: [...STAT_KEYS], templateIds: yest }],
+    skills: { ...skills(), negotiation: { level: 3, lastDate: '2026-09-01' }, speaking: { level: 3, lastDate: '2026-10-01' } } }));
+  expect(qs.find(q => q.kind === 'restore')!.templateId).toBe('negotiate');
+  expect(qs.some(q => q.skills![0] === 'speaking')).toBe(true);
+});
+
 test('навык на грани ржавчины попадает в день', () => {
   const qs = assembleDay(ctx({ skills: withLast('negotiation', '2026-10-20') }));
   expect(qs.some(q => q.skills![0] === 'negotiation')).toBe(true);
@@ -122,6 +133,21 @@ describe('переброс', () => {
       expect(r.id).not.toBe(q.id);
       expect(r.kind).toBe(q.kind);
     }
+  });
+  test('переброс не поднимает ранг выше потолка нового навыка (+1 только для вызова)', () => {
+    const sk = { ...skills() };
+    for (const id of Object.keys(sk) as SkillId[]) sk[id] = { level: id === 'reading' || id === 'strength' ? 3 : 1, lastDate: null };
+    const c = ctx({ energy: 80, skills: sk });
+    const today = assembleDay(c);
+    let checked = 0;
+    for (const q of today) {
+      const r = rerollCandidate(c, q, today);
+      if (!r) continue;
+      const cap = RANKS.indexOf(rankCap(c.level, sk[r.skills![0]].level)) + (q.kind === 'challenge' ? 1 : 0);
+      expect(RANKS.indexOf(r.rank!)).toBeLessThanOrEqual(cap);
+      if (q.kind === 'daily' && RANKS.indexOf(q.rank!) >= RANKS.indexOf('C')) { checked++; expect(['reading', 'strength']).toContain(r.skills![0]); }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
   test('restore не перебрасывается', () => {
     const c = ctx({ statInfo: withForm('str', 0.2, 'abandoned') });

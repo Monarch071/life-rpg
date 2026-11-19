@@ -46,8 +46,11 @@ export default function MyDay({ state, profile, onLater }: { state: GameState; p
       const dayType = legacyDayType(work, wakeAt, profile.sleep)
       // сначала сборка по правилам (+ тексты ИИ), потом одна атомарная запись — день не останется без заданий
       let quests: Quest[] | null = null
+      // утренняя Energy пишется в day_started (целое 1–10, как его принимает replay) — переброс и Home берут её, а не поздний чек-ин;
+      // сборка использует то же значение, что потом даст replay: оценка ×10, нет — fallback
+      const morning = cur.today.lastEnergy !== null ? Math.min(10, Math.max(1, Math.round(cur.today.lastEnergy))) : null
       if (cur.today.quests.length === 0) {
-        const energy = cur.today.lastEnergy !== null ? cur.today.lastEnergy * 10 : BALANCE.energy.fallback
+        const energy = morning !== null ? morning * 10 : BALANCE.energy.fallback
         quests = buildQuests(cur, dayType, wakeAt, energy)
         const cfg = await getAiConfig().catch(() => null)
         if (cfg) {
@@ -61,7 +64,7 @@ export default function MyDay({ state, profile, onLater }: { state: GameState; p
         }
       }
       await appendEvents([
-        { type: 'day_started', date, work, wakeAt, dayType },
+        { type: 'day_started', date, work, wakeAt, dayType, ...(morning !== null ? { energy: morning } : {}) },
         ...(cur.weekly.quests.length === 0
           ? [{ type: 'weekly_issued' as const, weekStart: cur.weekly.weekStart, quests: generateWeeklyQuests(cur.genWeekly) }] : []),
         ...(quests ? [{ type: 'quests_issued' as const, date, quests }] : []),

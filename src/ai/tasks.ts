@@ -49,14 +49,18 @@ export function questContext(state: GameState, profile: Profile): string {
 
 type Texts = Record<string, { title: string; why: string }>
 
-/** Ответ ИИ — недоверенные данные: берём только title (3–80) и why (≤140) для известных id; ранг, XP, навыки и окно ИИ не трогает. */
-export function validateAiTexts(raw: unknown, ids: string[]): Texts {
+const nums = (t: string) => (t.match(/\d+(?:[.,]\d+)?/g) ?? []).join(' ')
+
+/** Ответ ИИ — недоверенные данные: берём только title (3–80) и why (≤140) для известных id; ранг, XP, навыки и окно ИИ не трогает.
+ *  Если известен текст правил (titles), числа в заголовке ИИ должны совпасть с ним — иначе остаётся текст правил. */
+export function validateAiTexts(raw: unknown, ids: string[], titles: Record<string, string> = {}): Texts {
   const list: unknown[] = Array.isArray((raw as any)?.texts) ? (raw as any).texts : []
   const out: Texts = {}
   for (const r of list as any[]) {
     const id = r?.id, title = typeof r?.title === 'string' ? r.title.trim() : '', why = typeof r?.why === 'string' ? r.why.trim() : null
     if (typeof id !== 'string' || !ids.includes(id) || Object.hasOwn(out, id)) continue
     if (title.length < 3 || title.length > 80 || why === null || why.length > 140) continue
+    if (Object.hasOwn(titles, id) && nums(title) !== nums(titles[id])) continue
     out[id] = { title, why }
   }
   return out
@@ -79,7 +83,7 @@ const TEXTS_SCHEMA = {
 export async function aiQuestTexts(cfg: AiConfig, state: GameState, quests: Quest[]): Promise<Texts> {
   const list = quests.map(q => `${q.id} | ${q.title} | ${STATS[q.stat].name} | ранг ${q.rank ?? '—'} | ${q.why ?? ''}`)
   const user = [...(state.profile ? [questContext(state, state.profile)] : []), 'Задания (id | текст | характеристика | ранг | почему по правилам):', ...list].join('\n')
-  return validateAiTexts(await generateJson(cfg, TEXTS_SYSTEM, user, TEXTS_SCHEMA), quests.map(q => q.id))
+  return validateAiTexts(await generateJson(cfg, TEXTS_SYSTEM, user, TEXTS_SCHEMA), quests.map(q => q.id), Object.fromEntries(quests.map(q => [q.id, q.title])))
 }
 
 const TUNING_SYSTEM = 'Ты — наставник в игре по прокачке. По итогам дня подбери поправку сложности по характеристикам: число от 0.9 (облегчить) до 1.1 (усложнить), 1 — без изменений. Добавь одну-две фразы поддержки на завтра (до 200 символов). Отвечай по-русски.'

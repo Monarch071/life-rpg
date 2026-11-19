@@ -422,12 +422,16 @@ export function replay(events: GameEvent[], now: number): GameState {
     if (d <= today && types.get(d)?.kind === 'rest' && (restInMonth.get(rm) ?? 0) < BALANCE.streak.restDaysPerMonth) {
       restDays.add(d); restInMonth.set(rm, (restInMonth.get(rm) ?? 0) + 1);
     }
+    // потолок ранга: уровень и навык на начало дня
+    const lvl = levelFromXp(xpSoFar, startLevel).level;
+    const capOf = (q: DayQuest) => RANKS.indexOf(rankCap(lvl, skillFromXp(start.skills[q.skills[0]], skillXp[q.skills[0]]).level));
     for (const s of spendsOn.get(d) ?? []) {
       const avail = goldSoFar - ordinaryBuys.reduce((a, b) => a + (b.ts < s.ts ? b.r.price : 0), 0) - paidSum;
       if ('orig' in s) {
         const i = qs.findIndex(q => q.id === s.orig), used = rerollsOn.get(d) ?? 0;
         const price = used >= BALANCE.reroll.free ? BALANCE.reroll.cost : 0;
-        if (i < 0 || (price > 0 && avail < price)) continue;
+        // замена не выше потолка своего навыка (+1, только если заменяется вызов) — журнал недоверенный
+        if (i < 0 || (price > 0 && avail < price) || RANKS.indexOf(s.repl.rank) > capOf(s.repl) + (qs[i].kind === 'challenge' ? 1 : 0)) continue;
         qs[i] = s.repl; rerollsOn.set(d, used + 1);
         if (price) { rerollPaid.push({ ts: s.ts, price }); paidSum += price; }
       } else {
@@ -448,11 +452,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       for (let i = qs.length - 1; i >= 0 && left > ch.type.slots; i--) if (!qs[i].done && qs[i].kind !== 'custom') { qs[i].dropped = true; left--; }
     }
     // свои задания: ранг не выше потолка (уровень и главный навык на начало дня)
-    const lvl = levelFromXp(xpSoFar, startLevel).level;
-    for (const q of qs) if (q.kind === 'custom') {
-      const cap = rankCap(lvl, skillFromXp(start.skills[q.skills[0]], skillXp[q.skills[0]]).level);
-      if (RANKS.indexOf(q.rank) > RANKS.indexOf(cap)) q.rank = cap;
-    }
+    for (const q of qs) if (q.kind === 'custom' && RANKS.indexOf(q.rank) > capOf(q)) q.rank = RANKS[capOf(q)];
     if (qs.some(q => q.done)) {
       // снимок на начало дня
       const base = baseNow(), weak = weakestStat(base), strong = strongestStat(base), theme = themeOn(d);
@@ -615,7 +615,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       bestSteps7: best7(metrics, today, 'steps'),
       lastSleepHours: sleepDate ? metrics.get(sleepDate)!.sleepHours! : null,
       recentTemplateIds: [addDays(today, -2), addDays(today, -1)].flatMap(d => issued.get(d)?.map(q => q.templateId) ?? []),
-      recent: [addDays(today, -2), addDays(today, -1)].filter(d => issued.get(d)?.length)
+      recent: Array.from({ length: BALANCE.assembly.statEveryDays - 1 }, (_, i) => addDays(today, i + 1 - BALANCE.assembly.statEveryDays)).filter(d => issued.get(d)?.length)
         .map(date => { const qs = issued.get(date)!; return { date, stats: [...new Set(qs.map(q => q.stat))], templateIds: qs.map(q => q.templateId) }; }),
     },
   };

@@ -39,13 +39,18 @@ test('validateAiTexts: чужие id отброшены, длины 3–80 / ≤
   const qs = applyTexts([quest('a'), quest('b')], t)
   expect(qs[0]).toEqual({ ...quest('a'), title: 'Мастер велит: 30 страниц', why: 'Разум ждёт' })
   expect(qs[1]).toEqual(quest('b'))
+  // числа заголовка ИИ должны совпасть с текстом правил
+  const rule = { s: 'Пройти 8000 шагов', w: 'Выпить воды: 6 стаканов' }
+  expect(validateAiTexts({ texts: [{ id: 's', title: 'Мастер велит: 800 шагов', why: 'x' }, { id: 'w', title: 'Шесть стаканов воды', why: 'x' }] }, ['s', 'w'], rule)).toEqual({})
+  expect(validateAiTexts({ texts: [{ id: 's', title: 'Пройди 8000 шагов, путник', why: 'x' }, { id: 'w', title: 'Осуши 6 стаканов воды', why: 'x' }] }, ['s', 'w'], rule))
+    .toEqual({ s: { title: 'Пройди 8000 шагов, путник', why: 'x' }, w: { title: 'Осуши 6 стаканов воды', why: 'x' } })
   // пустое «почему» — остаётся текст правил
   expect(applyTexts([quest('a')], validateAiTexts({ texts: [{ id: 'a', title: 'Новый текст', why: '' }] }, ['a']))[0].why).toBe('тема сезона')
 })
 
 test('aiQuestTexts: промпт с заданиями и именем; без согласия ответы анкеты не уходят; ошибка пробрасывается', async () => {
-  gen.mockResolvedValueOnce({ texts: [{ id: 'a', title: 'Мастер: 30 страниц', why: 'Пора' }] })
-  expect(await aiQuestTexts(cfg, state, [quest('a')])).toEqual({ a: { title: 'Мастер: 30 страниц', why: 'Пора' } })
+  gen.mockResolvedValueOnce({ texts: [{ id: 'a', title: 'Мастер: 30 страниц', why: 'Пора' }, { id: 'b', title: 'Мастер: 300 страниц', why: 'Пора' }] })
+  expect(await aiQuestTexts(cfg, state, [quest('a'), quest('b')])).toEqual({ a: { title: 'Мастер: 30 страниц', why: 'Пора' } })
   const user = gen.mock.calls[0][2]
   expect(user).toContain('Гэндальф'); expect(user).toContain('Прочитать 30 страниц'); expect(user).toContain('a')
   const noAi = { ...state, character: { archetype: 'Тихий', summary: '', strengths: [], weaknesses: [], focus: [], questGuidance: 'секрет', date: '2026-11-17', ai: false },
