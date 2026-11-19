@@ -1100,3 +1100,17 @@ test('заморозка не тратится при нулевой серии;
   // купленная в день пропуска защищает его
   expect(replay([...evs.slice(0, 3), freezeR, buy('default:freeze', at('2026-11-09', 21))], at(D10)).history.map(h => h.streak)).toEqual([1, 1]);
 });
+
+test('лимит отдыха монотонен: день без заданий 1.12 не отменяется 14 днями отдыха позже', () => {
+  const gold = [issue('2026-11-30', [q('g', '2026-11-30', 10000)]), done('2026-11-30', 'g'), dayoffR,
+    issue('2026-12-01', [q('m', '2026-12-01', 35)]), buy('default:dayoff', at('2026-12-01', 13))];
+  const before = replay(gold, at('2026-12-01', 22));
+  const rest = span('2026-12-02', 14).flatMap(d => [startDay(d, { dayType: DT[3] }), issue(d, [nq(`r${d}`, d, 'E', ['rest'])])]);
+  const s = replay([...gold, ...rest], at('2026-12-16'));
+  expect(s.purchases).toHaveLength(1); expect(s.purchases).toEqual(before.purchases);
+  const h = (d: string) => s.history.find(x => x.date === d)!;
+  expect(h('2026-12-01')).toMatchObject({ rest: true, streak: 1 });
+  expect(h('2026-12-14').rest).toBe(true);
+  expect(h('2026-12-15').rest).toBe(false); // 15-й отдых в месяце (с днём без заданий) — обычный день
+  expect(s.today.restDaysLeft).toBe(0);
+});

@@ -146,13 +146,9 @@ export function replay(events: GameEvent[], now: number): GameState {
   const closeOf = (d: ISODate) => closeMinutes(types.get(d) ?? null);
   const gd = (ts: number) => gameDateAt(ts, closeOf);
   const today = gd(now);
-  // Дни отдыха: не больше restDaysPerMonth в календарный месяц, сверх — обычный день.
+  // Дни отдыха и купленные дни без заданий: один счётчик на месяц, решается в цикле дней по датам (позднее не меняет раннее).
   const restDays = new Set<ISODate>(), restInMonth = new Map<string, number>();
-  for (const d of [...types.keys()].sort()) if (types.get(d)!.kind === 'rest' && d <= today) {
-    const m = d.slice(0, 7), n = (restInMonth.get(m) ?? 0) + 1;
-    restInMonth.set(m, n);
-    if (n <= BALANCE.streak.restDaysPerMonth) restDays.add(d);
-  }
+  const restTyped = [...types.keys()].filter(d => types.get(d)!.kind === 'rest' && d <= today);
 
   let profile: Profile | null = null;
   const starts: Parameters<typeof startProfile>[0] = []; // все валидные анкеты: старт — поэлементный максимум
@@ -416,11 +412,16 @@ export function replay(events: GameEvent[], now: number): GameState {
   let streak = 0, idleRun = 0, multipliers = fill(1); // idleRun — подряд закрытых не-отдыхающих дней без выполненного
   // Даты: каждый день от первого дня с заданиями до сегодня (пропуски тоже закрываются) + выдачи и строки вне его.
   const firstDay = [...issued.keys()].sort()[0] as ISODate | undefined;
-  const dates = new Set([...issued.keys(), ...extra.keys(), ...weeklyAt.keys(), ...spendsOn.keys()]);
+  const dates = new Set([...issued.keys(), ...extra.keys(), ...weeklyAt.keys(), ...spendsOn.keys(), ...restTyped]);
   if (firstDay) for (let d = firstDay; d <= today; d = addDays(d, 1)) dates.add(d);
   for (const d of [...dates].sort()) {
     const qs = issued.get(d) ?? [];
     // платные траты дня: золото строк прошлых дней − обычные покупки раньше по ts − ранее принятые платные траты ≥ цена
+    // день отдыха — только пока принятых отдыхов и дней без заданий раньше d в месяце меньше лимита; сверх — обычный день
+    const rm = d.slice(0, 7);
+    if (d <= today && types.get(d)?.kind === 'rest' && (restInMonth.get(rm) ?? 0) < BALANCE.streak.restDaysPerMonth) {
+      restDays.add(d); restInMonth.set(rm, (restInMonth.get(rm) ?? 0) + 1);
+    }
     for (const s of spendsOn.get(d) ?? []) {
       const avail = goldSoFar - ordinaryBuys.reduce((a, b) => a + (b.ts < s.ts ? b.r.price : 0), 0) - paidSum;
       if ('orig' in s) {
