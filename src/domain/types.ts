@@ -164,6 +164,13 @@ export interface GameState {
     step: 1 | 2 | 3 | 4 | 5; attempt: 1 | 2; windowStart: ISODate | null; windowDays: number; done: number; required: number;
     todayDone: boolean; todayVerify: 'auto' | 'honest' | null; label: string; xp: number; ask: boolean; facetId: string | null }[];
   trophies: { id: string; kind: 'avatar' | 'rare' | 'legendary'; title: string; date: ISODate }[];   // спека §8.3, по дате
+  /** Босс текущего сезона (спека §5.6); части — календарные месяцы сезона. */
+  seasonBoss: { seasonId: string; title: string; skill: SkillId; stat: Stat; defeated: boolean;
+    parts: { title: string; start: ISODate; end: ISODate; steps: { title: string; done: boolean }[]; hits: number; hp: number;
+      status: 'upcoming' | 'active' | 'late' | 'defeated' | 'escaped' }[] } | null;
+  bossOptions: BossDraft[];   // правилами; UI заменяет на ИИ-варианты, если есть ключ
+  chain: { id: string; title: string; skill: SkillId; stat: Stat; steps: { title: string; done: boolean }[]; current: number } | null;
+  chainsDone: number;
   /** Враг-тень (спека §4): strength — среднее неизгнанных граней, нет — null; названия граней — только на экране владельца, не в ИИ. */
   shadow: { strength: number | null;
     facets: { id: string; name: string; kind: FacetKind; strength: number; cleanRun: number; banished: boolean; relapsedToday: boolean }[];   // серьёзная зависимость гранью не становится
@@ -171,7 +178,7 @@ export interface GameState {
   title: string;          // titleReward последнего достижения с титулом, иначе 'Новичок'
   statHistory: { date: ISODate; stats: Record<Stat, number> }[];   // Основа на конец каждого финализированного дня
   metricHistory: { date: ISODate; metrics: Partial<Record<Metric, number>> }[];   // даты ≤ сегодня с метриками, по возрастанию
-  genInputs: { bestSteps7: number|null; lastSleepHours: number|null; recentTemplateIds: string[]; fatigue: number;
+  genInputs: { bestSteps7: number|null; bossStats: Stat[]; bossStep: QuestStep | null; chainStep: QuestStep | null; lastSleepHours: number|null; recentTemplateIds: string[]; fatigue: number;
     recovery: { quests: 0 | 1 | 2 } | null; afterRecovery: boolean;
     recent: { date: ISODate; stats: Stat[]; templateIds: string[] }[] };
     // для сборки дня: лучший 7‑дневный средний по шагам (из metric_logged steps), сон за последний день с данными,
@@ -185,4 +192,6 @@ export type QuestKind = 'daily' | 'challenge' | 'restore' | 'custom' | 'boss' | 
 export interface LadderStep { label: string; per7: 1 | 2 | 3 | 4 | 5 | 6 | 7; auto?: { metric: AutoMetric; op: '>=' | '<='; value: number } }
 export type LadderKind = 'do' | 'dont';
 export type FacetKind = 'games' | 'social' | 'late' | 'junk' | 'smoke' | 'procr' | 'alcohol' | 'custom';
+/** Шаг босса/цепочки для сборки дня. */
+export type QuestStep = { title: string; skill: SkillId; link: NonNullable<Quest['link']> };
 export type BossDraft = { title: string; skill: SkillId; parts: { title: string; steps: string[] }[] };

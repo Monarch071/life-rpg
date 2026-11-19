@@ -319,7 +319,7 @@ test('genInputs', () => {
   // 3 значения, но ни в одном 7‑дневном окне их нет трёх → null
   expect(replay([steps('2026-11-01', 9000), steps('2026-11-05', 9000), steps('2026-11-14', 9000)], NOW).genInputs.bestSteps7).toBeNull();
   const few = replay([steps('2026-11-01', 9000), steps('2026-11-02', 11000)], NOW);
-  expect(few.genInputs).toEqual({ bestSteps7: null, lastSleepHours: null, recentTemplateIds: [], recent: [], fatigue: 0, recovery: null, afterRecovery: false });
+  expect(few.genInputs).toEqual({ bestSteps7: null, lastSleepHours: null, recentTemplateIds: [], recent: [], fatigue: 0, recovery: null, afterRecovery: false, bossStats: [], bossStep: null, chainStep: null });
 });
 
 test('7 идеальных дней по характеристике дают множитель ≈1.1', () => {
@@ -1662,4 +1662,73 @@ test('Тень, правки: XP битвы не «большой день»; о
   expect(b.shadow.lastBattle).toMatchObject({ date: '2026-12-27', strength: 0, result: 'crush', xp: 400 });
   const beer = ev({ type: 'facet_added', facetId: 'p', name: 'Пиво', kind: 'custom', start: 80, ts: at('2026-12-01', 9) });
   expect(replay([onboard, beer], at('2026-12-02')).shadow.facets).toEqual([]);
+});
+
+// ---- Игровой слой: сезонный босс, части, цепочка ----
+const draft = { title: 'Прочитать 3 книги', skill: 'reading', parts: [0, 1, 2].map(i => ({ title: `Часть ${i + 1}`, steps: ['Шаг А', 'Шаг Б'] })) };
+const setBoss = (ts = at('2026-12-02', 10), seasonId = 'winter-2026') => ev({ type: 'season_boss_set', seasonId, boss: draft, ts });
+const bq = (id: string, d: string, part: number, step: number) => nq(id, d, 'C', ['reading'], { kind: 'boss', link: { kind: 'boss', season: 'winter-2026', part, step } as Quest['link'] });
+const hit = (id: string, d: string) => nq(id, d, 'E', ['reading']);
+test('урон части: шаги 80, удары 4; победа части +300', () => {
+  const d3 = '2026-12-03', d4 = '2026-12-04';
+  const evs = [onboard, setBoss(),
+    issue(d3, [bq('s0', d3, 0, 0), hit('h1', d3), hit('h2', d3)]), done(d3, 's0'), done(d3, 'h1'), done(d3, 'h2')];
+  const s = replay(evs, at(d4, 7));
+  expect(s.seasonBoss!.parts[0]).toMatchObject({ hp: 52, hits: 2, status: 'active', steps: [{ done: true }, { done: false }] });
+  expect(s.genInputs.bossStep).toMatchObject({ title: 'Шаг Б', link: { part: 0, step: 1 } });
+  const t = replay([...evs, issue(d4, [bq('s1', d4, 0, 1), hit('h3', d4), hit('h4', d4), hit('h5', d4), hit('h6', d4)]),
+    ...['s1', 'h3', 'h4', 'h5', 'h6'].map(id => done(d4, id))], at('2026-12-05'));
+  expect(t.seasonBoss!.parts[0]).toMatchObject({ hp: 0, hits: 5, status: 'defeated' });
+  expect(t.ledger.filter(r => r.source === 'boss')).toMatchObject([{ xp: 300, date: d4, stats: { int: 300 } }]);
+  expect(t.genInputs.bossStep).toBeNull();   // часть 2 начнётся 1 января
+});
+test('свои задания не бьют; чужой link — обычное задание; переброс шага отклонён', () => {
+  const d = '2026-12-03';
+  const s = replay([onboard, setBoss(),
+    ev({ type: 'custom_quest_added', date: d, quest: { ...hit('c1', d), kind: 'custom' }, ts: at(d, 9) }), done(d, 'c1'),
+    issue(d, [bq('x', d, 0, 1), bq('s0', d, 0, 0)]), done(d, 'x'),
+    ev({ type: 'quest_rerolled', date: d, questId: 's0', replacement: hit('r', d), ts: at(d, 10) })], at(d, 23));
+  expect(s.seasonBoss!.parts[0]).toMatchObject({ hits: 0, hp: 100 });
+  expect(s.ledger.some(r => r.questId === 'x')).toBe(true);
+  expect(s.today.quests.map(q => q.id)).toEqual(['x', 's0', 'c1']);   // s0 не заменён
+});
+test('сезонная победа +1 500 и легендарный трофей один раз', () => {
+  const win = (part: number, d1: string) => { const d2 = addDays(d1, 1); return [
+    issue(d1, [bq(`a${part}`, d1, part, 0), ...[1, 2, 3, 4, 5].map(i => hit(`h${part}${i}`, d1))]), done(d1, `a${part}`), ...[1, 2, 3, 4, 5].map(i => done(d1, `h${part}${i}`)),
+    issue(d2, [bq(`b${part}`, d2, part, 1)]), done(d2, `b${part}`)]; };
+  const evs = [onboard, setBoss(), ...win(0, '2026-12-03'), ...win(1, '2027-01-05'), ...win(2, '2027-02-02')];
+  const s = replay([...evs, setBoss(at('2027-02-10', 10))], at('2027-02-11'));
+  expect(s.seasonBoss!.defeated).toBe(true);
+  expect(s.ledger.filter(r => r.source === 'boss').map(r => r.xp)).toEqual([300, 300, 300, 1500]);
+  expect(s.trophies).toMatchObject([{ kind: 'legendary', date: '2027-02-03' }]);
+  expect(s.achievements.some(a => a.id === 'season_boss')).toBe(true);
+});
+test('цепочка: одна активная, шаги по порядку, +200 по завершении', () => {
+  const cq = (id: string, d: string, step: number) => nq(id, d, 'D', ['tech'], { kind: 'chain', link: { kind: 'chain', chainId: 'c1', step } });
+  const start = (id: string) => ev({ type: 'chain_started', chainId: id, title: 'Хобби-проект', skill: 'tech', steps: ['Идеи', 'Проба', 'Результат'], ts: at('2026-12-02', 9) });
+  const evs = [onboard, start('c1'), start('c2'),
+    ...['2026-12-03', '2026-12-04', '2026-12-05'].flatMap((d, i) => [issue(d, [cq(`c${i}`, d, i)]), done(d, `c${i}`)])];
+  const s = replay(evs, at('2026-12-06'));
+  expect(s.chain).toBeNull(); expect(s.chainsDone).toBe(1);
+  expect(s.ledger.find(r => r.source === 'chain')).toMatchObject({ xp: 200, date: '2026-12-05', stats: { int: 200 } });
+});
+test('легаси-босс остаётся в bossStats и вариантах', () => {
+  const s = replay([onboard, ev({ type: 'boss_created', bossId: 'b1', title: 'Старая цель', stat: 'fin', stages: ['a', 'b'] })], at('2026-12-02'));
+  expect(s.genInputs.bossStats).toEqual(['fin']);
+  expect(s.bossOptions[0].title).toBe('Старая цель');
+});
+test('шаг босса: мусорный link → daily; несделанный шаг вне знаменателя; сдача и новый выбор не платят дважды', () => {
+  const d = '2026-12-03';
+  expect(normQuest({ ...bq('j', d, 0, 0), link: { kind: 'chain', chainId: 'c', step: 0 } }, d)).toMatchObject({ kind: 'daily' });
+  expect(normQuest({ ...bq('j', d, 0, 0), link: { kind: 'boss', season: 'w', part: 3, step: 0 } }, d)!.link).toBeUndefined();
+  const s = replay([onboard, setBoss(), issue(d, [bq('s0', d, 0, 0), hit('h1', d)]), done(d, 'h1')], at('2026-12-04'));
+  expect(s.history[0]).toMatchObject({ counted: true });   // 1 из 1 без несделанного шага
+  const win = [issue(d, [bq('a', d, 0, 0), ...[1, 2, 3, 4, 5].map(i => hit(`h${i}`, d))]), done(d, 'a'), ...[1, 2, 3, 4, 5].map(i => done(d, `h${i}`)),
+    issue('2026-12-04', [bq('b', '2026-12-04', 0, 1)]), done('2026-12-04', 'b')];
+  const t = replay([onboard, setBoss(), ...win, ev({ type: 'season_boss_abandoned', seasonId: 'winter-2026', ts: at('2026-12-05', 9) }), setBoss(at('2026-12-05', 10)),
+    ...win.map(e => ({ ...e, id: `${e.id}x`, ts: e.ts + 3 * 864e5, ...('date' in e ? { date: addDays((e as any).date, 3) } : {}),
+      ...((e as any).quests ? { quests: (e as any).quests.map((x: Quest) => ({ ...x, id: `${x.id}x`, date: addDays(x.date, 3) })) } : {}),
+      ...((e as any).questId ? { questId: `${(e as any).questId}x` } : {}) }) as GameEvent)], at('2026-12-09'));
+  expect(t.seasonBoss!.parts[0].status).toBe('defeated');
+  expect(t.ledger.filter(r => r.source === 'boss').map(r => r.xp)).toEqual([300]);
 });

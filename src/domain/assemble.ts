@@ -8,7 +8,7 @@ import { seededRng } from './rng';
 import { freeWindows, latestEnd, placeQuests, type Win } from './schedule';
 import { primaryStat, SKILL_CATALOG, type SkillId } from './skillCatalog';
 import { STATS } from './stats';
-import type { HHMM, ISODate, Profile, Quest, QuestKind, Rank, Stat, StatInfo } from './types';
+import type { HHMM, ISODate, Profile, Quest, QuestKind, QuestStep, Rank, Stat, StatInfo } from './types';
 import { weakestStat } from './weekly';
 
 export interface AssembleCtx {
@@ -18,6 +18,7 @@ export interface AssembleCtx {
   theme: ThemeId | null; bossStats: Stat[]; recent: { date: ISODate; stats: Stat[]; templateIds: string[] }[];
   profile: Profile; multipliers: Record<Stat, number>; bestSteps7: number | null; busy: Win[];
   fatigue: number; recovery: { quests: 0 | 1 | 2 } | null; afterRecovery: boolean;
+  bossStep: QuestStep | null; chainStep: QuestStep | null;   // первый несделанный шаг босса/цепочки (переносится, пока не сделан)
 }
 
 const STAT_KEYS = Object.keys(STATS) as Stat[];
@@ -55,7 +56,7 @@ interface Cand { t: QuestTemplate; stat: Stat; skill: SkillId; p: number; cap: R
 /** Кандидаты по убыванию P; ничьи — сидированный rng(date). */
 function candidates(ctx: AssembleCtx): Cand[] {
   const rng = seededRng(ctx.date);
-  return QUEST_TEMPLATES.filter(t => !t.badHabit || ctx.profile.badHabits.includes(t.badHabit))
+  return QUEST_TEMPLATES.filter(t => !t.badHabit) // вредные привычки — в Тени и «не делать»-лестницах (спека §7)
     .map(t => {
       const skill = t.skills[0], stat = primaryStat(t.skills);
       // при Energy < 40 физические — не выше D
@@ -117,8 +118,9 @@ export function assembleDay(ctx: AssembleCtx): Quest[] {
   const challenge = ctx.afterRecovery ? 0 : slots.challenge; // возвращение: без вызова
   const total = base + challenge;
   const chosen: { c: Cand; restore: boolean; why: string | null }[] = [];
-  const perStat = (s: Stat) => chosen.filter(x => x.c.stat === s).length;
-  const can = (c: Cand) => chosen.length < total && perStat(c.stat) < A.maxPerStat && !chosen.some(x => x.c.t.id === c.t.id);
+  const steps: Omit<Quest, 'window'>[] = [];
+  const perStat = (s: Stat) => chosen.filter(x => x.c.stat === s).length + steps.filter(q => q.stat === s).length;
+  const can = (c: Cand) => chosen.length + steps.length < total && perStat(c.stat) < A.maxPerStat && !chosen.some(x => x.c.t.id === c.t.id);
   const take = (c: Cand | undefined, restore: boolean, why: string | null) => { if (c) chosen.push({ c, restore, why }); };
 
   // 1. обязательные: «Вернуть форму» (одно), навык на грани ржавчины (один), Дух при Energy < 40
@@ -142,6 +144,16 @@ export function assembleDay(ctx: AssembleCtx): Quest[] {
   if ((low(ctx) || tired) && perStat('spi') === 0)
     take(cands.find(c => c.stat === 'spi' && can(c)), false, tired ? `Усталость ${ctx.fatigue} — день для Духа` : 'Сил мало — день для Духа');
 
+  // шаг босса, затем цепочки — сразу после обязательных, в счёт слотов и лимита на характеристику; не в отдых
+  const mandatory = chosen.length;
+  for (const [st, kind, why] of [[ctx.bossStep, 'boss', 'Шаг босса'], [ctx.chainStep, 'chain', 'Шаг сюжета']] as const) {
+    if (!st || ctx.dayType.kind === 'rest' || chosen.length + steps.length >= total || perStat(primaryStat([st.skill])) >= A.maxPerStat) continue;
+    const rank = rankCap(ctx.level, ctx.skills[st.skill]?.level ?? 1), stat = primaryStat([st.skill]);
+    const bonuses = [themeBonusApplies(ctx.theme, stat, [st.skill]) ? B.bonus.theme : 0, weakestStat(ctx.stats) === stat ? B.bonus.weakest : 0];
+    steps.push({ id: `${ctx.date}:${kind}:${st.link.step}`, date: ctx.date, title: st.title, stat, minutes: 0, auto: null, templateId: kind, rank,
+      skills: [st.skill], kind, why, link: st.link, xp: questReward({ rank, verify: 'honest', bonuses, penalties: [], mult: 1 }).xp });
+  }
+
   // 2. характеристики без заданий за statEveryDays − 1 прошлых дня — раньше остальных (каждая — хотя бы раз в 3 дня)
   const seen = new Set(ctx.recent.filter(r => r.date >= addDays(ctx.date, 1 - A.statEveryDays) && r.date < ctx.date).flatMap(r => r.stats));
   for (const c of cands) if (!seen.has(c.stat) && perStat(c.stat) === 0 && can(c)) take(c, false, `${STATS[c.stat].name}: два дня без заданий`);
@@ -158,15 +170,15 @@ export function assembleDay(ctx: AssembleCtx): Quest[] {
     if (x === ch) rankOf.set(x, { rank: rankShift(x.c.cap, 1), kind: 'challenge' });
     else rankOf.set(x, { rank: rankShift(minRank(own-- > 0 ? x.c.cap : rankShift(x.c.cap, -1), x.c.limit), ctx.afterRecovery ? -1 : 0), kind: 'daily' });
   }
-  const qs = chosen.map(x => {
+  const built = chosen.map(x => {
     if (x.restore) return build(x.c, minRank(ri(x.c.cap) >= ri('D') ? 'D' : 'E', x.c.limit), 'restore', x.why!, ctx);
     const r = rankOf.get(x)!;
     return build(x.c, r.rank, r.kind, r.kind === 'challenge' ? 'Вызов: ранг выше твоего потолка' : x.why ?? ruleWhy(x.c, ctx), ctx);
   });
-  return place(qs, ctx);
+  return place([...built.slice(0, mandatory), ...steps, ...built.slice(mandatory)], ctx);
 }
 
-/** Замена для переброса: тот же ранг, другой шаблон (не из сегодняшних), лучше — другой навык. restore/custom — null. */
+/** Замена для переброса: тот же ранг, другой шаблон (не из сегодняшних), лучше — другой навык. restore/custom/boss/chain — null. */
 export function rerollCandidate(ctx: AssembleCtx, q: Quest, today: Quest[]): Quest | null {
   if (!q.rank || (q.kind !== 'daily' && q.kind !== 'challenge')) return null;
   const used = new Set(today.map(x => x.templateId));

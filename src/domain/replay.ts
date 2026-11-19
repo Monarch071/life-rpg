@@ -10,12 +10,13 @@ import { AUTO_METRIC_INFO, METRIC_INFO } from './metricInfo';
 import { baseFromXp, fatiguePenalty, formNorm, formOf, formStatus, goldFor, questReward, rankCap, skillFromXp, streakBonus } from './progression';
 import { DEFAULT_SKILL_BY_STAT, LEGACY_SKILL_BY_TEMPLATE, legacyRank } from './questBank';
 import { isSkillId, primaryStat, SKILL_CATALOG, splitXp, type SkillId } from './skillCatalog';
+import { bossOptionsByRules, partHp, partWindows, validBossDraft, validChainSteps } from './boss';
 import { banished, battleOutcome, facetDay, isSerious, lastSunday, masterPlan } from './shadow';
 import { startProfile } from './startProfile';
 import { dayOutcome, nextStreak } from './streak';
 import { classFor, isStat, STATS, tierFor } from './stats';
 import { cleanText } from './text';
-import type { Analysis, Answers, AutoMetric, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, WeeklyQuest } from './types';
+import type { Analysis, Answers, BossDraft, AutoMetric, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, WeeklyQuest } from './types';
 import { weakestStat } from './weekly';
 import { energyScore, fatigueNext, focusScore, hpScore, intFocusMult, sessionMinutes, unionMinutes, workoutKind } from './vitals';
 import { levelFromXp } from './xp';
@@ -40,7 +41,14 @@ const validProfile = (p: any): p is Profile => !!p && typeof p === 'object' && !
   && STAT_KEYS.every(k => typeof p.selfRating[k] === 'number' && Number.isFinite(p.selfRating[k]));
 const validAvatar = (p: any): p is AvatarParams => !!p && typeof p === 'object' && (['hair', 'hairColor', 'outfitColor', 'eyes'] as const).every(k => typeof p[k] === 'string');
 const strongestStat = (st: Record<Stat, number>): Stat => STAT_KEYS.reduce((a, k) => (st[k] > st[a] ? k : a)); // ничья — по порядку STATS
-const QUEST_KINDS: readonly string[] = ['daily', 'challenge', 'restore', 'custom'];
+const QUEST_KINDS: readonly string[] = ['daily', 'challenge', 'restore', 'custom', 'boss', 'chain'];
+const ID = (x: unknown): x is string => typeof x === 'string' && x.length > 0 && x.length <= 64;
+/** Связь шага с боссом/цепочкой (граница доверия): вид совпадает с видом задания, иначе null. */
+function linkOf(a: any, kind: unknown): Quest['link'] | null {
+  if (!a || typeof a !== 'object' || a.kind !== kind || !Number.isInteger(a.step) || a.step < 0 || a.step >= BALANCE.chain.stepsMax) return null;
+  if (a.kind === 'boss') return ID(a.season) && [0, 1, 2].includes(a.part) ? { kind: 'boss', season: a.season, part: a.part, step: a.step } : null;
+  return ID(a.chainId) ? { kind: 'chain', chainId: a.chainId, step: a.step } : null;
+}
 const FACET_KINDS: readonly string[] = ['games', 'social', 'late', 'junk', 'smoke', 'procr', 'alcohol', 'custom'];
 const clampXp = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(BALANCE.legacy.questXpMax, Math.max(0, v))) : 0);
 
@@ -61,6 +69,9 @@ export function normQuest(raw: unknown, date: ISODate): DayQuest | null {
     rank = r.rank; skills = [...s] as DayQuest['skills'];
   }
   const a = r.auto, w = r.window;
+  // шаг босса/цепочки без валидной связи — обычное задание
+  const link = r.kind === 'boss' || r.kind === 'chain' ? linkOf(r.link, r.kind) : null;
+  const kind: QuestKind = QUEST_KINDS.includes(r.kind) && (link || (r.kind !== 'boss' && r.kind !== 'chain')) ? r.kind : 'daily';
   const auto: Quest['auto'] = a && typeof a === 'object' && Object.hasOwn(AUTO_METRIC_INFO, a.metric) && (a.op === '>=' || a.op === '<=') && Number.isFinite(a.value)
     ? { metric: a.metric, op: a.op, value: a.value } : null;
   return {
@@ -69,7 +80,7 @@ export function normQuest(raw: unknown, date: ISODate): DayQuest | null {
     minutes: Number.isFinite(r.minutes) ? r.minutes : 0,
     window: w && typeof w === 'object' && typeof w.start === 'string' && typeof w.end === 'string' ? { start: w.start, end: w.end } : null,
     xp: clampXp(r.xp), auto, templateId: typeof r.templateId === 'string' ? r.templateId : '',
-    rank, skills, kind: QUEST_KINDS.includes(r.kind) ? r.kind as QuestKind : 'daily',
+    rank, skills, kind, ...(link ? { link } : {}),
     ...(typeof r.why === 'string' ? { why: r.why.trim().slice(0, 200) } : {}),
     done: false, verify: null, xpFinal: null, dropped: false, legacy,
   };
@@ -258,6 +269,11 @@ export function replay(events: GameEvent[], now: number): GameState {
   const facetMap = new Map<string, Facet>(), facetOps = new Map<ISODate, { f: Facet; add: boolean; ts: number }[]>();
   const facetOp = (d: ISODate, f: Facet, add: boolean, ts: number) => facetOps.set(d, [...(facetOps.get(d) ?? []), { f, add, ts }]);
   const relapseAt = new Map<string, number>(); // `${facetId}|${date}` → ts первой честной отметки
+  // Сезонный босс и цепочка (спека §5, §6): выбор/сдача/старт принимаются в цикле дней — «активен ли» зависит от побед по датам.
+  type GameOp = { ts: number } & ({ k: 'boss'; seasonId: string; draft: BossDraft } | { k: 'boss_off'; seasonId: string }
+    | { k: 'chain'; id: string; title: string; skill: SkillId; steps: string[] } | { k: 'chain_off'; id: string });
+  const gameOps = new Map<ISODate, GameOp[]>();
+  const gameOp = (ts: number, op: GameOp) => { const d = gd(ts); if (d >= MIN_ISSUE_DATE) gameOps.set(d, [...(gameOps.get(d) ?? []), op]); };
 
   for (const e of evs) {
     if (e.deviceId === 'shortcuts') sync.last = e.ts; // события по возрастанию ts
@@ -299,7 +315,7 @@ export function replay(events: GameEvent[], now: number): GameState {
         // только сегодняшнее невыполненное, не restore/custom; замена — тот же ранг, другой шаблон; принятие (золото) — в цикле дней
         const q0 = questById.get(e.questId), r = isDate(e.date) && e.date === gd(e.ts) ? normQuest(e.replacement, e.date) : null;
         if (!q0 || !r || r.legacy || q0.date !== e.date || q0.done || rerolledFrom.has(q0.id) || questById.has(r.id) || r.rank !== q0.rank
-          || r.templateId === q0.templateId || [q0.kind, r.kind].some(k => k === 'restore' || k === 'custom')) break;
+          || r.templateId === q0.templateId || [q0.kind, r.kind].some(k => k !== 'daily' && k !== 'challenge')) break;
         rerolledFrom.add(q0.id); questById.set(r.id, r);
         spends.push({ id: e.id, ts: e.ts, date: e.date, orig: q0.id, repl: r });
         break;
@@ -308,7 +324,7 @@ export function replay(events: GameEvent[], now: number): GameState {
         const c = isDate(e.date) && e.date >= MIN_ISSUE_DATE && e.date === gd(e.ts) ? normQuest(e.quest, e.date) : null;
         const list = c ? customs.get(c.date) ?? [] : [];
         if (!c || c.legacy || questById.has(c.id) || list.length >= BALANCE.custom.perDay) break; // третье за день — игнор
-        c.kind = 'custom'; list.push(c); customs.set(c.date, list); questById.set(c.id, c);
+        c.kind = 'custom'; delete c.link; list.push(c); customs.set(c.date, list); questById.set(c.id, c);
         if (!issuedTs.has(c.date)) issuedTs.set(c.date, e.ts);
         break;
       }
@@ -430,6 +446,20 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (facetMap.has(e.facetId) && isDate(e.date) && e.date === gd(e.ts) && !relapseAt.has(k)) relapseAt.set(k, e.ts);
         break;
       }
+      case 'season_boss_set': case 'season_boss_abandoned': {
+        // сезон — игровой даты события, не Пролог
+        const sn = seasonOf(gd(e.ts)), draft = e.type === 'season_boss_set' ? validBossDraft(e.boss) : null;
+        if (sn.kind === 'prologue' || e.seasonId !== sn.id) break;
+        if (draft) gameOp(e.ts, { ts: e.ts, k: 'boss', seasonId: sn.id, draft });
+        else if (e.type === 'season_boss_abandoned') gameOp(e.ts, { ts: e.ts, k: 'boss_off', seasonId: sn.id });
+        break;
+      }
+      case 'chain_started': {
+        const title = cleanText(e.title, 60), steps = validChainSteps(e.steps);
+        if (ID(e.chainId) && title && isSkillId(e.skill) && steps) gameOp(e.ts, { ts: e.ts, k: 'chain', id: e.chainId, title, skill: e.skill, steps });
+        break;
+      }
+      case 'chain_abandoned': if (ID(e.chainId)) gameOp(e.ts, { ts: e.ts, k: 'chain_off', id: e.chainId }); break;
       case 'busy_until': if (e.date === today && isHM(e.until)) busyUntil = e.until; break;
       case 'checkin': {
         if (!isDate(e.date)) break;
@@ -570,7 +600,8 @@ export function replay(events: GameEvent[], now: number): GameState {
   const ritualsOn = new Map<ISODate, { due: number; done: number }>(); // ритуалы дня: показано / засчитано (цикл дней)
   /** Итог дня; свои задания не в знаменателе 60%. */
   const outcomeOf = (d: ISODate) => {
-    const qs = (issued.get(d) ?? []).filter(q => q.kind !== 'custom');
+    // свои — вне знаменателя; несделанный шаг босса/цепочки сгорает без штрафа (переносится)
+    const qs = (issued.get(d) ?? []).filter(q => q.kind !== 'custom' && (q.done || (q.kind !== 'boss' && q.kind !== 'chain')));
     return dayOutcome({ issued: qs.length, done: qs.filter(q => q.done).length, dropped: qs.filter(q => q.dropped).length, rest: restDays.has(d) || dayOff.has(d),
       rituals: ritualsOn.get(d) });
   };
@@ -788,6 +819,71 @@ export function replay(events: GameEvent[], now: number): GameState {
     const hasDont = ladList.some(l => l.kind === 'dont' && l.facetId === top.id && l.status !== 'gone' && l.status !== 'new');
     lastBattle = { date: d, strength, result: o.result, xp: o.xp, plan: o.plan ? masterPlan(fs, hasDont) : null };
   };
+  // Сезонный босс (спека §5) и цепочка (§6): операции дня до выдачи → шаги и удары по выполненным → операции после выдачи.
+  const BS = BALANCE.boss;
+  type Part = { title: string; start: ISODate; end: ISODate; steps: { title: string; done: boolean }[]; hits: number; won: boolean };
+  type SBoss = { seasonId: string; title: string; skill: SkillId; stat: Stat; defeated: boolean; parts: Part[] };
+  type Chain = NonNullable<GameState['chain']>;
+  let sboss = null as SBoss | null, chain = null as Chain | null, chainsDone = 0; // as — присваиваются в замыканиях
+  const chainIds = new Set<string>(), paid = new Set<string>();
+  const applyOp = (op: GameOp, d: ISODate) => {
+    if (op.k === 'boss') {
+      if (sboss?.seasonId === op.seasonId) return; // у сезона уже есть босс (активный или побеждённый) — повтор игнор
+      const sn = seasonOf(d), ws = partWindows(sn.start, sn.end);
+      sboss = { seasonId: op.seasonId, title: op.draft.title, skill: op.draft.skill, stat: primaryStat([op.draft.skill]), defeated: false,
+        parts: op.draft.parts.map((p, i) => ({ title: p.title, ...ws[i], steps: p.steps.map(title => ({ title, done: false })), hits: 0, won: false })) };
+    } else if (op.k === 'boss_off') { if (sboss?.seasonId === op.seasonId && !sboss.defeated) sboss = null; }
+    else if (op.k === 'chain') {
+      if (chain || chainIds.has(op.id)) return; // одна активная; повтор id — игнор
+      chainIds.add(op.id);
+      chain = { id: op.id, title: op.title, skill: op.skill, stat: primaryStat([op.skill]), steps: op.steps.map(title => ({ title, done: false })), current: 0 };
+    } else if (chain?.id === op.id) chain = null;
+  };
+  /** Шаг босса на дату: первый несделанный самой ранней начавшейся части (недоделанное прошлого месяца — первым). */
+  const bossNext = (d: ISODate) => {
+    if (!sboss || seasonOf(d).id !== sboss.seasonId) return null;
+    for (const [i, p] of sboss.parts.entries()) { if (p.start > d) break; const j = p.steps.findIndex(x => !x.done); if (j >= 0) return { i, j }; }
+    return null;
+  };
+  const gameDay = (d: ISODate, qs: DayQuest[]) => {
+    const ops = gameOps.get(d) ?? [], cut = issuedTs.get(d) ?? Infinity;
+    for (const op of ops) if (op.ts < cut) applyOp(op, d);
+    // шаг продвигается, только если link совпадает с текущим на дату выдачи; иначе — обычное задание без урона
+    const b = sboss && seasonOf(d).id === sboss.seasonId ? sboss : null, ch = chain;
+    let next = bossNext(d), cStep = ch ? ch.current : -1, bt = 0, ct = 0;
+    for (const q of qs) {
+      if (!q.done) continue;
+      const l = q.link, t = completedAt.get(q.id) ?? issuedTs.get(d) ?? 0;
+      if (b && next && q.kind === 'boss' && l?.kind === 'boss' && l.season === b.seasonId && l.part === next.i && l.step === next.j) {
+        b.parts[next.i].steps[next.j].done = true; next = null; bt = Math.max(bt, t);
+      } else if (b && (q.kind === 'daily' || q.kind === 'challenge') && q.stat === b.stat) {
+        const p = b.parts.find(p => p.start <= d && p.hits < BS.hitCap); // удар — самой ранней начавшейся части с ударами < 5
+        if (p) { p.hits++; bt = Math.max(bt, t); }
+      } else if (ch && q.kind === 'chain' && l?.kind === 'chain' && l.chainId === ch.id && l.step === cStep) {
+        ch.steps[cStep].done = true; ch.current++; cStep = -1; ct = Math.max(ct, t);
+      }
+    }
+    if (b) {
+      b.parts.forEach((p, i) => {
+        if (p.won || partHp(p.steps.filter(x => x.done).length, p.steps.length, p.hits) > 0) return;
+        p.won = true;
+        const id = `boss:part:${b.seasonId}:${i}`; // награда — одна на сезон, и после сдачи и нового выбора
+        if (!paid.has(id)) { paid.add(id); add(flatRow(id, bt, d, 'boss', BS.partXp, b.stat)); bump(d, 'bossesDefeated'); }
+      });
+      const id = `boss:season:${b.seasonId}`;
+      if (!b.defeated && b.parts.every(p => p.won)) {
+        b.defeated = true;
+        if (!paid.has(id)) {
+          paid.add(id); add(flatRow(id, bt, d, 'boss', BS.seasonXp, b.stat)); bump(d, 'seasonBosses');
+          trophies.push({ id, kind: 'legendary', title: BALANCE.trophies.legendary, date: d });
+        }
+      }
+    }
+    if (ch && ch.current === ch.steps.length) {
+      add(flatRow(`chain:${ch.id}`, ct, d, 'chain', BALANCE.chain.doneXp, ch.stat)); bump(d, 'chainsDone'); chainsDone++; chain = null;
+    }
+    for (const op of ops) if (op.ts >= cut) applyOp(op, d);
+  };
   let dayStartCaps: GameState['today']['dayStart'] | null = null; // потолки рангов сегодня (переброс, своё задание) — на начало дня
   const history: DayResult[] = [], statHistory: GameState['statHistory'] = [];
   const finalized: { stat: Stat; done: boolean }[][] = [];
@@ -798,7 +894,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const firstLadder = ladList.map(l => l.created).filter(d => d <= today).sort()[0] as ISODate | undefined;
   // от первого дня с заданиями или первой лестницы (день только с ритуалами тоже закрывается в серию)
   const firstDay = [...issued.keys(), ...(firstLadder ? [firstLadder] : [])].sort()[0] as ISODate | undefined;
-  const dates = new Set([...issued.keys(), ...extra.keys(), ...weeklyAt.keys(), ...spendsOn.keys(), ...restTyped]);
+  const dates = new Set([...issued.keys(), ...extra.keys(), ...weeklyAt.keys(), ...spendsOn.keys(), ...restTyped, ...gameOps.keys()]);
   if (firstDay) for (let d = firstDay; d <= today; d = addDays(d, 1)) dates.add(d);
   const firstFacet = [...facetMap.values()].map(f => f.added).filter(d => d <= today).sort()[0] as ISODate | undefined;
   if (firstFacet) for (let d = firstFacet; d <= today; d = addDays(d, 1)) dates.add(d);
@@ -909,6 +1005,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       add(flatRow(`weekly:${ws}:${w.id}`, ts, d, 'weekly', w.xp, w.stat)); bump(d, 'weeklyDone');
     }
     for (const r of extra.get(d) ?? []) add(r);
+    if (d <= today) gameDay(d, qs);
     if (firstLadder && d >= firstLadder && d <= today) ladderDay(d);
     if (firstFacet && d >= firstFacet && d <= today) shadowDay(d);
     if (!firstDay || d < firstDay || d >= today) continue;
@@ -1008,6 +1105,18 @@ export function replay(events: GameEvent[], now: number): GameState {
   const metricHistory = [...metrics].filter(([d]) => d <= today).sort(([a], [b]) => (a < b ? -1 : 1)).map(([date, m]) => ({ date, metrics: { ...m } }));
   const sleepDate = [...metrics.keys()].filter(d => d <= today && metrics.get(d)!.sleepHours !== undefined).sort().at(-1);
 
+  // Босс текущего сезона, шаги на сегодня (не в «день без заданий» и восстановление; отдых — в сборке), терм P.
+  const sbNow = sboss && sboss.seasonId === season.id ? sboss : null, bn = bossNext(today), noSteps = dayOff.has(today) || !!recOn;
+  const bossStep: GameState['genInputs']['bossStep'] = !noSteps && sboss && bn
+    ? { title: sboss.parts[bn.i].steps[bn.j].title, skill: sboss.skill, link: { kind: 'boss', season: sboss.seasonId, part: bn.i as 0 | 1 | 2, step: bn.j } } : null;
+  const chainStep: GameState['genInputs']['chainStep'] = !noSteps && chain
+    ? { title: chain.steps[chain.current].title, skill: chain.skill, link: { kind: 'chain', chainId: chain.id, step: chain.current } } : null;
+  const legacyBosses = [...bossMap.values()].filter(b => !b.defeated && !b.abandoned);
+  const bossStats = [...new Set([...(sbNow && sbNow.parts.some(p => p.start <= today && !p.won) ? [sbNow.stat] : []), ...(chain ? [chain.stat] : []),
+    ...legacyBosses.map(b => b.stat)])];
+  const yearGoal = interview?.answers.year_goal;
+  const bossOptions = bossOptionsByRules({ goals: profile?.goals ?? [], legacy: legacyBosses, yearGoal: typeof yearGoal === 'string' ? yearGoal : null, theme });
+
   const className = classFor(stats);
   const a = interview?.analysis;
   const character: GameState['character'] = interview && {
@@ -1058,6 +1167,12 @@ export function replay(events: GameEvent[], now: number): GameState {
         ask: l.ask && !l.upd.some(u => u.date >= l.askFrom), facetId: l.facetId }; // «что мешает?» снимается правкой ступеней
     }),
     trophies,
+    seasonBoss: sbNow && { seasonId: sbNow.seasonId, title: sbNow.title, skill: sbNow.skill, stat: sbNow.stat, defeated: sbNow.defeated,
+      parts: sbNow.parts.map(p => ({ title: p.title, start: p.start, end: p.end, steps: p.steps.map(x => ({ ...x })), hits: p.hits,
+        hp: partHp(p.steps.filter(x => x.done).length, p.steps.length, p.hits),
+        status: p.won ? 'defeated' : today < p.start ? 'upcoming' : today > season.end ? 'escaped' : today > p.end ? 'late' : 'active' })) },
+    bossOptions, chainsDone,
+    chain: chain && { ...chain, steps: chain.steps.map(x => ({ ...x })) },
     shadow: {
       strength: shadowStrength(liveFacets()),
       facets: facetList.filter(f => f.status === 'on').map(f => ({ id: f.id, name: f.name, kind: f.kind, strength: f.strength, cleanRun: f.cleanRun,
@@ -1066,7 +1181,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       lastBattle,
     },
     genInputs: {
-      bestSteps7: best7(metrics, today, 'steps'),
+      bestSteps7: best7(metrics, today, 'steps'), bossStats, bossStep, chainStep,
       lastSleepHours: sleepDate ? metrics.get(sleepDate)!.sleepHours! : null, fatigue: vitals.fatigue,
       recovery: recOn ? { quests: recOn.quests } : null, afterRecovery: afterLeft > 0,
       recentTemplateIds: [addDays(today, -2), addDays(today, -1)].flatMap(d => issued.get(d)?.map(q => q.templateId) ?? []),

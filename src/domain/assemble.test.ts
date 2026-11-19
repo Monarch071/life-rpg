@@ -21,7 +21,7 @@ const allRecent = (d1 = '2026-11-19', d2 = '2026-11-18') => [d2, d1].map(date =>
 const ctx = (over: Partial<AssembleCtx> = {}): AssembleCtx => ({
   date: '2026-11-20', dayType: DEFAULT_DAY_TYPES[0], wakeAt: '08:00', energy: 50, level: 25, skills: skills(), stats: fill(30),
   statInfo: fill<Info>({ form: 1, status: 'in_form', lastRestore: null }), theme: null, bossStats: [], recent: allRecent(),
-  profile, multipliers: fill(1), bestSteps7: null, busy: [], fatigue: 0, recovery: null, afterRecovery: false, ...over,
+  profile, multipliers: fill(1), bestSteps7: null, busy: [], fatigue: 0, recovery: null, afterRecovery: false, bossStep: null, chainStep: null, ...over,
 });
 const twoDaysWithout = (s: Stat) => allRecent().map(r => ({ ...r, stats: r.stats.filter(x => x !== s) }));
 const withForm = (s: Stat, form: number, status: Info['status'] = 'sagging', lastRestore: string | null = null) =>
@@ -188,4 +188,24 @@ test('2 дня после возвращения — все ранги на 1 н
 test('Energy < 40 → −1 слот, без вызова; ≥ 70 → вызов (регрессия Ядра)', () => {
   expect(slotsFor(DEFAULT_DAY_TYPES[0], 39)).toEqual({ base: 3, challenge: 0 });
   expect(slotsFor(DEFAULT_DAY_TYPES[0], 70)).toEqual({ base: 4, challenge: 1 });
+});
+
+// ---- Игровой слой: шаги босса и цепочки, шаблоны вредных привычек ----
+const link = { kind: 'boss', season: 'winter-2026', part: 0, step: 0 } as const;
+const bossStep = { title: 'Разбить цель на шаги', skill: 'reading' as SkillId, link };
+test('шаг босса и цепочки — сразу после обязательных, ранг — потолок навыка', () => {
+  const qs = assembleDay(ctx({ bossStep, chainStep: { title: 'Собрать идеи', skill: 'tech', link: { kind: 'chain', chainId: 'c1', step: 0 } } }));
+  expect(qs[0]).toMatchObject({ kind: 'boss', title: 'Разбить цель на шаги', rank: 'C', link });
+  expect(qs[1]).toMatchObject({ kind: 'chain' }); expect(qs).toHaveLength(4);
+});
+test('шаг босса не выдаётся в отдых и восстановление; не перебрасывается', () => {
+  expect(assembleDay(ctx({ bossStep, dayType: DEFAULT_DAY_TYPES[3] })).some(q => q.kind === 'boss')).toBe(false);
+  expect(assembleDay(ctx({ bossStep, recovery: { quests: 2 } })).some(q => q.kind === 'boss')).toBe(false);
+  const b = assembleDay(ctx({ bossStep }))[0];
+  expect(rerollCandidate(ctx(), b, [b])).toBeNull();
+});
+test('шаблоны вредных привычек больше не кандидаты', () => {
+  const days = ['2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23'];
+  const ids = days.flatMap(date => assembleDay(ctx({ date, profile: { ...profile, badHabits: ['social', 'games', 'smoke'] } })).map(q => q.templateId));
+  expect(ids.filter(id => ['no_social', 'no_games', 'no_smoke'].includes(id))).toEqual([]);
 });
