@@ -26,6 +26,7 @@ export interface Quest {
   auto: { metric: AutoMetric; op: '>='|'<='; value: number } | null;
   templateId: string;
   rank?: Rank; skills?: [SkillId] | [SkillId, SkillId]; kind?: QuestKind; why?: string;
+  link?: { kind: 'boss'; season: string; part: 0 | 1 | 2; step: number } | { kind: 'chain'; chainId: string; step: number };
 }
 export type Metric = 'steps'|'sleepHours'|'weightKg'|'screenMin'|'spend'|'mood'|'water'|'readPages'|'workoutMin';
 export interface HealthData { steps?: number; sleepHours?: number; workoutMin?: number; activeKcal?: number; restingHR?: number; weightKg?: number;
@@ -80,6 +81,17 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'timer_logged'; timer: 'focus' | 'reading'; start: number; end: number }
   | { type: 'recovery_started'; date: ISODate; quests: 0 | 1 | 2 }
   | { type: 'recovery_ended'; date: ISODate }
+  | { type: 'ladder_created'; ladderId: string; title: string; kind: LadderKind; skill: SkillId; steps: LadderStep[]; suitable?: 'all' | 'workdays'; facetId?: string }
+  | { type: 'ladder_updated'; ladderId: string; title?: string; steps?: LadderStep[] }
+  | { type: 'ladder_removed'; ladderId: string }
+  | { type: 'ritual_done'; ladderId: string; date: ISODate }
+  | { type: 'facet_added'; facetId: string; name: string; kind: FacetKind; start: number }
+  | { type: 'facet_removed'; facetId: string }
+  | { type: 'shadow_relapse'; facetId: string; date: ISODate }
+  | { type: 'season_boss_set'; seasonId: string; boss: BossDraft }
+  | { type: 'season_boss_abandoned'; seasonId: string }
+  | { type: 'chain_started'; chainId: string; title: string; skill: SkillId; steps: string[] }
+  | { type: 'chain_abandoned'; chainId: string }
 );
 export type WeeklyKind = 'active_days' | 'stat_quests' | 'steps_total' | 'shadow_wins';
 export interface WeeklyQuest { id: string; weekStart: ISODate; kind: WeeklyKind; stat: Stat | null; target: number; title: string; xp: number }
@@ -94,7 +106,7 @@ export interface DayResult { date: ISODate; xp: number; completed: number; issue
   hp: number | null; energy: number | null; focus: number | null; fatigue: number }
 export interface StatInfo { base: number; into: number; need: number; xp: number; form: number | null; status: 'new' | 'in_form' | 'sagging' | 'abandoned'; norm: number; xp14: number; lastRestore: ISODate | null }
 export interface SkillState { level: number; into: number; need: number; xp: number; start: number; lastDate: ISODate | null }
-export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss';
+export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss' | 'ritual' | 'ladder' | 'shadow' | 'chain';
   questId?: string; base: number; k: number; bonus: number; penalty: number; mult: number; xp: number; gold: number;
   skills: [SkillId, number][]; stats: Partial<Record<Stat, number>>; verified: boolean }
 /** legacy — задание без ранга (старый журнал): XP как сохранено, без проверки и бонусов. */
@@ -160,4 +172,8 @@ export type DistributiveOmit<T, K extends keyof any> = T extends any ? Omit<T, K
 
 export type Rank = 'E' | 'D' | 'C' | 'B' | 'A' | 'S';
 export type Verify = 'auto' | 'photo' | 'honest';
-export type QuestKind = 'daily' | 'challenge' | 'restore' | 'custom';
+export type QuestKind = 'daily' | 'challenge' | 'restore' | 'custom' | 'boss' | 'chain';
+export interface LadderStep { label: string; per7: 1 | 2 | 3 | 4 | 5 | 6 | 7; auto?: { metric: AutoMetric; op: '>=' | '<='; value: number } }
+export type LadderKind = 'do' | 'dont';
+export type FacetKind = 'games' | 'social' | 'late' | 'junk' | 'smoke' | 'procr' | 'alcohol' | 'custom';
+export type BossDraft = { title: string; skill: SkillId; parts: { title: string; steps: string[] }[] };

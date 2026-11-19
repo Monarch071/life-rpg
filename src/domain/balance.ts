@@ -59,7 +59,7 @@ export const BALANCE = {
     focus:   { w: { focus: 0.7, social: 0.3 }, fullMin: 90, socialOkMin: 30, socialZeroMin: 120, sourceDays: 14,
                intBase: 0.8, intSpan: 0.4, openTailMin: 15, sessionMaxMin: 180, intervalMaxMin: 240 },
     fatigue: { shortNightH: 6, shortNight: 15, longNightH: 7.5, longNight: -20, bigDayShare: 1.5, bigDay: 10, bigDayWindow: 14, bigDayMinDays: 7,
-               rest: -15, calm: -10, calmMindfulMin: 10, lowEveningMax: 3, lowEvening: 5, nightly: -5, spiritAbove: 50, suggestAt: 70 },
+               rest: -15, calm: -10, calmMindfulMin: 10, lowEveningMax: 3, lowEvening: 5, nightly: -5, spiritAbove: 50, suggestAt: 70, relapse: 5 },
   },
   recovery:  { maxQuests: 2, exitHp: 60, exitDays: 2, enterHp: 40, afterDays: 2,
                skills: ['mindfulness', 'rest', 'reflection', 'sleep', 'mobility'] },
@@ -69,6 +69,14 @@ export const BALANCE = {
   automationSince: '2026-11-20',   // игровая дата старта Автоматики: раньше — без Усталости и множителя Фокуса
   freshnessStaleH: 36,
   metricAbsMax: 1e9,   // предел накопительной суммы metric_logged 'add'
+  ladder: { maxActive: 3, steps: 5, windowDays: 14, pass: 0.8, repeat: 0.5, relapseShare: 0.6, relapseWeeks: 2,
+            xp: [15, 20, 25, 30, 10], bonus: [100, 150, 200, 300], assist: 1 },
+  shadow: { maxFacets: 3, startMin: 30, startMax: 80, start: { rare: 30, sometimes: 50, often: 65, daily: 80 },
+            relapse: 8, clean: 2, cleanWeek: 5, cleanWeekDays: 7, honestXp: 5, banishDays: 30, dataRelapseMin: 120,
+            battle: { crushBelow: 30, winBelow: 50, drawBelow: 70, crushXp: 400, winXp: 250, drawXp: 50 } },
+  boss:   { parts: 3, stepsMin: 2, stepsMax: 5, stepsShare: 80, hitDamage: 4, hitCap: 5, partXp: 300, seasonXp: 1500 },
+  chain:  { stepsMin: 3, stepsMax: 6, doneXp: 200 },
+  trophies: { avatar: 'Знак привычки', rare: 'Осколок тени', legendary: 'Корона сезона' },
   dayTypes: DEFAULT_DAY_TYPES,
   rewards: DEFAULT_REWARDS,
   legacyRank: { 1: 'E', 2: 'E', 3: 'D', 4: 'C', 5: 'B' },
