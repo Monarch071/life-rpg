@@ -85,6 +85,17 @@ describe('sync', () => {
     expect(g.events[0]).toMatchObject({ type: 'health_packet', deviceId: 'shortcuts', date: '2026-11-17' })
     expect(typeof (await (await call('/ping')).json()).lastHealthAt).toBe('number')
   })
+  it('повторный /sync — duplicate, одно событие; Wallet без merchant, сигнал как signal_logged', async () => {
+    const b = { kind: 'wallet', amount: '₸1 250,50', merchant: 'Секретный магазин', at: new Date().toISOString() }
+    const r1 = await (await call('/sync', { body: b })).json()
+    const r2 = await (await call('/sync', { body: b })).json()
+    expect(r1).toMatchObject({ ok: true, duplicate: false })
+    expect(r2).toMatchObject({ ok: true, duplicate: true })
+    expect(JSON.stringify(r1)).not.toContain('Секретный')
+    const g = await (await call('/events?since=0')).json()
+    expect(g.events).toHaveLength(1)
+    expect(g.events[0]).toMatchObject({ type: 'signal_logged', deviceId: 'shortcuts', signal: { kind: 'wallet', amount: 1250.5 } })
+  })
   it('без date — 400 по-русски', async () => {
     const r = await call('/sync', { body: { steps: 1 } })
     expect(r.status).toBe(400)

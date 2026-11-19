@@ -1,6 +1,6 @@
-import { parseSyncPayload } from './parse'
+import { parseSyncPayload, type SyncPacket } from './parse'
 import { D1Store, type D1Like, type Store } from './store'
-import { message, parseSubscribe, pushTo, runCron } from './push'
+import { message, parseSubscribe, pushTo, runCron, sendWakePush } from './push'
 import type { Vapid } from './webpush'
 
 export interface Env { DB: D1Like; ALLOWED_ORIGINS: string; VAPID_PUBLIC?: string; VAPID_PRIVATE?: string; VAPID_SUBJECT?: string }
@@ -27,6 +27,22 @@ async function sha256Hex(s: string): Promise<string> {
   return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+/** Идентификатор пакета «Команд» — хэш канонического JSON (ключи в порядке типа): повтор не создаёт событие. */
+export async function syncId(v: SyncPacket): Promise<string> {
+  let c: unknown
+  if (v.kind === 'signal') {
+    const s = v.signal
+    c = ['signal', v.at, s.kind, s.kind === 'arrive' ? s.place : s.kind === 'app' ? [s.app, s.state] : s.kind === 'focus' ? s.state : [s.amount, s.merchant]]
+  } else {
+    const { date, kind, health: h, calendar } = v.packet
+    c = ['health', date, kind,
+      [h.steps, h.sleepHours, h.workoutMin, h.activeKcal, h.restingHR, h.weightKg, h.mindfulMin,
+        h.workouts?.map(w => [w.type, w.start, w.end, w.minutes])],
+      calendar.map(e => [e.title, e.start, e.end])]
+  }
+  return 'sync-' + (await sha256Hex(JSON.stringify(c))).slice(0, 32)
+}
+
 // сравнение хэшей в постоянном времени (XOR-накопление)
 function safeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false
@@ -51,7 +67,7 @@ async function authorize(req: Request, store: Store): Promise<void> {
 
 type Out = { status: number; body: unknown; mime?: string }
 
-async function route(req: Request, store: Store, vapid?: Vapid): Promise<Out> {
+async function route(req: Request, store: Store, vapid: Vapid | undefined, now: number, fetcher?: typeof fetch): Promise<Out> {
   const url = new URL(req.url)
   const key = `${req.method} ${url.pathname}`
 
@@ -117,12 +133,22 @@ async function route(req: Request, store: Store, vapid?: Vapid): Promise<Out> {
       return { status: 200, body: { ok: true } }
     }
     case 'POST /sync': {
-      const r = parseSyncPayload(await readJson(req, SYNC_MAX))
+      const r = parseSyncPayload(await readJson(req, SYNC_MAX), now)
       if (!r.ok) throw new HttpError(400, r.error)
-      const ev = { id: crypto.randomUUID(), ts: Date.now(), deviceId: 'shortcuts', type: 'health_packet', ...r.packet }
-      await store.insertEvents([{ id: ev.id, ts: ev.ts, type: ev.type, body: JSON.stringify(ev) }])
-      const { date, health, calendar } = r.packet
-      return { status: 200, body: { ok: true, received: { date, ...health, calendar: calendar.length } } }
+      const v = r.value
+      const id = await syncId(v)
+      const ev = v.kind === 'signal'
+        ? { id, ts: now, deviceId: 'shortcuts', type: 'signal_logged', at: v.at, signal: v.signal }
+        : { id, ts: now, deviceId: 'shortcuts', type: 'health_packet', ...v.packet }
+      const duplicate = (await store.insertEvents([{ id, ts: now, type: ev.type, body: JSON.stringify(ev) }])) === 0
+      if (v.kind === 'health') {
+        const { date, health, calendar } = v.packet
+        if (!duplicate && v.packet.kind === 'morning' && health.sleepHours !== undefined && vapid) {
+          try { await sendWakePush(store, vapid, now, health.sleepHours, fetcher) } catch (e) { console.error('wake push', e) }
+        }
+        return { status: 200, body: { ok: true, duplicate, received: { date, ...health, calendar: calendar.length } } }
+      }
+      return { status: 200, body: { ok: true, duplicate, received: { kind: v.signal.kind, at: v.at } } }
     }
     case 'POST /events': {
       const b = await readJson(req, EVENTS_MAX)
@@ -152,7 +178,7 @@ async function route(req: Request, store: Store, vapid?: Vapid): Promise<Out> {
   }
 }
 
-export async function handle(req: Request, store: Store, allowedOrigins: string[], vapid?: Vapid): Promise<Response> {
+export async function handle(req: Request, store: Store, allowedOrigins: string[], vapid?: Vapid, now = Date.now(), fetcher?: typeof fetch): Promise<Response> {
   const headers: Record<string, string> = { 'content-type': 'application/json; charset=utf-8' }
   const origin = req.headers.get('origin')
   if (origin) {
@@ -170,7 +196,7 @@ export async function handle(req: Request, store: Store, allowedOrigins: string[
 
   let status: number, body: unknown, mime: string | undefined
   try {
-    ({ status, body, mime } = await route(req, store, vapid))
+    ({ status, body, mime } = await route(req, store, vapid, now, fetcher))
   } catch (e) {
     if (e instanceof HttpError) { status = e.status; body = { ok: false, error: e.message } }
     else { status = 500; body = { ok: false, error: 'Внутренняя ошибка' } }

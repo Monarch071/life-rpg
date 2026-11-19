@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { handle } from './index'
 import { MemoryStore } from './memoryStore'
-import { due, localNow, message, parseSubscribe, runCron, type PushRow } from './push'
+import { due, localNow, message, parseSubscribe, runCron, sendWakePush, type PushRow } from './push'
 import { b64u } from './webpush'
 
 const TOKEN = 'a'.repeat(40)
@@ -100,6 +100,31 @@ describe('окно около полуночи', () => {
     expect(due({ ...r, last_evening: '2026-11-18' }, at0015)).toEqual([])
     expect(due(r, Date.UTC(2026, 10, 19, 0, 30))).toEqual([]) // окно 23:30–00:30 закончилось
   })
+})
+
+describe('пуш после сна', () => {
+  const T0630 = Date.UTC(2026, 10, 18, 3, 30) // 06:30 МСК
+  it('/sync morning со сном шлёт один пуш, повтор и cron — нет', async () => {
+    await store.upsertPushSub(parseSubscribe(body())!)
+    let n = 0
+    const f = (async () => { n++; return new Response(null, { status: 201 }) }) as typeof fetch
+    const sync = () => handle(new Request('http://x/sync', { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ date: '2026-11-18', kind: 'morning', sleepMinutes: 456 }) }), store, [], vapid, T0630, f)
+    expect((await sync()).status).toBe(200)
+    expect(n).toBe(1)
+    expect((await store.getPushSub(EP))!.last_morning).toBe('2026-11-18')
+    await sync()
+    expect(n).toBe(1)
+  })
+  it('sendWakePush: до 04:00 и без morning — нет; после — да; cron в 08:00 — 0', async () => {
+    await store.upsertPushSub(parseSubscribe(body())!)
+    await store.upsertPushSub(parseSubscribe(body({ subscription: { endpoint: 'https://web.push.apple.com/B', keys: { p256dh: P256DH, auth: AUTH } }, morning: null }))!)
+    const f = (async () => new Response(null, { status: 201 })) as typeof fetch
+    expect(await sendWakePush(store, vapid, Date.UTC(2026, 10, 18, 0, 30), 7, f)).toBe(0) // 03:30 МСК
+    expect(await sendWakePush(store, vapid, Date.UTC(2026, 10, 18, 3, 30), 7.6, f)).toBe(1)
+    expect(await runCron(store, vapid, AT_8_MSK, f)).toBe(0)
+  })
+  it('текст про сон', () => expect(message('wake', '2026-11-18', { sleepHours: 7.6 }).body).toContain('7,6 ч'))
 })
 
 describe('тексты пушей', () => {

@@ -1,13 +1,21 @@
 export interface HealthPacket {
   date: string; kind: 'morning' | 'evening' | 'other'
-  health: { steps?: number; sleepHours?: number; workoutMin?: number; activeKcal?: number; restingHR?: number; weightKg?: number }
+  health: { steps?: number; sleepHours?: number; workoutMin?: number; activeKcal?: number; restingHR?: number; weightKg?: number
+    mindfulMin?: number; workouts?: { type: string; start?: number; end?: number; minutes: number }[] }
   calendar: { title: string; start: string; end: string }[]
 }
+
+export type Signal =
+  | { kind: 'arrive'; place: 'gym' | 'work' | 'home' }
+  | { kind: 'app'; app: 'social' | 'games'; state: 'open' | 'close' }
+  | { kind: 'focus'; state: 'on' | 'off' }
+  | { kind: 'wallet'; amount: number; merchant: string }
+export type SyncPacket = { kind: 'health'; packet: HealthPacket } | { kind: 'signal'; at: number; signal: Signal }
 
 export function num(v: unknown): number | undefined {
   if (typeof v === 'number') return Number.isFinite(v) ? v : undefined
   if (typeof v !== 'string') return undefined
-  const s = v.replace(/\s/g, '').replace(',', '.')
+  const s = v.replace(/[\s\u00a0\u202f₸₽$€]/g, '').replace(',', '.')
   if (s === '') return undefined
   const n = Number(s)
   return Number.isFinite(n) ? n : undefined
@@ -20,8 +28,32 @@ function inRange(n: number | undefined, min: number, max: number): number | unde
   return n !== undefined && n >= min && n <= max ? n : undefined
 }
 
-export function parseSyncPayload(body: unknown): { ok: true; packet: HealthPacket } | { ok: false; error: string } {
+const AT_PAST = 7 * 86_400_000, AT_FUTURE = 3_600_000 // окно времени сигнала от «Команд»
+const WORKOUTS_MAX = 50
+
+function parseSignal(body: Obj, now: number): { ok: true; value: SyncPacket } | { ok: false; error: string } {
+  const bad = (error: string) => ({ ok: false as const, error })
+  let at = now
+  if (body.at !== undefined) {
+    at = typeof body.at === 'string' ? Date.parse(body.at) : (num(body.at) ?? NaN)
+    if (!Number.isFinite(at) || at < now - AT_PAST || at > now + AT_FUTURE) return bad('Время at вне допустимого окна')
+  }
+  let signal: Signal | null = null
+  if (body.kind === 'arrive' && (body.place === 'gym' || body.place === 'work' || body.place === 'home')) signal = { kind: 'arrive', place: body.place }
+  else if (body.kind === 'app' && (body.app === 'social' || body.app === 'games') && (body.state === 'open' || body.state === 'close')) signal = { kind: 'app', app: body.app, state: body.state }
+  else if (body.kind === 'focus' && (body.state === 'on' || body.state === 'off')) signal = { kind: 'focus', state: body.state }
+  else if (body.kind === 'wallet') {
+    const amount = num(body.amount)
+    if (amount === undefined || amount <= 0 || amount > 1e7) return bad('Некорректная сумма')
+    const merchant = (typeof body.merchant === 'string' ? body.merchant : '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60)
+    signal = { kind: 'wallet', amount, merchant }
+  }
+  return signal ? { ok: true, value: { kind: 'signal', at, signal } } : bad('Некорректный сигнал')
+}
+
+export function parseSyncPayload(body: unknown, now: number): { ok: true; value: SyncPacket } | { ok: false; error: string } {
   if (!isObj(body)) return { ok: false, error: 'Ожидался JSON-объект' }
+  if (body.kind === 'arrive' || body.kind === 'app' || body.kind === 'focus' || body.kind === 'wallet') return parseSignal(body, now)
   const date = typeof body.date === 'string' ? body.date.trim() : ''
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: 'Поле date должно быть в формате ГГГГ-ММ-ДД' }
   const kind = body.kind === 'morning' || body.kind === 'evening' ? body.kind : 'other'
@@ -46,13 +78,26 @@ export function parseSyncPayload(body: unknown): { ok: true; packet: HealthPacke
   const steps = inRange(get('steps'), 0, 200000)
 
   const health: HealthPacket['health'] = {}
-  const set = <K extends keyof HealthPacket['health']>(k: K, v: number | undefined) => { if (v !== undefined) health[k] = v }
+  const set = <K extends Exclude<keyof HealthPacket['health'], 'workouts'>>(k: K, v: number | undefined) => { if (v !== undefined) health[k] = v }
   set('steps', steps === undefined ? undefined : Math.round(steps))
   set('sleepHours', inRange(sleepHours, 0, 24))
   set('workoutMin', inRange(workoutMin, 0, 1440))
   set('activeKcal', inRange(get('activeKcal'), 0, 20000))
   set('restingHR', inRange(get('restingHR'), 20, 250))
   set('weightKg', inRange(get('weightKg'), 20, 400))
+
+  set('mindfulMin', inRange(get('mindfulMinutes') ?? get('mindfulMin'), 0, 1440))
+  const rawW = Array.isArray(nested.workouts) ? nested.workouts : Array.isArray(body.workouts) ? body.workouts : []
+  const workouts: NonNullable<HealthPacket['health']['workouts']> = []
+  for (const w of rawW) {
+    if (workouts.length >= WORKOUTS_MAX) break
+    if (!isObj(w)) continue
+    const minutes = inRange(num(w.minutes), 0, 1440)
+    if (minutes === undefined) continue
+    const s = typeof w.start === 'string' ? Date.parse(w.start) : NaN, e = typeof w.end === 'string' ? Date.parse(w.end) : NaN
+    workouts.push({ type: typeof w.type === 'string' ? w.type.slice(0, 60) : '', ...(e > s ? { start: s, end: e } : {}), minutes })
+  }
+  if (workouts.length) health.workouts = workouts
 
   const calendar: HealthPacket['calendar'] = []
   if (Array.isArray(body.calendar)) {
@@ -64,5 +109,5 @@ export function parseSyncPayload(body: unknown): { ok: true; packet: HealthPacke
       calendar.push({ title: typeof e.title === 'string' ? e.title.slice(0, 100) : '', start: e.start, end: e.end })
     }
   }
-  return { ok: true, packet: { date, kind, health, calendar } }
+  return { ok: true, value: { kind: 'health', packet: { date, kind, health, calendar } } }
 }
