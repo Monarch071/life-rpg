@@ -60,3 +60,8 @@ describe('vitals', () => {
     expect(sessionMinutes([{ at: 5, state: 'close' }, { at: 0, state: 'open' }, { at: 0, state: 'close' }])).toEqual([{ start: 0, min: 0 }]);
   });
 });
+
+test('Усталость +5 за срыв [S§3]', () => {
+  expect(fatigueNext(50, { bigDay: false, rest: false, calm: false, lowEvening: false, relapses: 2 }, null)).toBe(55);
+  expect(fatigueNext(50, { bigDay: false, rest: false, calm: false, lowEvening: false }, null)).toBe(45);
+});
