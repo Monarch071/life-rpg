@@ -116,8 +116,10 @@ export interface GameState {
   title: string;          // titleReward последнего достижения с титулом, иначе 'Новичок'
   statHistory: { date: ISODate; stats: Record<Stat, number> }[];   // Основа на конец каждого финализированного дня
   metricHistory: { date: ISODate; metrics: Partial<Record<Metric, number>> }[];   // даты ≤ сегодня с метриками, по возрастанию
-  genInputs: { bestSteps7: number|null; lastSleepHours: number|null; recentTemplateIds: string[] };
-    // для generateDailyQuests: лучший 7‑дневный средний по шагам (из metric_logged steps), сон за последний день с данными, templateId заданий за 2 прошлых дня
+  genInputs: { bestSteps7: number|null; lastSleepHours: number|null; recentTemplateIds: string[];
+    recent: { date: ISODate; stats: Stat[]; templateIds: string[] }[] };
+    // для сборки дня: лучший 7‑дневный средний по шагам (из metric_logged steps), сон за последний день с данными,
+    // templateId заданий за 2 прошлых дня; recent — те же 2 дня (только с выдачей): характеристики и шаблоны
 }
 export type DistributiveOmit<T, K extends keyof any> = T extends any ? Omit<T, K> : never;
 

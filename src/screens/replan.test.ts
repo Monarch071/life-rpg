@@ -5,7 +5,7 @@ import { replanAfterBusy } from './replan'
 
 const profile = { sleep: '23:00', energy: { morning: 3, day: 3, evening: 3, night: 1 } } as Profile
 const q = (id: string, start: string | null, minutes: number, done = false): Quest & { done: boolean } => ({
-  id, date: '2026-11-17', title: id, stat: 'str', difficulty: 2, minutes, xp: 10, auto: null, templateId: id, done,
+  id, date: '2026-11-17', title: id, stat: 'str', minutes, xp: 10, auto: null, templateId: id, done,
   window: start ? { start, end: start.replace(/^(\d\d)/, h => String(+h + 1).padStart(2, '0')) } : null,
 })
 

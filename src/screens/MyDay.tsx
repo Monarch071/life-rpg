@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Briefcase, Palmtree, Clock } from 'lucide-react'
 import { appendEvents, setSetting } from '../db'
 import { getAiConfig } from '../ai/config'
-import { aiDailyQuests } from '../ai/tasks'
+import { aiQuestTexts, applyTexts } from '../ai/tasks'
 import { getSyncConfig, syncNow } from '../sync'
 import { loadState } from '../useGame'
 import type { Win } from '../domain/schedule'
@@ -10,6 +10,8 @@ import type { GameState, Profile, Quest } from '../domain/types'
 import { hhmmNow } from '../now'
 import { useDialog } from '../ui/useDialog'
 import { generateWeeklyQuests } from '../domain/weekly'
+import { BALANCE } from '../domain/balance'
+import { legacyDayType } from '../domain/dayType'
 import { buildQuests } from './issue'
 
 /** Модальное «Мой день»: выбор режима дня → day_started, затем выдача заданий (если их ещё нет). */
@@ -40,22 +42,26 @@ export default function MyDay({ state, profile, onLater }: { state: GameState; p
           cur = await loadState()
         }
       } catch { /* синк не должен мешать началу дня */ }
-      // сначала генерация, потом одна атомарная запись — день не останется без заданий
+      // тип дня синтезируется из выбора смены (полноценный выбор типа — позже)
+      const dayType = legacyDayType(work, wakeAt, profile.sleep)
+      // сначала сборка по правилам (+ тексты ИИ), потом одна атомарная запись — день не останется без заданий
       let quests: Quest[] | null = null
       if (cur.today.quests.length === 0) {
+        const energy = cur.today.lastEnergy !== null ? cur.today.lastEnergy * 10 : BALANCE.energy.fallback
+        quests = buildQuests(cur, dayType, wakeAt, energy)
         const cfg = await getAiConfig().catch(() => null)
         if (cfg) {
           let timer: ReturnType<typeof setTimeout> | undefined
           try {
-            quests = await Promise.race([aiDailyQuests(cfg, cur, profile, work, wakeAt),
+            const texts = await Promise.race([aiQuestTexts(cfg, cur, quests),
               new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('timeout')), 25_000) })])
-          } catch { await setSetting('aiFallback', date).catch(() => {}) } // тихо на правила; пометку покажет Home
+            quests = applyTexts(quests, texts)
+          } catch { await setSetting('aiFallback', date).catch(() => {}) } // тихо на тексты правил; пометку покажет Home
           clearTimeout(timer)
         }
-        quests ??= buildQuests(cur, profile, work, wakeAt)
       }
       await appendEvents([
-        { type: 'day_started', date, work, wakeAt },
+        { type: 'day_started', date, work, wakeAt, dayType },
         ...(cur.weekly.quests.length === 0
           ? [{ type: 'weekly_issued' as const, weekStart: cur.weekly.weekStart, quests: generateWeeklyQuests(cur.genWeekly) }] : []),
         ...(quests ? [{ type: 'quests_issued' as const, date, quests }] : []),

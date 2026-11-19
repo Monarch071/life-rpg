@@ -1,16 +1,20 @@
-import { addDays } from '../domain/day'
-import { generateDailyQuests } from '../domain/generate'
-import type { Win } from '../domain/schedule'
-import type { GameState, HHMM, Profile, Quest } from '../domain/types'
+import { assembleDay, type AssembleCtx } from '../domain/assemble'
+import type { DayType } from '../domain/dayType'
+import type { GameState, HHMM, Quest } from '../domain/types'
+
+/** Вход сборки дня из состояния игры. */
+export function assembleCtx(state: GameState, dayType: DayType, wakeAt: HHMM, energy: number): AssembleCtx {
+  if (!state.profile) throw new Error('нет профиля')
+  return {
+    date: state.today.date, dayType, wakeAt, energy, level: state.level,
+    skills: Object.fromEntries(Object.entries(state.skills).map(([id, s]) => [id, { level: s.level, lastDate: s.lastDate }])) as AssembleCtx['skills'],
+    stats: state.stats, statInfo: state.statInfo, theme: state.season.theme,
+    bossStats: state.bosses.filter(b => !b.defeated).map(b => b.stat),
+    recent: state.genInputs.recent, profile: state.profile, multipliers: state.multipliers, bestSteps7: state.genInputs.bestSteps7,
+    busy: state.today.calendar.map(({ start, end }) => ({ start, end })),
+  }
+}
 
 /** Задания на сегодня по текущему состоянию (без записи). */
-export function buildQuests(state: GameState, profile: Profile, work: Win | null, wakeAt: HHMM): Quest[] {
-  const { today, history, genInputs } = state
-  const last = history.at(-1)
-  return generateDailyQuests({
-    date: today.date, profile, stats: state.stats, multipliers: state.multipliers, wakeAt, work,
-    busy: today.calendar.map(({ start, end }) => ({ start, end })),
-    yesterday: last && last.date === addDays(today.date, -1) ? last : null,
-    lastEnergy: today.lastEnergy, ...genInputs,
-  })
-}
+export const buildQuests = (state: GameState, dayType: DayType, wakeAt: HHMM, energy: number): Quest[] =>
+  assembleDay(assembleCtx(state, dayType, wakeAt, energy))

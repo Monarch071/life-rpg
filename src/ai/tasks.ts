@@ -1,16 +1,12 @@
 import { addDays } from '../domain/day'
-import { freeWindows, placeQuests, type Win } from '../domain/schedule'
-import { isStat, STATS } from '../domain/stats'
-import type { GameState, HHMM, ISODate, Profile, Quest, Stat } from '../domain/types'
+import { STATS } from '../domain/stats'
+import type { GameState, Profile, Quest, Stat } from '../domain/types'
 import { weakestStat } from '../domain/weekly'
-import { questXp } from '../domain/xp'
 import type { AiConfig } from './config'
 import { AiError, generateJson } from './providers'
 
 const STAT_KEYS = Object.keys(STATS) as Stat[]
 const statLine = (s: Stat, st: GameState) => `${STATS[s].name} ${st.stats[s]} (×${st.multipliers[s].toFixed(2)})`
-const windowsFor = (state: GameState, profile: Profile, work: Win | null, wakeAt: HHMM) =>
-  freeWindows(wakeAt, profile.sleep, [...(work ? [work] : []), ...state.today.calendar.map(({ start, end }) => ({ start, end }))])
 
 // Ключевые ответы анкеты для портрета: id → короткая подпись.
 export const KEY_ANSWERS: [string, string][] = [['weight', 'Вес, кг'], ['weight_goal', 'Комфортный вес, кг'], ['income', 'Доход в месяц, ₽'], ['savings', 'Накопления, ₽'],
@@ -29,7 +25,7 @@ function portrait(state: GameState): string[] {
 }
 
 /** Компактный русский контекст для ИИ. */
-export function questContext(state: GameState, profile: Profile, work: Win | null, wakeAt: HHMM): string {
+export function questContext(state: GameState, profile: Profile): string {
   const m7: string[] = []
   const recent = state.metricHistory.filter(h => h.date >= addDays(state.today.date, -7))
   for (const k of ['steps', 'sleepHours', 'readPages', 'water', 'screenMin', 'mood'] as const) {
@@ -46,48 +42,44 @@ export function questContext(state: GameState, profile: Profile, work: Win | nul
     `Метрики, среднее за 7 дней: ${m7.join(', ') || 'нет данных'}`,
     `Энергия: сейчас ${state.today.lastEnergy ?? 'неизвестно'}/10; утро ${profile.energy.morning}, день ${profile.energy.day}, вечер ${profile.energy.evening} из 5`,
     `Сон: ${state.genInputs.lastSleepHours ?? 'неизвестно'} ч`,
-    `Свободные окна: ${windowsFor(state, profile, work, wakeAt).map(w => `${w.start}–${w.end}`).join(', ') || 'нет'}`,
     `Привычки: хорошие ${profile.goodHabits.join(', ') || 'нет'}; вредные ${profile.badHabits.join(', ') || 'нет'}`,
     ...portrait(state),
   ].join('\n')
 }
 
-/** Ответ ИИ — недоверенные данные: валидируем, XP считаем сами. */
-export function validateAiQuests(raw: unknown, ctx: { date: ISODate; multipliers: Record<Stat, number>; windows: Win[]; energy: Profile['energy']; wakeAt: HHMM }): Quest[] {
-  const list = Array.isArray((raw as any)?.quests) ? (raw as any).quests : []
-  const seen = new Set<string>()
-  const ok: Omit<Quest, 'window'>[] = []
-  for (const r of list) {
-    if (ok.length >= 7) break
-    const title = typeof r?.title === 'string' ? r.title.trim() : ''
-    const allDay = r?.allDay === true
-    if (title.length < 3 || title.length > 80 || !isStat(r.stat)) continue
-    if (!Number.isInteger(r.difficulty) || r.difficulty < 1 || r.difficulty > 5) continue
-    if (!allDay && (!Number.isInteger(r.minutes) || r.minutes < 5 || r.minutes > 120)) continue
-    const key = title.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    const difficulty = r.difficulty as NonNullable<Quest['difficulty']>, stat = r.stat as Stat
-    ok.push({ id: `${ctx.date}:ai:${ok.length}`, date: ctx.date, title, stat, difficulty, minutes: allDay ? 0 : r.minutes,
-      xp: questXp(difficulty, ctx.multipliers[stat]), auto: null, templateId: 'ai' })
+type Texts = Record<string, { title: string; why: string }>
+
+/** Ответ ИИ — недоверенные данные: берём только title (3–80) и why (≤140) для известных id; ранг, XP, навыки и окно ИИ не трогает. */
+export function validateAiTexts(raw: unknown, ids: string[]): Texts {
+  const list: unknown[] = Array.isArray((raw as any)?.texts) ? (raw as any).texts : []
+  const out: Texts = {}
+  for (const r of list as any[]) {
+    const id = r?.id, title = typeof r?.title === 'string' ? r.title.trim() : '', why = typeof r?.why === 'string' ? r.why.trim() : null
+    if (typeof id !== 'string' || !ids.includes(id) || Object.hasOwn(out, id)) continue
+    if (title.length < 3 || title.length > 80 || why === null || why.length > 140) continue
+    out[id] = { title, why }
   }
-  if (ok.length < 3) throw new AiError('мало валидных заданий', 'bad_response')
-  return placeQuests(ok, ctx.windows, ctx.energy, ctx.wakeAt)
+  return out
 }
 
-const QUESTS_SYSTEM = `Ты — наставник в приложении-игре по прокачке личных характеристик. Составь задания на сегодня, по-русски.
-Правила: заданий 3–7. Минимум одно — на самую слабую характеристику. Задания должны влезать в свободные окна. Сложность следует текущему уровню и вчерашнему выполнению и растёт постепенно. Никаких медицинских рисков и экстремальных нагрузок; при низкой энергии или сне меньше 6 часов — задания легче. Если в данных есть «Портрет героя» — каждое задание должно помогать одной из зон роста или закрывать слабость из портрета и учитывать «Как давать задания». Задания конкретные и измеримые («Прочитать 15 страниц», а не «Почитать»). Для заданий «в течение дня» ставь allDay=true.
+/** Подставить тексты ИИ; пустое «почему» оставляет текст правил. */
+export const applyTexts = (quests: Quest[], t: Texts): Quest[] =>
+  quests.map(q => (Object.hasOwn(t, q.id) ? { ...q, title: t[q.id].title, why: t[q.id].why || q.why } : q))
+
+const TEXTS_SYSTEM = `Ты — Мастер в приложении-игре по прокачке личных характеристик. Задания на сегодня уже собраны правилами. Для каждого задания перепиши формулировку в стиле Мастера (коротко, конкретно, с тем же числом и смыслом) и добавь одну фразу «почему сегодня». По-русски.
+Нельзя менять суть задания, число, ранг, навыки и награду. Если в данных есть «Портрет героя» — учитывай его в «почему сегодня».
 Характеристики: ${STAT_KEYS.map(s => `${s} — ${STATS[s].name}`).join(', ')}.`
-const QUESTS_SCHEMA = {
-  type: 'object', required: ['quests'],
-  properties: { quests: { type: 'array', minItems: 3, maxItems: 7, items: { type: 'object', required: ['title', 'stat', 'difficulty', 'minutes', 'allDay', 'why'],
-    properties: { title: { type: 'string' }, stat: { type: 'string', enum: STAT_KEYS }, difficulty: { type: 'integer', minimum: 1, maximum: 5 },
-      minutes: { type: 'integer', minimum: 5, maximum: 120 }, allDay: { type: 'boolean' }, why: { type: 'string' } } } } },
+const TEXTS_SCHEMA = {
+  type: 'object', required: ['texts'],
+  properties: { texts: { type: 'array', items: { type: 'object', required: ['id', 'title', 'why'],
+    properties: { id: { type: 'string' }, title: { type: 'string' }, why: { type: 'string' } } } } },
 }
 
-export async function aiDailyQuests(cfg: AiConfig, state: GameState, profile: Profile, work: Win | null, wakeAt: HHMM): Promise<Quest[]> {
-  const raw = await generateJson(cfg, QUESTS_SYSTEM, questContext(state, profile, work, wakeAt), QUESTS_SCHEMA)
-  return validateAiQuests(raw, { date: state.today.date, multipliers: state.multipliers, windows: windowsFor(state, profile, work, wakeAt), energy: profile.energy, wakeAt })
+/** ИИ пишет только тексты собранных заданий; ошибки пробрасываются (вызывающий остаётся на текстах правил). */
+export async function aiQuestTexts(cfg: AiConfig, state: GameState, quests: Quest[]): Promise<Texts> {
+  const list = quests.map(q => `${q.id} | ${q.title} | ${STATS[q.stat].name} | ранг ${q.rank ?? '—'} | ${q.why ?? ''}`)
+  const user = [...(state.profile ? [questContext(state, state.profile)] : []), 'Задания (id | текст | характеристика | ранг | почему по правилам):', ...list].join('\n')
+  return validateAiTexts(await generateJson(cfg, TEXTS_SYSTEM, user, TEXTS_SCHEMA), quests.map(q => q.id))
 }
 
 const TUNING_SYSTEM = 'Ты — наставник в игре по прокачке. По итогам дня подбери поправку сложности по характеристикам: число от 0.9 (облегчить) до 1.1 (усложнить), 1 — без изменений. Добавь одну-две фразы поддержки на завтра (до 200 символов). Отвечай по-русски.'

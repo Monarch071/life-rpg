@@ -615,6 +615,8 @@ export function replay(events: GameEvent[], now: number): GameState {
       bestSteps7: best7(metrics, today, 'steps'),
       lastSleepHours: sleepDate ? metrics.get(sleepDate)!.sleepHours! : null,
       recentTemplateIds: [addDays(today, -2), addDays(today, -1)].flatMap(d => issued.get(d)?.map(q => q.templateId) ?? []),
+      recent: [addDays(today, -2), addDays(today, -1)].filter(d => issued.get(d)?.length)
+        .map(date => { const qs = issued.get(date)!; return { date, stats: [...new Set(qs.map(q => q.stat))], templateIds: qs.map(q => q.templateId) }; }),
     },
   };
 }

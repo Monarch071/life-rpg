@@ -4,8 +4,8 @@ import type { HHMM, Profile, Quest } from './types';
 export type Win = { start: HHMM; end: HHMM };
 const win = (a: number, b: number): Win => ({ start: fromMin(a), end: fromMin(b) });
 
-/** Окна ≥ 10 мин между подъёмом и отбоем; занятость (в т.ч. через полночь) вычитается. */
-export function freeWindows(wakeAt: HHMM, sleepAt: HHMM, busy: Win[]): Win[] {
+/** Окна ≥ min мин между подъёмом и отбоем; занятость (в т.ч. через полночь) вычитается. */
+export function freeWindows(wakeAt: HHMM, sleepAt: HHMM, busy: Win[], min = 10): Win[] {
   const w = toMin(wakeAt);
   let e = toMin(sleepAt);
   if (e <= w) e += 1440;
@@ -23,10 +23,22 @@ export function freeWindows(wakeAt: HHMM, sleepAt: HHMM, busy: Win[]): Win[] {
   const out: Win[] = [];
   let cur = w;
   for (const [a, z] of iv) {
-    if (a - cur >= 10) out.push(win(cur, a));
+    if (a - cur >= min) out.push(win(cur, a));
     cur = Math.max(cur, z);
   }
-  if (e - cur >= 10) out.push(win(cur, e));
+  if (e - cur >= min) out.push(win(cur, e));
+  return out;
+}
+
+/** Окна, обрезанные так, чтобы кончаться не позже `end` (время после полуночи — «позже» подъёма); короче min — отбрасываются. */
+export function latestEnd(windows: Win[], end: HHMM, wakeAt: HHMM, min = 10): Win[] {
+  const w = toMin(wakeAt), rel = (h: HHMM) => (toMin(h) - w + 1440) % 1440;
+  const lim = rel(end);
+  const out: Win[] = [];
+  for (const x of windows) {
+    const a = rel(x.start), z = Math.min(rel(x.end) || 1440, lim);
+    if (z - a >= min) out.push(win(a + w, z + w));
+  }
   return out;
 }
 

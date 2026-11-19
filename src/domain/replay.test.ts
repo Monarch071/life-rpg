@@ -313,10 +313,11 @@ test('genInputs', () => {
   expect(s.genInputs.bestSteps7).toBe(12000); // окна с одним значением (30000, 16000) не считаются
   expect(s.genInputs.lastSleepHours).toBe(7.5);
   expect([...s.genInputs.recentTemplateIds].sort()).toEqual(['T2', 'T3', 'T4']);
+  expect(s.genInputs.recent).toEqual([{ date: '2026-11-15', stats: ['str'], templateIds: ['T2'] }, { date: '2026-11-16', stats: ['str'], templateIds: ['T3', 'T4'] }]);
   // 3 значения, но ни в одном 7‑дневном окне их нет трёх → null
   expect(replay([steps('2026-11-01', 9000), steps('2026-11-05', 9000), steps('2026-11-14', 9000)], NOW).genInputs.bestSteps7).toBeNull();
   const few = replay([steps('2026-11-01', 9000), steps('2026-11-02', 11000)], NOW);
-  expect(few.genInputs).toEqual({ bestSteps7: null, lastSleepHours: null, recentTemplateIds: [] });
+  expect(few.genInputs).toEqual({ bestSteps7: null, lastSleepHours: null, recentTemplateIds: [], recent: [] });
 });
 
 test('7 идеальных дней по характеристике дают множитель ≈1.1', () => {

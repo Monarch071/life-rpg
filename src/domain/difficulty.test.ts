@@ -23,7 +23,10 @@ test('multipliers: недельный шаг (step = 1)', () => {
   expect(adjustMultipliers({ ...ones(), str: 2.9 }, [{ stat: 'str', done: true }], 1).str).toBe(3);
 });
 
-test('multipliers: доля между 0.5 и 0.85 — без изменений', () => {
-  const m = adjustMultipliers(ones(), [{ stat: 'dis', done: true }, { stat: 'dis', done: false }]);
-  expect(m.dis).toBe(1);
+test('multipliers: пороги [S§6] 0,85 / 0,6 из BALANCE.calibration', () => {
+  const rate = (done: number, total: number) => Array.from({ length: total }, (_, i) => ({ stat: 'dis' as Stat, done: i < done }));
+  expect(adjustMultipliers(ones(), rate(6, 10), 1).dis).toBe(1);      // 60% — без изменений
+  expect(adjustMultipliers(ones(), rate(8, 10), 1).dis).toBe(1);      // 80% — без изменений
+  expect(adjustMultipliers(ones(), rate(11, 20), 1).dis).toBeCloseTo(0.85); // 55% — вниз (раньше порог был 50%)
+  expect(adjustMultipliers(ones(), rate(17, 20), 1).dis).toBeCloseTo(1.1);  // 85% — вверх
 });

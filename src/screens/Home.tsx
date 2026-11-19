@@ -16,6 +16,8 @@ import { InterviewCta } from './Interview'
 import { StatIcon } from '../ui/icons'
 import { useDialog } from '../ui/useDialog'
 import { buildQuests } from './issue'
+import { BALANCE } from '../domain/balance'
+import { legacyDayType } from '../domain/dayType'
 import Checkin from './Checkin'
 import MyDay from './MyDay'
 import QuickInput from './QuickInput'
@@ -69,7 +71,8 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
     setIssuing(true)
     setErr(null)
     try {
-      const quests = buildQuests(state, profile, today.work, today.wakeAt ?? hhmmNow())
+      const wakeAt = today.wakeAt ?? hhmmNow()
+      const quests = buildQuests(state, today.dayType ?? legacyDayType(today.work, wakeAt, profile.sleep), wakeAt, today.energy ?? BALANCE.energy.fallback)
       await appendEvent({ type: 'quests_issued', date: today.date, quests })
     } catch {
       setErr('Не удалось получить задания, попробуй ещё раз')
