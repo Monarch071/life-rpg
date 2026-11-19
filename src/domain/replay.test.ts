@@ -1717,12 +1717,20 @@ test('легаси-босс остаётся в bossStats и вариантах'
   expect(s.genInputs.bossStats).toEqual(['fin']);
   expect(s.bossOptions[0].title).toBe('Старая цель');
 });
-test('шаг босса: мусорный link → daily; несделанный шаг вне знаменателя; сдача и новый выбор не платят дважды', () => {
+test('шаг босса: мусорный link → daily; шаг в правиле 60% как любое задание; сдача и новый выбор не платят дважды', () => {
   const d = '2026-12-03';
   expect(normQuest({ ...bq('j', d, 0, 0), link: { kind: 'chain', chainId: 'c', step: 0 } }, d)).toMatchObject({ kind: 'daily' });
   expect(normQuest({ ...bq('j', d, 0, 0), link: { kind: 'boss', season: 'w', part: 3, step: 0 } }, d)!.link).toBeUndefined();
   const s = replay([onboard, setBoss(), issue(d, [bq('s0', d, 0, 0), hit('h1', d)]), done(d, 'h1')], at('2026-12-04'));
-  expect(s.history[0]).toMatchObject({ counted: true });   // 1 из 1 без несделанного шага
+  expect(s.history[0]).toMatchObject({ counted: false });   // 1 из 2: несделанный шаг в знаменателе
+  // [шаг, d1, d2, d3]: шаг + d1 = 2/4 = 50% → не засчитан, как любые 2 из 4; без шага все 3 — не идеальный день
+  const four = (ids: string[]) => replay([onboard, setBoss(), issue(d, [bq('s0', d, 0, 0), ...['d1', 'd2', 'd3'].map(id => hit(id, d))]),
+    ...ids.map(id => done(d, id))], at('2026-12-04')).history[0];
+  expect(four(['s0', 'd1'])).toMatchObject({ counted: false });
+  expect(four(['d1', 'd2'])).toMatchObject({ counted: false });
+  expect(four(['d1', 'd2', 'd3'])).toMatchObject({ counted: true, perfect: false });
+  expect(normQuest({ ...bq('j', d, 0, 0), link: { kind: 'boss', season: 'w', part: 0, step: 5 } }, d)).toMatchObject({ kind: 'daily' });
+  expect(normQuest(nq('k', d, 'D', ['tech'], { kind: 'chain', link: { kind: 'chain', chainId: 'c', step: 5 } }), d)!.link).toMatchObject({ step: 5 });
   const win = [issue(d, [bq('a', d, 0, 0), ...[1, 2, 3, 4, 5].map(i => hit(`h${i}`, d))]), done(d, 'a'), ...[1, 2, 3, 4, 5].map(i => done(d, `h${i}`)),
     issue('2026-12-04', [bq('b', '2026-12-04', 0, 1)]), done('2026-12-04', 'b')];
   const t = replay([onboard, setBoss(), ...win, ev({ type: 'season_boss_abandoned', seasonId: 'winter-2026', ts: at('2026-12-05', 9) }), setBoss(at('2026-12-05', 10)),

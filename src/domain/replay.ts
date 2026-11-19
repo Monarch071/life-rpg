@@ -45,7 +45,7 @@ const QUEST_KINDS: readonly string[] = ['daily', 'challenge', 'restore', 'custom
 const ID = (x: unknown): x is string => typeof x === 'string' && x.length > 0 && x.length <= 64;
 /** Связь шага с боссом/цепочкой (граница доверия): вид совпадает с видом задания, иначе null. */
 function linkOf(a: any, kind: unknown): Quest['link'] | null {
-  if (!a || typeof a !== 'object' || a.kind !== kind || !Number.isInteger(a.step) || a.step < 0 || a.step >= BALANCE.chain.stepsMax) return null;
+  if (!a || typeof a !== 'object' || a.kind !== kind || !Number.isInteger(a.step) || a.step < 0 || a.step >= (a.kind === 'boss' ? BALANCE.boss : BALANCE.chain).stepsMax) return null;
   if (a.kind === 'boss') return ID(a.season) && [0, 1, 2].includes(a.part) ? { kind: 'boss', season: a.season, part: a.part, step: a.step } : null;
   return ID(a.chainId) ? { kind: 'chain', chainId: a.chainId, step: a.step } : null;
 }
@@ -600,8 +600,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const ritualsOn = new Map<ISODate, { due: number; done: number }>(); // ритуалы дня: показано / засчитано (цикл дней)
   /** Итог дня; свои задания не в знаменателе 60%. */
   const outcomeOf = (d: ISODate) => {
-    // свои — вне знаменателя; несделанный шаг босса/цепочки сгорает без штрафа (переносится)
-    const qs = (issued.get(d) ?? []).filter(q => q.kind !== 'custom' && (q.done || (q.kind !== 'boss' && q.kind !== 'chain')));
+    const qs = (issued.get(d) ?? []).filter(q => q.kind !== 'custom');
     return dayOutcome({ issued: qs.length, done: qs.filter(q => q.done).length, dropped: qs.filter(q => q.dropped).length, rest: restDays.has(d) || dayOff.has(d),
       rituals: ritualsOn.get(d) });
   };
@@ -1170,7 +1169,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     seasonBoss: sbNow && { seasonId: sbNow.seasonId, title: sbNow.title, skill: sbNow.skill, stat: sbNow.stat, defeated: sbNow.defeated,
       parts: sbNow.parts.map(p => ({ title: p.title, start: p.start, end: p.end, steps: p.steps.map(x => ({ ...x })), hits: p.hits,
         hp: partHp(p.steps.filter(x => x.done).length, p.steps.length, p.hits),
-        status: p.won ? 'defeated' : today < p.start ? 'upcoming' : today > season.end ? 'escaped' : today > p.end ? 'late' : 'active' })) },
+        status: p.won ? 'defeated' : today < p.start ? 'upcoming' : today > p.end ? 'late' : 'active' })) },
     bossOptions, chainsDone,
     chain: chain && { ...chain, steps: chain.steps.map(x => ({ ...x })) },
     shadow: {
