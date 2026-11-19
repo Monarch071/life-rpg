@@ -526,3 +526,17 @@ label.btn:focus-within { outline: 2px solid var(--fire); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .path-bar i { transition: none; } }
 .day-card { flex-wrap: wrap; padding: 10px 16px; text-align: left; }
 .day-card small { text-align: right; }
+
+/* настройки: типы дней и тема сезона */
+.daytype summary { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; list-style: none; }
+.daytype summary::-webkit-details-marker { display: none; }
+.daytype summary svg { color: var(--fire2); flex: none; }
+.daytype[open] summary { margin-bottom: 4px; }
+.daytype .row .field { min-width: 0; }
+.theme-btn { flex-direction: column; align-items: flex-start; padding: 8px 14px; min-height: 56px; text-align: left; gap: 2px; }
+.theme-btn:disabled[aria-pressed="true"] { opacity: 1; }
+.balance small { font: 700 13px Manrope, sans-serif; color: var(--muted); }
+.card .fx { color: var(--ice2); font: 700 12px Manrope, sans-serif; }
+.why { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid #ffffff0d; }
+.why .grow { display: flex; flex-direction: column; gap: 2px; }
+.why small { overflow-wrap: anywhere; }

@@ -1,14 +1,12 @@
 import { useState } from 'react'
-import { CalendarCheck, Flame, Footprints, Ghost, Lock, Medal, Moon, ShoppingBag, Skull, Sparkles, Star, Swords, Trophy, type LucideIcon } from 'lucide-react'
+import { CalendarCheck, Flame, Footprints, Lock, Medal, Moon, ShoppingBag, Sparkles, Star, Swords, Trophy, type LucideIcon } from 'lucide-react'
 import { ACHIEVEMENTS } from '../domain/achievements'
 import type { GameState } from '../domain/types'
 
-const FIRE = ['var(--fire)', 'var(--gold)'], SHADOW = ['var(--shadow)', 'var(--shadow2)'], UP = ['var(--up)', 'var(--cha)']
+const FIRE = ['var(--fire)', 'var(--gold)'], UP = ['var(--up)', 'var(--cha)']
 // id → иконка и цвета кристалла (по префиксу id)
 function look(id: string): [LucideIcon, string[]] {
   if (id.startsWith('streak')) return [Flame, FIRE]
-  if (id === 'shadow_win') return [Ghost, SHADOW]
-  if (id.startsWith('shadow')) return [Skull, SHADOW]
   if (id.startsWith('level')) return [Trophy, ['var(--gold)', 'var(--fire)']]
   if (id.startsWith('steps')) return [Footprints, ['var(--end)', 'var(--dis)']]
   if (id === 'perfect_day') return [Star, ['var(--gold)', 'var(--fire2)']]

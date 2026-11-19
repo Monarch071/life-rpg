@@ -1,3 +1,4 @@
+import { BALANCE } from '../domain/balance'
 import { STATS } from '../domain/stats'
 import type { Stat } from '../domain/types'
 import { STAT_COLORS, STAT_ICONS } from './icons'
@@ -11,6 +12,8 @@ export function radarPoints(values: number[], max: number, r: number, cx: number
   })
 }
 
+/** Шкала паутинки — вся Основа 1–100, чтобы форма не «прыгала» с ростом максимума. */
+export const RADAR_MAX = BALANCE.stat.max
 const C = 150, R = 100
 const pts = (p: [number, number][]) => p.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
 
@@ -18,7 +21,7 @@ const pts = (p: [number, number][]) => p.map(([x, y]) => `${x.toFixed(1)},${y.to
 export default function StatRadar({ stats, prev = null, size = 340 }: { stats: Record<Stat, number>; prev?: Record<Stat, number> | null; size?: number }) {
   const keys = Object.keys(STATS) as Stat[]
   const vals = keys.map(s => stats[s])
-  const max = Math.max(20, Math.ceil(Math.max(...vals) / 5) * 5)
+  const max = RADAR_MAX
   const now = radarPoints(vals, max, R, C, C)
   const rim = radarPoints(keys.map(() => max), max, R, C, C)
   const lab = radarPoints(keys.map(() => max), max, R + 30, C, C)

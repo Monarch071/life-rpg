@@ -5,7 +5,7 @@ import Avatar from './Avatar'
 import { STAT_COLORS, STAT_ICONS } from './icons'
 import { pathLabel, statBar } from './statBar'
 
-const STATUS: Record<StatInfo['status'], string> = { new: 'новая', in_form: 'в форме', sagging: 'проседает', abandoned: 'заброшена' }
+export const STATUS: Record<StatInfo['status'], string> = { new: 'новая', in_form: 'в форме', sagging: 'проседает', abandoned: 'заброшена' }
 const statAria = (name: string, base: number, i: StatInfo) =>
   i.form === null ? `${name} ${base}, форма ещё не посчитана` : `${name} ${base}, форма ${Math.round(i.form * 100)}%, ${STATUS[i.status]}`
 

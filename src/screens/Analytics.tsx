@@ -61,7 +61,7 @@ export default function Analytics({ state }: { state: GameState }) {
       {hist.length > 0 && <div className="panel"><h2>XP по дням</h2>
         <LineChart title="XP по дням" labels={hist.map(h => dm(h.date))} series={[
           { label: 'XP', color: 'var(--fire)', values: hist.map(h => h.xp) }]} /></div>}
-      {sh.length > 0 && <div className="panel"><h2>Характеристики</h2>
+      {sh.length > 0 && <div className="panel"><h2>Основа</h2>
         <div className="chips" role="group" aria-label="Характеристика">
           {(Object.keys(STATS) as Stat[]).map(s => <button key={s} className={`btn${s === sel ? ' primary' : ''}`} aria-pressed={s === sel} onClick={() => setStat(s)}><StatIcon stat={s} size={16} />{STATS[s].name}</button>)}
         </div>

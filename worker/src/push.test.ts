@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { handle } from './index'
 import { MemoryStore } from './memoryStore'
-import { due, localNow, parseSubscribe, runCron, type PushRow } from './push'
+import { due, localNow, message, parseSubscribe, runCron, type PushRow } from './push'
 import { b64u } from './webpush'
 
 const TOKEN = 'a'.repeat(40)
@@ -99,5 +99,12 @@ describe('окно около полуночи', () => {
     expect(due(r, at0015)).toEqual([{ kind: 'evening', date: '2026-11-18' }])
     expect(due({ ...r, last_evening: '2026-11-18' }, at0015)).toEqual([])
     expect(due(r, Date.UTC(2026, 10, 19, 0, 30))).toEqual([]) // окно 23:30–00:30 закончилось
+  })
+})
+
+describe('тексты пушей', () => {
+  it('без Тени во всех вариантах', () => {
+    for (const kind of ['morning', 'evening', 'test'] as const)
+      for (let d = 1; d <= 3; d++) expect(message(kind, `2026-12-0${d}`).body).not.toMatch(/Тен/)
   })
 })

@@ -3,6 +3,8 @@ import { Crown } from 'lucide-react'
 import Avatar, { EYE_OPTIONS, HAIR_OPTIONS } from '../ui/Avatar'
 import { STATS } from '../domain/stats'
 import { StatIcon } from '../ui/icons'
+import { STATUS } from '../ui/HeroStage'
+import { BALANCE } from '../domain/balance'
 import { appendEvent } from '../db'
 import { imageNameFor } from '../ai/avatar'
 import { useBlobUrl } from '../blobs'
@@ -86,7 +88,7 @@ export default function Character({ state, go, interview }: { state: GameState; 
           <div>
             <div className="rank">{state.className}</div>
             <span className="ttl"><Crown size={14} aria-hidden="true" />{state.title}</span>
-            <small className="muted">Тир {state.tier}</small>
+            <small className="muted">Уровень {state.level} из {BALANCE.level.max} · тир {state.tier}</small>
           </div>
         </div>
       </section>
@@ -103,7 +105,6 @@ export default function Character({ state, go, interview }: { state: GameState; 
           {radarPrev && <p className="muted center radar-key"><i /> неделю назад</p>}
         </> : (Object.keys(STATS) as Stat[]).map(s => {
           const si = state.statInfo[s]
-          const m = state.multipliers[s]
           const d = prev ? state.stats[s] - prev[s] : 0
           return (
             <div key={s} className="stat-row">
@@ -113,12 +114,13 @@ export default function Character({ state, go, interview }: { state: GameState; 
                 <span className="d">{d > 0 ? `▲${d}` : ''}</span>
                 <b className="v">{state.stats[s]}</b>
               </div>
-              <div className="bar" style={{ '--c': `var(--${s})` } as React.CSSProperties} role="progressbar" aria-label={`${STATS[s].name}: ${si.into} из ${si.need} XP до +1`} aria-valuemin={0} aria-valuemax={si.need} aria-valuenow={si.into}><i style={{ width: `${si.need ? (si.into / si.need) * 100 : 100}%` }} /></div>
-              <small className="muted">{si.into}/{si.need} XP до +1 · всего {si.xp} XP · ×{m.toFixed(2)}{m > 1 ? ' · сложность растёт' : m < 1 ? ' · облегчено' : ''}</small>
+              <div className="bar" style={{ '--c': `var(--${s})` } as React.CSSProperties} role="progressbar" aria-label={`${STATS[s].name}: ${si.into} из ${si.need} XP до следующего очка Основы`} aria-valuemin={0} aria-valuemax={si.need} aria-valuenow={si.into}><i style={{ width: `${si.need ? (si.into / si.need) * 100 : 100}%` }} /></div>
+              <small className="muted">{si.base >= BALANCE.stat.max ? 'Основа на максимуме' : `+${si.need - si.into} XP до следующего очка`} · {si.form === null ? 'форма ещё не посчитана' : `форма ${Math.round(si.form * 100)}% · ${STATUS[si.status]}`}</small>
             </div>
           )
         })}
       </section>
+      <StartLevel state={state} interview={interview} />
       {state.character ? <Portrait c={state.character} onRetake={interview} /> : <InterviewCta onStart={interview} />}
       <Skills state={state} />
       <Achievements state={state} />
@@ -133,5 +135,24 @@ export default function Character({ state, go, interview }: { state: GameState; 
       <Editor saved={state.avatar} tier={state.tier} />
       <div id="avatar-ai"><AvatarAi state={state} /></div>
     </div>
+  )
+}
+
+/** Откуда стартовый уровень: оценки сфер и объяснения (ИИ или правила анкеты). */
+function StartLevel({ state, interview }: { state: GameState; interview: () => void }) {
+  const { start } = state
+  if (start.source === 'none') return null
+  return (
+    <section className="panel stack" aria-label="Стартовый уровень">
+      <div className="sec"><h2>Стартовый уровень {state.startLevel}</h2><span>{start.source === 'ai' ? 'оценка ИИ' : 'по правилам'}</span></div>
+      <p className="muted">С этого уровня начался путь — по ответам анкеты, сфера за сферой.</p>
+      {(Object.keys(STATS) as Stat[]).map(k => (
+        <div key={k} className="why">
+          <StatIcon stat={k} size={18} />
+          <div className="grow"><b>{STATS[k].name} · {start.scores[k]}/100</b>{start.levelWhy[k] && <small className="muted">{start.levelWhy[k]}</small>}</div>
+        </div>
+      ))}
+      {start.source === 'ai' && <button type="button" className="btn" onClick={interview}>Пройти анкету заново</button>}
+    </section>
   )
 }

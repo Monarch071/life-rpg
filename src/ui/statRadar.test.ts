@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { radarPoints } from './StatRadar'
+import { radarPoints, RADAR_MAX } from './StatRadar'
 
 describe('radarPoints', () => {
   const full = radarPoints(Array(7).fill(20), 20, 100, 0, 0)
@@ -20,5 +20,10 @@ describe('radarPoints', () => {
     const p = radarPoints([40, -3, 10, 10, 10, 10, 10], 20, 100, 0, 0)
     expect(p[0][1]).toBeCloseTo(-100)
     expect(Math.hypot(...p[1])).toBeCloseTo(0)
+  })
+  it('Основа 100 при шкале RADAR_MAX = 100 лежит на ободе', () => {
+    expect(RADAR_MAX).toBe(100)
+    const [p] = radarPoints([100, 1, 1, 1, 1, 1, 1], RADAR_MAX, 100, 0, 0)
+    expect(Math.hypot(...p)).toBeCloseTo(100)
   })
 })
