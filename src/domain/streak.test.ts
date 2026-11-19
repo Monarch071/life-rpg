@@ -13,3 +13,11 @@ test('итог дня [S§6]', () => {
   expect(nextStreak(7, dayOutcome({ issued: 3, done: 3, dropped: 0, rest: false }), false)).toBe(8);
   expect(dayOutcome({ issued: 1, done: 0, dropped: 0, rest: true })).toMatchObject({ neutral: true, counted: false });
 });
+
+test('итог дня: все ритуалы ИЛИ 60% [S§6]', () => {
+  expect(dayOutcome({ issued: 0, done: 0, dropped: 0, rest: false, rituals: { due: 2, done: 2 } }).counted).toBe(true);
+  expect(dayOutcome({ issued: 2, done: 0, dropped: 0, rest: false, rituals: { due: 2, done: 1 } }).counted).toBe(false);
+  expect(dayOutcome({ issued: 2, done: 0, dropped: 0, rest: true, rituals: { due: 2, done: 2 } })).toMatchObject({ neutral: true, counted: false });
+  expect(dayOutcome({ issued: 0, done: 0, dropped: 0, rest: false, rituals: { due: 0, done: 0 } }).counted).toBe(false);
+  expect(dayOutcome({ issued: 2, done: 0, dropped: 0, rest: false, rituals: { due: 2, done: 2 } }).perfect).toBe(false);
+});

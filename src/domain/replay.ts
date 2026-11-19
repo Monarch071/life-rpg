@@ -5,6 +5,7 @@ import { addDays, gameDate, weekStart } from './day';
 import { closeMinutes, closesAtTs, DEFAULT_DAY_TYPES, gameDateAt, isHM, legacyDayType, validDayType, type DayType } from './dayType';
 import { adjustMultipliers } from './difficulty';
 import { cleanAnswers, validAnalysis } from './interview';
+import { ladderAfterWindow, requiredIn, ritualXp, step5Relapse, validLadderSteps } from './ladder';
 import { AUTO_METRIC_INFO, METRIC_INFO } from './metricInfo';
 import { baseFromXp, fatiguePenalty, formNorm, formOf, formStatus, goldFor, questReward, rankCap, skillFromXp, streakBonus } from './progression';
 import { DEFAULT_SKILL_BY_STAT, LEGACY_SKILL_BY_TEMPLATE, legacyRank } from './questBank';
@@ -12,7 +13,8 @@ import { isSkillId, primaryStat, SKILL_CATALOG, splitXp, type SkillId } from './
 import { startProfile } from './startProfile';
 import { dayOutcome, nextStreak } from './streak';
 import { classFor, isStat, STATS, tierFor } from './stats';
-import type { Analysis, Answers, AutoMetric, AvatarParams, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, WeeklyQuest } from './types';
+import { cleanText } from './text';
+import type { Analysis, Answers, AutoMetric, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, WeeklyQuest } from './types';
 import { weakestStat } from './weekly';
 import { energyScore, fatigueNext, focusScore, hpScore, intFocusMult, sessionMinutes, unionMinutes, workoutKind } from './vitals';
 import { levelFromXp } from './xp';
@@ -230,6 +232,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   // Авто-источники: здоровье по датам пакета; hi/lo — max/min незафлаженных значений по каждому пакету (засчёт монотонен).
   type Acc = { steps?: number; sleep?: number; rhr?: number; weight?: number; mindful?: number; legacyW?: number;
     w: Map<string, Workout>; hi: Partial<Record<AutoMetric, number>>; lo: Partial<Record<AutoMetric, number>>;
+    t: { hi: Partial<Record<AutoMetric, number>>; lo: Partial<Record<AutoMetric, number>> }; // только пакеты до закрытия дня (лестницы)
     pk: { ts: number; sleep?: number; steps?: number; rhr?: number; mindful?: number }[] }; // pk — пакеты с ts: параметры закрытого дня
   const health = new Map<ISODate, Acc>();
   const sigs: Sig[] = [], sigKeys = new Set<string>();
@@ -241,6 +244,12 @@ export function replay(events: GameEvent[], now: number): GameState {
   // Режим восстановления: recOn — активный (с даты since), recSpans — завершённые [from, to) с хотя бы одним днём.
   let recOn: { since: ISODate; quests: 0 | 1 | 2 } | null = null;
   const recSpans: { from: ISODate; to: ISODate }[] = [];
+  // Лестницы привычек (спека §3): status 'new' — ещё не дошли до даты создания в цикле дней, 'gone' — удалена.
+  type Lad = { id: string; title: string; kind: LadderKind; skill: SkillId; suitable: 'all' | 'workdays'; facetId: string | null; steps: LadderStep[];
+    created: ISODate; createdTs: number; removed: ISODate | null; upd: { date: ISODate; steps: LadderStep[] }[]; rit: Map<ISODate, number>;
+    status: 'new' | 'active' | 'queued' | 'auto' | 'gone'; step: number; attempt: 1 | 2; windowStart: ISODate | null;
+    win: boolean[]; done: number; ask: boolean; askFrom: ISODate; weekRates: number[]; mastered: boolean };
+  const lads = new Map<string, Lad>();
 
   for (const e of evs) {
     if (e.deviceId === 'shortcuts') sync.last = e.ts; // события по возрастанию ts
@@ -312,11 +321,15 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (ok(h.workoutMin)) m.workoutMin = Math.max(m.workoutMin ?? -Infinity, h.workoutMin);
         if (ok(h.sleepHours)) m.sleepHours = h.sleepHours;
         if (ok(h.weightKg)) m.weightKg = h.weightKg;
-        const a: Acc = health.get(e.date) ?? { w: new Map(), hi: {}, lo: {}, pk: [] };
+        const a: Acc = health.get(e.date) ?? { w: new Map(), hi: {}, lo: {}, t: { hi: {}, lo: {} }, pk: [] };
+        const timely = e.date >= today || e.ts < closesAtTs(e.date, closeOf(e.date));
         health.set(e.date, a); seen('health', e.ts);
         const v = (x: unknown) => (ok(x) ? x : undefined);
         a.pk.push({ ts: e.ts, sleep: v(h.sleepHours), steps: v(h.steps), rhr: v(h.restingHR), mindful: v(h.mindfulMin) });
-        const up = (k: AutoMetric, v: number) => { a.hi[k] = Math.max(a.hi[k] ?? -Infinity, v); a.lo[k] = Math.min(a.lo[k] ?? Infinity, v); };
+        const up = (k: AutoMetric, v: number) => {
+          a.hi[k] = Math.max(a.hi[k] ?? -Infinity, v); a.lo[k] = Math.min(a.lo[k] ?? Infinity, v);
+          if (timely) { a.t.hi[k] = Math.max(a.t.hi[k] ?? -Infinity, v); a.t.lo[k] = Math.min(a.t.lo[k] ?? Infinity, v); }
+        };
         const P = BALANCE.plausible;
         if (ok(h.steps)) { a.steps = Math.max(a.steps ?? -Infinity, h.steps); if (h.steps <= P.stepsMax) up('steps', h.steps); }
         if (ok(h.sleepHours)) { a.sleep = h.sleepHours; if (h.sleepHours <= P.sleepMaxH) up('sleepHours', h.sleepHours); }
@@ -366,6 +379,30 @@ export function replay(events: GameEvent[], now: number): GameState {
           if (e.date > recOn.since) recSpans.push({ from: recOn.since, to: e.date });
           recOn = null;
         }
+        break;
+      }
+      case 'ladder_created': {
+        const title = cleanText(e.title, 40), steps = validLadderSteps(e.steps), d = gd(e.ts);
+        // первый с данным id побеждает; дата создания раньше MIN_ISSUE_DATE — мусор (плотный цикл дней)
+        if (typeof e.ladderId !== 'string' || lads.has(e.ladderId) || !title || (e.kind !== 'do' && e.kind !== 'dont') || !isSkillId(e.skill) || !steps || d < MIN_ISSUE_DATE) break;
+        lads.set(e.ladderId, { id: e.ladderId, title, kind: e.kind, skill: e.skill, suitable: e.suitable === 'workdays' ? 'workdays' : 'all',
+          facetId: typeof e.facetId === 'string' && e.facetId.length <= 64 ? e.facetId : null, steps, created: d, createdTs: e.ts, removed: null, upd: [], rit: new Map(),
+          status: 'new', step: 1, attempt: 1, windowStart: null, win: [], done: 0, ask: false, askFrom: d, weekRates: [], mastered: false });
+        break;
+      }
+      case 'ladder_updated': {
+        const l = lads.get(e.ladderId);
+        if (!l || l.removed) break;
+        const title = cleanText(e.title, 40), steps = e.steps === undefined ? null : validLadderSteps(e.steps);
+        if (title) l.title = title; // название — сразу; ступени — со следующего окна
+        if (steps) l.upd.push({ date: gd(e.ts), steps });
+        break;
+      }
+      case 'ladder_removed': { const l = lads.get(e.ladderId); if (l && !l.removed) l.removed = gd(e.ts); break; }
+      case 'ritual_done': {
+        // только за сегодня (до закрытия), один раз на лестницу в дату; активность лестницы — в цикле дней
+        const l = lads.get(e.ladderId);
+        if (l && isDate(e.date) && e.date === gd(e.ts) && !l.rit.has(e.date)) l.rit.set(e.date, e.ts);
         break;
       }
       case 'busy_until': if (e.date === today && isHM(e.until)) busyUntil = e.until; break;
@@ -484,15 +521,16 @@ export function replay(events: GameEvent[], now: number): GameState {
     return { hp: h.hp, energy: energyScore({ sleepLast: sleep, morning: dayStart.get(d)?.energy ?? null, weekMorning, hp: h.hp }), focus: f.focus, fatigue,
       parts: { hp: h.parts, focus: f.parts }, energyInputs: { sleep, hp: h.hp, weekMorning } };
   };
-  const autoOkOf = (q: DayQuest) => {
-    const a = q.auto;
+  /** timely — только пакеты здоровья, принятые до закрытия даты (лестницы: итог окна монотонен). */
+  const autoOk = (a: Quest['auto'], date: ISODate, timely = false) => {
     if (!a) return false;
-    if (a.metric === 'socialMin' || a.metric === 'gamesMin') return a.op === '<=' && q.date < today && leOk(q.date, a.metric === 'socialMin' ? 'social' : 'games', a.value);
+    if (a.metric === 'socialMin' || a.metric === 'gamesMin') return a.op === '<=' && date < today && leOk(date, a.metric === 'socialMin' ? 'social' : 'games', a.value);
     // здоровье — по каждому пакету (hi/lo); фокус, чтение, зал только растут — итог дня
-    const h = health.get(q.date)?.[a.op === '>=' ? 'hi' : 'lo'][a.metric];
-    const v = h ?? (a.metric === 'focusMin' || a.metric === 'readMin' || a.metric === 'gymVisits' ? data.get(q.date)?.[a.metric] : undefined);
+    const hs = health.get(date), h = (timely ? hs?.t : hs)?.[a.op === '>=' ? 'hi' : 'lo'][a.metric];
+    const v = h ?? (a.metric === 'focusMin' || a.metric === 'readMin' || a.metric === 'gymVisits' ? data.get(date)?.[a.metric] : undefined);
     return v !== undefined && (a.op === '>=' ? v >= a.value : v <= a.value);
   };
+  const autoOkOf = (q: DayQuest) => autoOk(q.auto, q.date);
   // Проверка: авто — данные авто-источников выполнили цель (в том числе после ручной галочки и за прошлые дни), фото, иначе честное слово.
   // Ручной metric_logged — честное слово (спека §4.1).
   for (const q of questById.values()) {
@@ -503,10 +541,12 @@ export function replay(events: GameEvent[], now: number): GameState {
   // Свои задания — в конец списка дня (выдача той же даты по-прежнему «побеждает первая»).
   for (const [d, cs] of customs) issued.set(d, [...(issued.get(d) ?? []), ...cs]);
   const dayOff = new Set<ISODate>(); // купленный «день без заданий» — нейтрален, как отдых
+  const ritualsOn = new Map<ISODate, { due: number; done: number }>(); // ритуалы дня: показано / засчитано (цикл дней)
   /** Итог дня; свои задания не в знаменателе 60%. */
   const outcomeOf = (d: ISODate) => {
     const qs = (issued.get(d) ?? []).filter(q => q.kind !== 'custom');
-    return dayOutcome({ issued: qs.length, done: qs.filter(q => q.done).length, dropped: qs.filter(q => q.dropped).length, rest: restDays.has(d) || dayOff.has(d) });
+    return dayOutcome({ issued: qs.length, done: qs.filter(q => q.done).length, dropped: qs.filter(q => q.dropped).length, rest: restDays.has(d) || dayOff.has(d),
+      rituals: ritualsOn.get(d) });
   };
 
   const start = startProfile(starts);
@@ -617,6 +657,65 @@ export function replay(events: GameEvent[], now: number): GameState {
   };
   const achGoldBefore = (d: ISODate) => BALANCE.achievementGold * earnAchievements(days, addDays(d, -1), startLevel).filter(a => a.id !== 'first_purchase').length;
   const skillLevels = () => Object.fromEntries(SKILL_IDS.map(id => [id, skillFromXp(start.skills[id], skillXp[id]).level])) as Record<SkillId, number>;
+  // Лестницы: слоты, очередь, засчёт дня, окна и недели ступени 5 (спека §3.4). Вызывается по каждой дате от первой лестницы до сегодня.
+  // порядок создания: ts, при равенстве — ladderId
+  const L = BALANCE.ladder, ladList = [...lads.values()].sort((a, b) => a.createdTs - b.createdTs || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)), queue: Lad[] = [], trophies: GameState['trophies'] = [];
+  const ladToday = new Map<string, 'auto' | 'honest'>();
+  const activeN = () => ladList.reduce((n, l) => n + (l.status === 'active' ? 1 : 0), 0);
+  const startWindow = (l: Lad, from: ISODate) => {
+    l.windowStart = from; l.win = []; l.done = 0;
+    for (const u of l.upd) if (u.date < from) l.steps = u.steps; // правка — со следующего окна
+  };
+  const isSuitable = (l: Lad, d: ISODate) => l.suitable === 'all' || types.get(d)?.kind === 'day' || types.get(d)?.kind === 'evening';
+  /** Нужно за окно (k = 2, 14 дней) или неделю (k = 1, 7 дней); per7 = 7 — подходящие дни, ещё не прожитые считаются подходящими. */
+  const reqOf = (per7: number, win: boolean[], span: number, k: number) => (per7 < 7 ? k * per7 : win.filter(Boolean).length + span - win.length);
+  const ladRow = (id: string, ts: number, d: ISODate, source: 'ritual' | 'ladder', xp: number, skill: SkillId, verified: boolean): LedgerEntry => {
+    const sp = splitXp(xp, [skill]);
+    return { id, ts, date: d, source, base: xp, k: 1, bonus: 0, penalty: 0, mult: 1, xp, gold: goldFor(xp), skills: sp.skills, stats: sp.stats, verified };
+  };
+  const ladderDay = (d: ISODate) => {
+    // слот, освобождённый вчера и раньше, — первой в очереди (окно с сегодня); затем удаления и новые лестницы дня
+    while (queue.length && activeN() < L.maxActive) { const l = queue.shift()!; l.status = 'active'; startWindow(l, d); }
+    for (const l of ladList) if (l.removed !== null && l.removed <= d && l.status !== 'gone') {
+      if (l.status === 'queued') queue.splice(queue.indexOf(l), 1);
+      l.status = 'gone';
+    }
+    for (const l of ladList) if (l.status === 'new' && l.created <= d) {
+      if (!queue.length && activeN() < L.maxActive) { l.status = 'active'; startWindow(l, d); } else { l.status = 'queued'; queue.push(l); }
+    }
+    const frozen = restDays.has(d) || dayOff.has(d), close = closesAtTs(d, closeOf(d));
+    let due = 0, done = 0;
+    for (const l of ladList) {
+      if (l.status !== 'active' && l.status !== 'auto') continue;
+      due++;
+      const a = l.steps[l.step - 1].auto ?? null, auto = autoOk(a, d, true), ok = auto || l.rit.has(d);
+      if (ok) {
+        done++;
+        add(ladRow(`ritual:${l.id}:${d}`, l.rit.get(d) ?? close, d, 'ritual', ritualXp(l.step), l.skill, auto));
+        if (d === today) ladToday.set(l.id, auto ? 'auto' : 'honest');
+      }
+      if (d >= today || frozen) continue; // окно — только по закрытым незамороженным дням
+      l.win.push(isSuitable(l, d)); if (ok) l.done++;
+      if (l.status === 'active' && l.win.length === L.windowDays) {
+        const req = requiredIn(l.steps[l.step - 1], l.win.map(suitable => ({ suitable })));
+        const res = ladderAfterWindow({ step: l.step, attempt: l.attempt }, Math.min(1, l.done / req));
+        if (res.bonus) add(ladRow(`ladder:${l.id}:${d}`, close, d, 'ladder', res.bonus, l.skill, false));
+        l.step = res.step; l.attempt = res.attempt; l.ask = res.ask; l.askFrom = addDays(d, 1);
+        if (l.step === L.steps) {
+          l.status = 'auto'; l.weekRates = []; // слот свободен со следующего дня
+          if (!l.mastered) { l.mastered = true; bump(d, 'laddersMastered'); trophies.push({ id: `ladder:${l.id}`, kind: 'avatar', title: BALANCE.trophies.avatar, date: d }); }
+        }
+        startWindow(l, addDays(d, 1));
+      } else if (l.status === 'auto' && l.win.length === 7) {
+        // ступень 5: недели по 7 незамороженных дней, нужно — по частоте ступени 4
+        const req = reqOf(l.steps[L.steps - 2].per7, l.win, 7, 1);
+        if (req > 0) l.weekRates.push(Math.min(1, l.done / req));
+        if (step5Relapse(l.weekRates)) { l.step = L.steps - 1; l.attempt = 1; l.weekRates = []; l.status = 'queued'; queue.unshift(l); }
+        startWindow(l, addDays(d, 1));
+      }
+    }
+    ritualsOn.set(d, { due, done });
+  };
   let dayStartCaps: GameState['today']['dayStart'] | null = null; // потолки рангов сегодня (переброс, своё задание) — на начало дня
   const history: DayResult[] = [], statHistory: GameState['statHistory'] = [];
   const finalized: { stat: Stat; done: boolean }[][] = [];
@@ -624,7 +723,9 @@ export function replay(events: GameEvent[], now: number): GameState {
   let fatigue = 0, todayVit: Vitals | null = null; // Усталость рекуррентно от первого дня с заданиями
   let streak = 0, idleRun = 0, multipliers = fill(1); // idleRun — подряд закрытых не-отдыхающих дней без выполненного
   // Даты: каждый день от первого дня с заданиями до сегодня (пропуски тоже закрываются) + выдачи и строки вне его.
-  const firstDay = [...issued.keys()].sort()[0] as ISODate | undefined;
+  const firstLadder = ladList.map(l => l.created).filter(d => d <= today).sort()[0] as ISODate | undefined;
+  // от первого дня с заданиями или первой лестницы (день только с ритуалами тоже закрывается в серию)
+  const firstDay = [...issued.keys(), ...(firstLadder ? [firstLadder] : [])].sort()[0] as ISODate | undefined;
   const dates = new Set([...issued.keys(), ...extra.keys(), ...weeklyAt.keys(), ...spendsOn.keys(), ...restTyped]);
   if (firstDay) for (let d = firstDay; d <= today; d = addDays(d, 1)) dates.add(d);
   const recAll = [...recSpans, ...(recOn ? [{ from: recOn.since, to: addDays(today, 1) }] : [])];
@@ -734,6 +835,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       add(flatRow(`weekly:${ws}:${w.id}`, ts, d, 'weekly', w.xp, w.stat)); bump(d, 'weeklyDone');
     }
     for (const r of extra.get(d) ?? []) add(r);
+    if (firstLadder && d >= firstLadder && d <= today) ladderDay(d);
     if (!firstDay || d < firstDay || d >= today) continue;
     // закрытие дня: серия (заморозка гасит ближайший пропуск), идеальный день; история — для дней с выдачей
     const o = outcomeOf(d), rest = restDays.has(d) || dayOff.has(d), dq = qs.filter(q => q.done);
@@ -744,10 +846,10 @@ export function replay(events: GameEvent[], now: number): GameState {
     if (o.perfect) add(flatRow(`perfect:${d}`, closesAtTs(d, closeOf(d)), d, 'perfect_day', BALANCE.streak.perfectXp, null));
     closed.push({ date: d, done: dq.length, rest });
     if (!rest) idleRun = realDone ? 0 : idleRun + 1;
+    dayOf(d).streak = streak;
     if (!qs.length) continue;
     history.push({ date: d, xp: dq.reduce((a, q) => a + q.xpFinal!, 0), completed: dq.length, issued: qs.length, counted: o.counted, perfect: o.perfect, rest, streak,
       hp: vit!.hp, energy: vit!.energy, focus: vit!.focus, fatigue: vit!.fatigue });
-    dayOf(d).streak = streak;
     if (real.length >= 3 && realDone === real.length) bump(d, 'perfectDays');
     statHistory.push({ date: d, stats: baseNow() });
     finalized.push(qs.map(q => ({ stat: q.stat, done: q.done })));
@@ -872,6 +974,15 @@ export function replay(events: GameEvent[], now: number): GameState {
     season: { id: season.id, kind: season.kind, name: season.name, start: season.start, end: season.end, theme, xp: seasonXp,
       step: Math.min(BALANCE.season.steps, Math.floor(seasonXp / BALANCE.season.stepXp)) },
     dayTypes, ledger, history, achievements: achs, title, statHistory, metricHistory,
+    ladders: ladList.filter(l => l.status === 'active' || l.status === 'queued' || l.status === 'auto').map(l => {
+      const st = l.steps[l.step - 1], wk = l.status === 'auto';
+      return { id: l.id, title: l.title, kind: l.kind, skill: l.skill, status: l.status as 'active' | 'queued' | 'auto', step: l.step as 1 | 2 | 3 | 4 | 5, attempt: l.attempt,
+        windowStart: l.status === 'queued' ? null : l.windowStart, windowDays: l.win.length, done: l.done,
+        required: wk ? reqOf(l.steps[L.steps - 2].per7, l.win, 7, 1) : reqOf(st.per7, l.win, L.windowDays, 2),
+        todayDone: ladToday.has(l.id), todayVerify: ladToday.get(l.id) ?? null, label: st.label, xp: ritualXp(l.step),
+        ask: l.ask && !l.upd.some(u => u.date >= l.askFrom), facetId: l.facetId }; // «что мешает?» снимается правкой ступеней
+    }),
+    trophies,
     genInputs: {
       bestSteps7: best7(metrics, today, 'steps'),
       lastSleepHours: sleepDate ? metrics.get(sleepDate)!.sleepHours! : null, fatigue: vitals.fatigue,

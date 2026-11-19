@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import { BALANCE } from './balance';
 import { addDays } from './day';
 import { closesAtTs, DEFAULT_DAY_TYPES } from './dayType';
+import { LADDER_PRESETS } from './ladder';
 import { baseFromXp, rankCap, startBase } from './progression';
 import { DEFAULT_AVATAR, normQuest, replay } from './replay';
 import { missingDefaultRewards } from './shopDefaults';
@@ -1491,4 +1492,80 @@ test('фокус: потерянный off — off закрывает тольк
 test('достижения шагов не открываются глюком 60 000', () => {
   const s = replay([onboard, issue(D, [nq('x', D, 'E', ['reading'])]), hp(D, { steps: 60000 })], at('2026-12-03', 12));
   expect(s.achievements.map(a => a.id)).not.toContain('steps_10k');
+});
+
+// ---- Этап 4: лестницы, ритуалы, серия ----
+const ladder = (id = 'l1', extra: Record<string, unknown> = {}, date = '2026-12-01') => ev({ type: 'ladder_created', ladderId: id, title: 'Чтение',
+  kind: 'do', skill: 'reading', steps: LADDER_PRESETS.read.steps, ts: at(date, 9), ...extra });
+const rit = (date: string, id = 'l1', ts = at(date, 21)) => ev({ type: 'ritual_done', ladderId: id, date, ts });
+const rits = (dates: string[]) => dates.map(d => rit(d));
+
+test('окно 14 дней: 5 из 6 → ступень 2, ритуалы по 15 и бонус 100 [S§7]', () => {
+  const s = replay([onboard, ladder(), ...rits(['2026-12-01', '2026-12-03', '2026-12-05', '2026-12-08', '2026-12-10'])], at('2026-12-15'));
+  expect(s.ladders[0]).toMatchObject({ step: 2, attempt: 1, status: 'active', windowStart: '2026-12-15' });
+  expect(s.ledger.filter(r => r.source === 'ritual').map(r => r.xp)).toEqual([15, 15, 15, 15, 15]);
+  expect(s.ledger.find(r => r.source === 'ladder')).toMatchObject({ xp: 100, date: '2026-12-14' });
+  expect(s.skills.reading.xp).toBe(175);
+});
+test('4 из 6 → повтор; повтор провален → шаг назад и вопрос', () => {
+  const w1 = rits(['2026-12-01', '2026-12-03', '2026-12-05', '2026-12-08']);
+  expect(replay([onboard, ladder(), ...w1], at('2026-12-15')).ladders[0]).toMatchObject({ step: 1, attempt: 2 });
+  const w2 = rits(['2026-12-15', '2026-12-17', '2026-12-19', '2026-12-21']);
+  expect(replay([onboard, ladder(), ...w1, ...w2], at('2026-12-29')).ladders[0]).toMatchObject({ step: 1, attempt: 1, ask: true });
+});
+test('отметка только за сегодня и один раз', () => {
+  const s = replay([onboard, ladder(), rit('2026-12-01', 'l1', at('2026-12-02', 10)), rit('2026-12-02'), rit('2026-12-02', 'l1', at('2026-12-02', 22))], at('2026-12-03'));
+  expect(s.ledger.filter(r => r.source === 'ritual')).toHaveLength(1);
+});
+test('восстановление ставит окно на паузу', () => {
+  const rec = [ev({ type: 'recovery_started', date: '2026-12-03', quests: 0, ts: at('2026-12-03', 9) }),
+    ev({ type: 'recovery_ended', date: '2026-12-06', ts: at('2026-12-06', 9) })];
+  const base = [onboard, ladder(), ...rec, ...rits(['2026-12-01', '2026-12-02', '2026-12-07', '2026-12-08', '2026-12-10'])];
+  expect(replay(base, at('2026-12-15')).ladders[0].step).toBe(1);
+  expect(replay(base, at('2026-12-18')).ladders[0].step).toBe(2);
+});
+test('не больше 3 активных, очередь со следующего дня после освобождения', () => {
+  const ls = ['l1', 'l2', 'l3', 'l4'].map(id => ladder(id));
+  expect(replay([onboard, ...ls], at('2026-12-02')).ladders.map(l => l.status)).toEqual(['active', 'active', 'active', 'queued']);
+  const s = replay([onboard, ...ls, ev({ type: 'ladder_removed', ladderId: 'l2', ts: at('2026-12-05', 10) })], at('2026-12-07'));
+  expect(s.ladders.map(l => [l.id, l.status])).toEqual([['l1', 'active'], ['l3', 'active'], ['l4', 'active']]);
+  expect(s.ladders[2].windowStart).toBe('2026-12-06');
+});
+test('авто-ритуал по данным: шаги ≥ 5 000', () => {
+  const s = replay([onboard, ladder('w', { title: 'Прогулка', skill: 'cardio', steps: LADDER_PRESETS.walk.steps }),
+    ev({ type: 'health_packet', date: '2026-12-02', kind: 'other', health: { steps: 6000 }, calendar: [], ts: at('2026-12-02', 18), deviceId: 'shortcuts' })], at('2026-12-03'));
+  expect(s.ledger.find(r => r.source === 'ritual')).toMatchObject({ xp: 15, verified: true, date: '2026-12-02' });
+});
+test('серия: все ритуалы ИЛИ 60% заданий [S§6]', () => {
+  const qs = (d: string) => issue(d, [nq(`${d}a`, d, 'E', ['strength']), nq(`${d}b`, d, 'E', ['cardio'])]);
+  const s = replay([onboard, ladder(), qs('2026-12-01'), rit('2026-12-01'), qs('2026-12-02')], at('2026-12-03'));
+  expect(s.history.map(h => h.counted)).toEqual([true, false]);
+});
+test('рецидив ступени 5 → ступень 4, трофей и 750 XP бонусов', () => {
+  const one = Array.from({ length: 5 }, () => ({ label: 'раз', per7: 1 }));
+  const starts = ['2026-12-01', '2026-12-15', '2026-12-29', '2027-01-12'];
+  const evs = [onboard, ladder('l1', { steps: one }), ...starts.flatMap(d => rits([d, addDays(d, 1)]))];
+  const at5 = replay(evs, at('2027-01-26'));
+  expect(at5.ladders[0]).toMatchObject({ step: 5, status: 'auto' });
+  expect(at5.trophies).toMatchObject([{ kind: 'avatar' }]);
+  expect(at5.ledger.filter(r => r.source === 'ladder').reduce((a, r) => a + r.xp, 0)).toBe(750);
+  expect(at5.achievements.some(a => a.id === 'ladder_master')).toBe(true);
+  expect(replay(evs, at('2027-02-09')).ladders[0]).toMatchObject({ step: 4, status: 'active' });
+});
+test('лестницы: мусор не бросает, поздний пакет не меняет закрытый день, правка ступеней — со следующего окна', () => {
+  const junk = [ev({ type: 'ladder_created', ladderId: 'x', title: '', kind: 'do', skill: 'reading', steps: LADDER_PRESETS.read.steps, ts: at('2026-12-01', 9) }),
+    ev({ type: 'ladder_created', ladderId: 'y', title: 'Y', kind: 'maybe', skill: 'reading', steps: LADDER_PRESETS.read.steps, ts: at('2026-12-01', 9) }),
+    ev({ type: 'ladder_created', ladderId: 'z', title: 'Z', kind: 'do', skill: 'flying', steps: LADDER_PRESETS.read.steps, ts: at('2026-12-01', 9) }),
+    ev({ type: 'ladder_created', ladderId: 'old', title: 'O', kind: 'do', skill: 'reading', steps: LADDER_PRESETS.read.steps, ts: 5 }),
+    ev({ type: 'ritual_done', ladderId: 'nope', date: '2026-12-01', ts: at('2026-12-01', 10) }),
+    ev({ type: 'ladder_updated', ladderId: 'l1', steps: 'x' }), ev({ type: 'ladder_removed', ladderId: 42 })];
+  expect(() => replay([onboard, ladder(), ...junk], at('2026-12-03'))).not.toThrow();
+  expect(replay([onboard, ladder(), ...junk], at('2026-12-03')).ladders.map(l => l.id)).toEqual(['l1']);
+  const walk = ladder('w', { title: 'Прогулка', skill: 'cardio', steps: LADDER_PRESETS.walk.steps });
+  const late = ev({ type: 'health_packet', date: '2026-12-02', kind: 'other', health: { steps: 6000 }, calendar: [], ts: at('2026-12-04', 18), deviceId: 'shortcuts' });
+  expect(replay([onboard, walk, late], at('2026-12-05')).ledger.filter(r => r.source === 'ritual')).toHaveLength(0);
+  const harder = LADDER_PRESETS.read.steps.map(s => ({ ...s, per7: 7 as const, label: 'каждый день' }));
+  const upd = ev({ type: 'ladder_updated', ladderId: 'l1', steps: harder, title: 'Книги', ts: at('2026-12-03', 9) });
+  const s = replay([onboard, ladder(), upd, ...rits(['2026-12-01', '2026-12-03', '2026-12-05', '2026-12-08', '2026-12-10'])], at('2026-12-15'));
+  expect(s.ladders[0]).toMatchObject({ title: 'Книги', step: 2, label: 'каждый день' });
 });

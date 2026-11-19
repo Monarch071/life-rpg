@@ -159,6 +159,11 @@ export interface GameState {
   ledger: LedgerEntry[];  // начисления XP/золота, по дате
   history: DayResult[];   // финализированные дни, по возрастанию
   achievements: { id: string; date: ISODate }[];   // в порядке получения
+  /** Лестницы привычек (кроме удалённых), в порядке создания; windowDays/done/required — текущее окно (ступень 5 — текущая неделя). */
+  ladders: { id: string; title: string; kind: LadderKind; skill: SkillId; status: 'active' | 'queued' | 'auto';
+    step: 1 | 2 | 3 | 4 | 5; attempt: 1 | 2; windowStart: ISODate | null; windowDays: number; done: number; required: number;
+    todayDone: boolean; todayVerify: 'auto' | 'honest' | null; label: string; xp: number; ask: boolean; facetId: string | null }[];
+  trophies: { id: string; kind: 'avatar' | 'rare' | 'legendary'; title: string; date: ISODate }[];   // спека §8.3, по дате
   title: string;          // titleReward последнего достижения с титулом, иначе 'Новичок'
   statHistory: { date: ISODate; stats: Record<Stat, number> }[];   // Основа на конец каждого финализированного дня
   metricHistory: { date: ISODate; metrics: Partial<Record<Metric, number>> }[];   // даты ≤ сегодня с метриками, по возрастанию
