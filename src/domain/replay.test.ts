@@ -1648,3 +1648,18 @@ test('Тень: серьёзная грань не добавляется, ни�
   const evs = [onboard, facet('f1', 30)];
   expect(replay([...evs, relapse('2026-12-27', 'f1', at('2026-12-28', 10))], at('2027-01-05')).shadow.lastBattle).toEqual(replay(evs, at('2027-01-05')).shadow.lastBattle);
 });
+
+test('Тень, правки: XP битвы не «большой день»; отметка до снятия сохраняет XP; изгнание в день битвы не отменяет битву; «Пиво» 80 — не грань', () => {
+  const work = doneDays('2026-12-13', 15, 'strength');
+  expect(replay([onboard, facet('f1', 30), ...work], at('2026-12-28')).today.vitals.fatigue).toBe(replay([onboard, ...work], at('2026-12-28')).today.vitals.fatigue);
+  const rm = ev({ type: 'facet_removed', facetId: 'f1', ts: at('2026-12-03', 22) });
+  const kept = replay([onboard, facet(), relapse('2026-12-03', 'f1', at('2026-12-03', 10)), rm], at('2026-12-04'));
+  expect(kept.ledger.filter(r => r.source === 'shadow')).toMatchObject([{ xp: 5, date: '2026-12-03' }]);
+  expect(kept.shadow.facets).toEqual([]);
+  // старт 30 с 28 ноября: 30-й чистый день — 27 декабря, день битвы
+  const b = replay([onboard, facet('f1', 30, 'custom', '2026-11-28')], at('2026-12-28'));
+  expect(b.shadow.facets[0].banished).toBe(true);
+  expect(b.shadow.lastBattle).toMatchObject({ date: '2026-12-27', strength: 0, result: 'crush', xp: 400 });
+  const beer = ev({ type: 'facet_added', facetId: 'p', name: 'Пиво', kind: 'custom', start: 80, ts: at('2026-12-01', 9) });
+  expect(replay([onboard, beer], at('2026-12-02')).shadow.facets).toEqual([]);
+});

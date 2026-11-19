@@ -255,8 +255,8 @@ export function replay(events: GameEvent[], now: number): GameState {
   // Враг-тень (спека §4): грани принимаются (лимит) и снимаются в цикле дней — операции по игровой дате в порядке событий.
   const S = BALANCE.shadow;
   type Facet = { id: string; name: string; kind: FacetKind; added: ISODate; strength: number; cleanRun: number; banished: boolean; status: 'new' | 'on' | 'gone' };
-  const facetMap = new Map<string, Facet>(), facetOps = new Map<ISODate, { f: Facet; add: boolean }[]>();
-  const facetOp = (d: ISODate, f: Facet, add: boolean) => facetOps.set(d, [...(facetOps.get(d) ?? []), { f, add }]);
+  const facetMap = new Map<string, Facet>(), facetOps = new Map<ISODate, { f: Facet; add: boolean; ts: number }[]>();
+  const facetOp = (d: ISODate, f: Facet, add: boolean, ts: number) => facetOps.set(d, [...(facetOps.get(d) ?? []), { f, add, ts }]);
   const relapseAt = new Map<string, number>(); // `${facetId}|${date}` → ts первой честной отметки
 
   for (const e of evs) {
@@ -420,10 +420,10 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (typeof e.facetId !== 'string' || e.facetId.length > 64 || facetMap.has(e.facetId) || !name || !FACET_KINDS.includes(e.kind)
           || !Number.isInteger(e.start) || e.start < S.startMin || e.start > S.startMax || d < MIN_ISSUE_DATE || isSerious(name, e.kind, null, freq)) break;
         const f: Facet = { id: e.facetId, name, kind: e.kind, added: d, strength: e.start, cleanRun: 0, banished: false, status: 'new' };
-        facetMap.set(f.id, f); facetOp(d, f, true);
+        facetMap.set(f.id, f); facetOp(d, f, true, e.ts);
         break;
       }
-      case 'facet_removed': { const f = facetMap.get(e.facetId); if (f) facetOp(gd(e.ts), f, false); break; }
+      case 'facet_removed': { const f = facetMap.get(e.facetId); if (f) facetOp(gd(e.ts), f, false, e.ts); break; }
       case 'shadow_relapse': {
         // только за сегодня (поздняя отметка за закрытый день — игнор); повтор в ту же дату — та же отметка
         const k = `${e.facetId}|${e.date}`;
@@ -669,9 +669,9 @@ export function replay(events: GameEvent[], now: number): GameState {
   for (const [d, m] of metrics) if (plausibleSteps(m.steps) !== undefined) dayOf(d).steps = plausibleSteps(m.steps); // до цикла: золото достижений прошлых дней
   let goldSoFar = 0, xpSoFar = 0; // цикл идёт по датам: на начало дня d — строки с датой < d
   const statByDate = new Map<ISODate, Record<Stat, number>>(); // XP характеристик по датам — для «Перекоса» и Формы
-  const rawXp = new Map<ISODate, number>(); // XP дня без штрафов — «большой день» Усталости
+  const rawXp = new Map<ISODate, number>(); // XP дня без штрафов — «большой день» Усталости (без строк Тени: победа не утомляет)
   const add = (r: LedgerEntry) => {
-    ledger.push(r); rawXp.set(r.date, (rawXp.get(r.date) ?? 0) + r.xp / (1 - r.penalty)); bump(r.date, 'xp', r.xp); goldSoFar += r.gold; xpSoFar += r.xp;
+    ledger.push(r); if (r.source !== 'shadow') rawXp.set(r.date, (rawXp.get(r.date) ?? 0) + r.xp / (1 - r.penalty)); bump(r.date, 'xp', r.xp); goldSoFar += r.gold; xpSoFar += r.xp;
     const sd = statByDate.get(r.date) ?? fill(0);
     for (const k of STAT_KEYS) { statXp[k] += r.stats[k] ?? 0; sd[k] += r.stats[k] ?? 0; }
     statByDate.set(r.date, sd);
@@ -754,14 +754,21 @@ export function replay(events: GameEvent[], now: number): GameState {
   let lastBattle: GameState['shadow']['lastBattle'] = null;
   const liveFacets = () => facetList.filter(f => f.status === 'on' && !f.banished);
   const shadowStrength = (fs: Facet[]) => (fs.length ? Math.round(fs.reduce((a, f) => a + f.strength, 0) / fs.length) : null);
+  const honestRow = (f: Facet, d: ISODate, ts: number) => add(ladRow(`shadow:${f.id}:${d}`, ts, d, 'shadow', S.honestXp, 'habits', false));
   const shadowDay = (d: ISODate) => {
-    for (const { f, add } of facetOps.get(d) ?? []) {
-      if (!add) f.status = 'gone'; // не принятая (лимит) тоже не вернётся
+    for (const { f, add, ts } of facetOps.get(d) ?? []) {
+      if (!add) {
+        // отметка до снятия в тот же день сохраняет свой XP (XP не отнимается)
+        const h = relapseAt.get(`${f.id}|${d}`);
+        if (f.status === 'on' && !f.banished && h !== undefined && h < ts) honestRow(f, d, h);
+        f.status = 'gone'; // не принятая (лимит) тоже не вернётся
+      }
       else if (f.status === 'new' && liveFacets().length < S.maxFacets) { f.status = 'on'; facetList.push(f); }
     }
-    for (const f of liveFacets()) {
+    const fs = liveFacets(); // живые на начало дня — битва идёт и при изгнании в этот же день
+    for (const f of fs) {
       const honest = relapseAt.get(`${f.id}|${d}`);
-      if (honest !== undefined) add(ladRow(`shadow:${f.id}:${d}`, honest, d, 'shadow', S.honestXp, 'habits', false));
+      if (honest !== undefined) honestRow(f, d, honest);
       if (d >= today) continue;
       // срыв: честная отметка или данные группы приложений (те же правила, что у «<=»-заданий)
       const m = f.kind === 'social' || f.kind === 'games' ? appMin(d, f.kind) : null;
@@ -770,7 +777,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       if (relapse) relapsesOn.set(d, (relapsesOn.get(d) ?? 0) + 1);
       if (banished(f)) { f.banished = true; bump(d, 'facetsBanished'); }
     }
-    const month = d.slice(0, 7), fs = liveFacets();
+    const month = d.slice(0, 7);
     if (d >= today || d !== lastSunday(month) || !fs.length) return;
     // битва — при закрытии последнего воскресенья, и в замороженный день тоже
     const strength = shadowStrength(fs)!, o = battleOutcome(strength)!;
@@ -1053,9 +1060,8 @@ export function replay(events: GameEvent[], now: number): GameState {
     trophies,
     shadow: {
       strength: shadowStrength(liveFacets()),
-      // serious всегда false: серьёзная грань не принимается (решение контролёра)
       facets: facetList.filter(f => f.status === 'on').map(f => ({ id: f.id, name: f.name, kind: f.kind, strength: f.strength, cleanRun: f.cleanRun,
-        banished: f.banished, serious: false, relapsedToday: relapseAt.has(`${f.id}|${today}`) })),
+        banished: f.banished, relapsedToday: relapseAt.has(`${f.id}|${today}`) })),
       nextBattle: today <= lastSunday(today.slice(0, 7)) ? lastSunday(today.slice(0, 7)) : lastSunday(addDays(`${today.slice(0, 7)}-28`, 7).slice(0, 7)),
       lastBattle,
     },

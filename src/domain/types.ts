@@ -166,7 +166,7 @@ export interface GameState {
   trophies: { id: string; kind: 'avatar' | 'rare' | 'legendary'; title: string; date: ISODate }[];   // спека §8.3, по дате
   /** Враг-тень (спека §4): strength — среднее неизгнанных граней, нет — null; названия граней — только на экране владельца, не в ИИ. */
   shadow: { strength: number | null;
-    facets: { id: string; name: string; kind: FacetKind; strength: number; cleanRun: number; banished: boolean; serious: boolean; relapsedToday: boolean }[];
+    facets: { id: string; name: string; kind: FacetKind; strength: number; cleanRun: number; banished: boolean; relapsedToday: boolean }[];   // серьёзная зависимость гранью не становится
     nextBattle: ISODate; lastBattle: { date: ISODate; strength: number; result: 'crush' | 'win' | 'draw' | 'lost'; xp: number; plan: string | null } | null };
   title: string;          // titleReward последнего достижения с титулом, иначе 'Новичок'
   statHistory: { date: ISODate; stats: Record<Stat, number> }[];   // Основа на конец каждого финализированного дня

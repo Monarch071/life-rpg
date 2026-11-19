@@ -68,3 +68,16 @@ test('suggestions: свои строки, серьёзные и дубли от�
   expect(masterPlan([], false)).toBe('');
   expect(masterPlan([{ name: 'А', strength: 40 }, { name: 'Б', strength: 60 }], false)).toContain('Б');
 });
+
+test.each([
+  // [название, kind, частота, серьёзно]
+  ['Пиво', 'custom', 'daily', true], ['Пиво', 'custom', 'rare', false], ['Вино', 'custom', 'often', true], ['Вино', 'custom', 'sometimes', false],
+  ['Водка', 'custom', 'daily', true], ['Выпивка', 'custom', 'often', true], ['Спиртное', 'custom', 'daily', true], ['Алкоголь', 'custom', 'often', true],
+  ['Букмекер', 'custom', 'rare', true], ['Покер', 'custom', 'rare', true], ['Ставки', 'custom', 'rare', true], ['Казино', 'custom', 'rare', true],
+  ['Азартные игры', 'custom', 'rare', true], ['Лотерея', 'custom', 'rare', true],
+  ['Травка', 'custom', 'rare', true], ['Кокаин', 'custom', 'rare', true], ['Марихуана', 'custom', 'rare', true], ['Гашиш', 'custom', 'rare', true],
+  ['Наркотики', 'custom', 'rare', true], ['Вещества', 'custom', 'rare', true], ['Самоповреждение', 'custom', 'rare', true],
+  ['Сладкое', 'custom', 'daily', false], ['Игры', 'games', 'daily', false], ['Соцсети', 'social', 'daily', false],
+] as const)('isSerious(%s, %s, %s) = %s', (name, kind, freq, want) => {
+  expect(isSerious(name, kind, null, freq)).toBe(want);
+});
