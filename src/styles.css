@@ -194,8 +194,8 @@ h1, h2, h3 { font-family: Manrope, sans-serif; font-weight: 700; }
 .stagger > * { animation: in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) backwards; animation-delay: calc(var(--i, 0) * 40ms); }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .actions .btn.primary, .actions .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
-.sheet-wrap { position: fixed; inset: 0; z-index: 10; background: rgba(3, 5, 12, 0.75); display: flex; align-items: flex-end; justify-content: center; }
-.sheet { width: 100%; max-width: 480px; max-height: 92%; overflow-y: auto; background: var(--card); border: 1px solid var(--line); border-bottom: 0; border-radius: 24px 24px 0 0; padding: 22px 16px calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; position: relative; animation: in 0.35s cubic-bezier(0.2, 1.2, 0.4, 1) backwards; }
+.sheet-wrap { position: fixed; inset: 0; z-index: 30; background: rgba(3, 5, 12, 0.75); display: flex; align-items: flex-end; justify-content: center; }
+.sheet { width: 100%; max-width: 480px; max-height: 92%; overflow-y: auto; background: rgba(13, 20, 42, 0.96); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--line); border-bottom: 0; border-radius: 24px 24px 0 0; padding: 22px 16px calc(16px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; position: relative; animation: in 0.35s cubic-bezier(0.2, 1.2, 0.4, 1) backwards; }
 .sheet::before { content: ""; position: absolute; top: 8px; left: 50%; width: 40px; height: 4px; border-radius: 2px; background: var(--line); transform: translateX(-50%); }
 .sheet h2 { margin: 0; color: var(--fire2); }
 .sheet p { margin: 0; }
