@@ -11,6 +11,7 @@ test('сила грани [S§7]: +8 / −2 / неделя −5, клэмп', ()
   expect(f.strength).toBe(27);
   expect(facetDay({ strength: 98, cleanRun: 3 }, true, false).strength).toBe(100);
   expect(facetDay({ strength: 50, cleanRun: 0 }, false, true)).toEqual({ strength: 47, cleanRun: 1 });
+  expect(facetDay({ strength: 50, cleanRun: 3 }, true, true)).toEqual({ strength: 58, cleanRun: 0 });   // в день срыва помощи нет
 });
 test('изгнание: сила 0 и 30 чистых дней', () => {
   let f = { strength: 30, cleanRun: 0 };
@@ -36,7 +37,14 @@ test('старт из анкеты, безопасность, предложен
   expect(facetStart('social', { screen_hours: 1 })).toBe(30);
   expect(facetStart('procr', null)).toBe(50);
   expect(facetStart('custom', null, 'daily')).toBe(80);
-  expect(isSerious('Ставки на спорт', 'custom', null)).toBe(true);
+  expect(facetStart('smoke', { smoking: 'Регулярно' }, 'rare')).toBe(30);   // явная частота важнее анкеты
+  expect(isSerious('Ставки на спорт', 'custom', null)).toBe(false);
+  expect(isSerious('Наркотики', 'custom', null)).toBe(true);
+  expect(isSerious('Вещества', 'custom', null, 'rare')).toBe(true);
+  expect(isSerious('Алкоголь', 'custom', null, 'rare')).toBe(false);
+  expect(isSerious('Алкоголь', 'custom', null, 'often')).toBe(true);
+  expect(isSerious('Пиво', 'alcohol', null, 'daily')).toBe(true);
+  expect(isSerious('Пиво', 'alcohol', null)).toBe(false);
   expect(isSerious('Сладкое', 'custom', null)).toBe(false);
   expect(isSerious('Пиво', 'alcohol', { alcohol: 'Несколько раз в неделю' })).toBe(true);
   expect(isSerious('Пиво', 'alcohol', { alcohol: 'Пару раз в месяц' })).toBe(false);
@@ -44,8 +52,15 @@ test('старт из анкеты, безопасность, предложен
   expect(facetSuggestions(p, { smoking: 'Иногда', alcohol: 'Несколько раз в неделю', screen_hours: 5 }))
     .toEqual([{ kind: 'social', name: 'Соцсети', start: 65 }, { kind: 'smoke', name: 'Курение', start: 50 }]);
 });
+test('suggestions из ответов анкеты: курение, игры, телефон, утечки времени — без дублей', () => {
+  const p = { badHabits: ['social'] } as unknown as Profile;
+  expect(facetSuggestions(p, { smoking: 'Регулярно', games_hours: 3, screen_hours: 1, time_leaks: ['Соцсети', 'Прокрастинация', 'Новости'] }))
+    .toEqual([{ kind: 'social', name: 'Соцсети', start: 30 }, { kind: 'smoke', name: 'Курение', start: 80 },
+      { kind: 'games', name: 'Игры', start: 65 }, { kind: 'procr', name: 'Прокрастинация', start: 50 }]);
+  expect(facetSuggestions(null, { smoking: 'Нет', games_hours: 0.5, screen_hours: 1, time_leaks: 'мусор' })).toEqual([]);
+});
 test('suggestions: свои строки, серьёзные и дубли отбрасываются; не бросает', () => {
-  const p = { badHabits: ['social', 'social', 'Сладкое', 'Казино', 'Сладкое', 7] } as unknown as Profile;
+  const p = { badHabits: ['social', 'social', 'Сладкое', 'Наркотики', 'Сладкое', 7] } as unknown as Profile;
   expect(facetSuggestions(p, null).map(s => s.name)).toEqual(['Соцсети', 'Сладкое']);
   expect(facetSuggestions(null, null)).toEqual([]);
   expect(masterPlan([], false)).toBe('');

@@ -51,7 +51,9 @@ export function validLadderSteps(x: unknown): LadderStep[] | null {
 export const requiredIn = (step: LadderStep, days: { suitable: boolean }[]): number =>
   step.per7 < 7 ? 2 * step.per7 : days.filter(d => d.suitable).length;
 
+/** rate не число (окно без подходящих дней: нужно 0) — без изменений. */
 export function ladderAfterWindow(cur: { step: number; attempt: 1 | 2 }, rate: number): { step: number; attempt: 1 | 2; bonus: number; ask: boolean } {
+  if (!Number.isFinite(rate)) return { step: cur.step, attempt: cur.attempt, bonus: 0, ask: false };
   if (rate >= L.pass) return { step: Math.min(L.steps, cur.step + 1), attempt: 1, bonus: L.bonus[cur.step - 1] ?? 0, ask: false };
   if (rate >= L.repeat && cur.attempt === 1) return { step: cur.step, attempt: 2, bonus: 0, ask: false };
   return { step: Math.max(1, cur.step - 1), attempt: 1, bonus: 0, ask: true };

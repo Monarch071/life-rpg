@@ -6,11 +6,11 @@ const S = BALANCE.shadow;
 const clamp = (x: number) => Math.min(100, Math.max(0, x));
 type Freq = keyof typeof S.start;
 
-/** Один закрытый день грани [S§7]: срыв +8; иначе −2, каждый 7-й чистый день ещё −5; ритуал-помощник −1. */
+/** Один закрытый день грани [S§7]: срыв +8; иначе −2, каждый 7-й чистый день ещё −5; ритуал-помощник −1 (не в день срыва). */
 export function facetDay(f: { strength: number; cleanRun: number }, relapse: boolean, assist: boolean): { strength: number; cleanRun: number } {
   const run = relapse ? 0 : f.cleanRun + 1;
   let d = relapse ? S.relapse : -S.clean - (run % S.cleanWeekDays === 0 ? S.cleanWeek : 0);
-  if (assist) d -= BALANCE.ladder.assist;
+  if (assist && !relapse) d -= BALANCE.ladder.assist;
   return { strength: Math.round(clamp(f.strength + d)), cleanRun: run };
 }
 
@@ -46,7 +46,7 @@ const byHours = (h: number, cuts: number[]): number => {
 const SMOKE: Record<string, number> = { 'Иногда': S.start.sometimes, 'Регулярно': S.start.daily };
 const ALCO: Record<string, number> = { 'Пару раз в месяц': S.start.rare, 'Раз в неделю': S.start.sometimes, 'Несколько раз в неделю': S.start.often };
 
-/** Стартовая сила грани: из ответов анкеты, иначе по частоте, иначе 50 (спека §4.1). */
+/** Стартовая сила грани: явная частота, иначе из ответов анкеты, иначе 50 (спека §4.1). */
 export function facetStart(kind: FacetKind, answers: Answers | null, freq?: Freq): number {
   const a = answers ?? {};
   const fromAnswers =
@@ -55,22 +55,32 @@ export function facetStart(kind: FacetKind, answers: Answers | null, freq?: Freq
     : kind === 'games' ? (numAns(a, 'games_hours') === null ? undefined : byHours(numAns(a, 'games_hours')!, [1, 2, 4]))
     : kind === 'social' ? (numAns(a, 'screen_hours') === null ? undefined : byHours(numAns(a, 'screen_hours')!, [2, 4, 6]))
     : undefined;
-  return fromAnswers ?? (freq && Object.hasOwn(S.start, freq) ? S.start[freq] : S.start.sometimes);
+  return freq && Object.hasOwn(S.start, freq) ? S.start[freq] : fromAnswers ?? S.start.sometimes;
 }
 
-const SERIOUS = /алког|наркот|веществ|казино|ставк|азарт|гемблинг|самоповрежд/i;
-/** Серьёзная зависимость: грань не добавляется, UI советует обратиться к специалисту. */
-export const isSerious = (name: string, kind: FacetKind, answers: Answers | null): boolean =>
-  SERIOUS.test(String(name)) || (kind === 'alcohol' && answers?.alcohol === 'Несколько раз в неделю');
+/** Серьёзная зависимость (решение контролёра): наркотики/вещества — всегда; алкоголь — от «несколько раз в неделю»
+ *  (явная частота often/daily, иначе ответ анкеты); прочие привычки — нет. Грань не предлагается, UI советует специалиста. */
+export function isSerious(name: string, kind: FacetKind, answers: Answers | null, freq?: Freq): boolean {
+  if (/наркот|веществ/i.test(String(name))) return true;
+  if (kind !== 'alcohol' && !/алког/i.test(String(name))) return false;
+  return freq ? freq === 'often' || freq === 'daily' : answers?.alcohol === 'Несколько раз в неделю';
+}
 
 const BAD: Record<string, { kind: FacetKind; name: string }> = {
   games: { kind: 'games', name: 'Игры' }, social: { kind: 'social', name: 'Соцсети' }, late: { kind: 'late', name: 'Поздний отбой' },
   junk: { kind: 'junk', name: 'Фастфуд' }, smoke: { kind: 'smoke', name: 'Курение' }, procr: { kind: 'procr', name: 'Прокрастинация' },
 };
 
-/** Предложения из анкеты: без серьёзных и дублей (по kind; свои строки — по названию). */
+const LEAKS: Record<string, string> = { 'Соцсети': 'social', 'Игры': 'games', 'Прокрастинация': 'procr' };
+
+/** Предложения из анкеты: badHabits, затем ответы smoking, games_hours, screen_hours, time_leaks (§4.1); без серьёзных и дублей (по kind; свои строки — по названию). */
 export function facetSuggestions(profile: Profile | null, answers: Answers | null): { kind: FacetKind; name: string; start: number }[] {
-  const ids: unknown[] = Array.isArray(profile?.badHabits) ? profile!.badHabits : [];
+  const ids: unknown[] = Array.isArray(profile?.badHabits) ? [...profile!.badHabits] : [];
+  if (SMOKE[String(answers?.smoking)]) ids.push('smoke');
+  // часы «редко» (ниже первой границы) не предлагаются
+  if (numAns(answers, 'games_hours') !== null && facetStart('games', answers) > S.start.rare) ids.push('games');
+  if (numAns(answers, 'screen_hours') !== null && facetStart('social', answers) > S.start.rare) ids.push('social');
+  if (Array.isArray(answers?.time_leaks)) for (const l of answers.time_leaks) if (Object.hasOwn(LEAKS, l)) ids.push(LEAKS[l]);
   const seen = new Set<string>();
   const out: { kind: FacetKind; name: string; start: number }[] = [];
   for (const id of ids) {

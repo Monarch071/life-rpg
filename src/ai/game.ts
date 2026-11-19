@@ -4,7 +4,7 @@ import { AUTO_METRIC_INFO } from '../domain/metricInfo'
 import { validLadderSteps } from '../domain/ladder'
 import { SKILL_CATALOG } from '../domain/skillCatalog'
 import { cleanText } from '../domain/text'
-import type { BossDraft, LadderStep } from '../domain/types'
+import type { BossDraft, LadderKind, LadderStep } from '../domain/types'
 import type { AiConfig } from './config'
 import { AiError, generateJson } from './providers'
 
@@ -39,7 +39,8 @@ const LADDER_SCHEMA = { type: 'object', required: ['steps'], properties: { steps
   properties: { label: { type: 'string' }, per7: { type: 'integer' }, auto: { type: 'object', properties: { metric: { type: 'string' }, op: { type: 'string' }, value: { type: 'number' } } } } } } } }
 
 /** Только для лестниц «делать»: название «не делать»-привычки в ИИ не уходит (может совпадать с гранью Тени). */
-export async function aiLadderSteps(cfg: AiConfig, title: string): Promise<LadderStep[]> {
+export async function aiLadderSteps(cfg: AiConfig, title: string, kind: LadderKind): Promise<LadderStep[]> {
+  if (kind !== 'do') throw new AiError('лестницы «не делать» строятся правилами', 'other')
   const raw = await generateJson(cfg, LADDER_SYSTEM, `Привычка: ${cleanText(title, 40) ?? ''}`, LADDER_SCHEMA) as any
   const steps = validLadderSteps(raw?.steps)
   if (!steps) throw new AiError('нет ступеней', 'bad_response')

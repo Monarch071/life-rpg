@@ -24,8 +24,13 @@ test('aiChainSteps / aiLadderSteps: валидный ответ проходит
   gen.mockResolvedValue({ steps: ['a'] });
   await expect(aiChainSteps(cfg, 'x')).rejects.toMatchObject({ kind: 'bad_response' });
   gen.mockResolvedValue({ steps: LADDER_PRESETS.read.steps });
-  expect(await aiLadderSteps(cfg, 'Растяжка')).toEqual(LADDER_PRESETS.read.steps);
+  expect(await aiLadderSteps(cfg, 'Растяжка', 'do')).toEqual(LADDER_PRESETS.read.steps);
   gen.mockResolvedValue({ steps: LADDER_PRESETS.read.steps.slice(1) });
-  const e = await aiLadderSteps(cfg, 'Растяжка').catch(x => x);
+  const e = await aiLadderSteps(cfg, 'Растяжка', 'do').catch(x => x);
   expect(e).toBeInstanceOf(AiError); expect(e.kind).toBe('bad_response');
+});
+test('aiLadderSteps: «не делать» в ИИ не уходит', async () => {
+  gen.mockResolvedValue({ steps: LADDER_PRESETS.read.steps });
+  await expect(aiLadderSteps(cfg, 'СЕКРЕТ', 'dont')).rejects.toBeInstanceOf(AiError);
+  expect(gen).not.toHaveBeenCalled();
 });

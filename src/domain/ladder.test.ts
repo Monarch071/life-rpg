@@ -14,6 +14,7 @@ test('переходы ступеней [S§7]: 80% / 50–79% один повт
   expect(ladderAfterWindow({ step: 3, attempt: 1 }, 0.4)).toEqual({ step: 2, attempt: 1, bonus: 0, ask: true });
   expect(ladderAfterWindow({ step: 1, attempt: 1 }, 0.2)).toEqual({ step: 1, attempt: 1, bonus: 0, ask: true });
   expect(ladderAfterWindow({ step: 4, attempt: 1 }, 0.8)).toEqual({ step: 5, attempt: 1, bonus: 300, ask: false });
+  expect(ladderAfterWindow({ step: 3, attempt: 2 }, 0 / 0)).toEqual({ step: 3, attempt: 2, bonus: 0, ask: false });   // нужно 0 — без изменений
   expect([1, 2, 3, 4, 5].map(ritualXp)).toEqual([15, 20, 25, 30, 10]);
 });
 test('нужно за окно и рецидив ступени 5', () => {
