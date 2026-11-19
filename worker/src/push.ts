@@ -66,7 +66,7 @@ const TEXTS: Record<Kind | 'test', { title: string; body: string[] }> = {
 export function message(kind: Kind | 'test' | 'wake', date = '', extra?: { sleepHours: number }) {
   if (kind === 'wake') {
     const h = (extra?.sleepHours ?? 0).toFixed(1).replace('.', ',')
-    return { title: 'Доброе утро, герой', body: `Сон: ${h} ч. План дня уже собран — открой «Мой день».`, tag: 'morning', url: '/life-rpg/' }
+    return { title: 'Доброе утро, герой', body: `Сон ${h} ч засчитан. Открой «Мой день» — задания ждут`, tag: 'morning', url: '/life-rpg/' }
   }
   const t = TEXTS[kind]
   const day = Number(date.slice(-2)) || 0
@@ -101,11 +101,11 @@ export async function runCron(store: Store, v: Vapid, now: number, fetcher?: typ
 const WAKE_FROM = 240 // не раньше 04:00 по местному времени
 
 /** Утренний пуш сразу после синхронизации сна; cron позже в этот день уже не шлёт. */
-export async function sendWakePush(store: Store, v: Vapid, now: number, sleepHours: number, fetcher?: typeof fetch): Promise<number> {
+export async function sendWakePush(store: Store, v: Vapid, now: number, packetDate: string, sleepHours: number, fetcher?: typeof fetch): Promise<number> {
   let sent = 0
   for (const r of await store.listPushSubs()) {
     const { date, min } = localNow(r.tz, now)
-    if (r.morning === null || r.last_morning === date || min < WAKE_FROM) continue
+    if (r.morning === null || date !== packetDate || r.last_morning === date || min < WAKE_FROM) continue
     try {
       const status = await pushTo(store, r, message('wake', date, { sleepHours }), v, fetcher)
       if (status < 300) { await store.markPushSent(r.endpoint, 'morning', date); sent++ }

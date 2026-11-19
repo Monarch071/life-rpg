@@ -1260,6 +1260,10 @@ test('Wallet: сумма в spendAuto, магазин не в today.data', () =>
   const s = replay([onboard, sig(at(D, 9), { kind: 'wallet', amount: 1250.5, merchant: 'Магазин 1' }), sig(at(D, 10), { kind: 'wallet', amount: -250.5, merchant: 'Магазин 1' })], at(D, 12));
   expect(s.today.data.spendAuto).toBe(1000); expect(JSON.stringify(s.today.data)).not.toContain('Магазин');
 });
+test('Wallet: одиночный возврат не бросает и даёт отрицательную сумму', () => {
+  const s = replay([onboard, sig(at(D, 9), { kind: 'wallet', amount: -300, merchant: 'Возврат' })], at(D, 12));
+  expect(s.today.data.spendAuto).toBe(-300);
+});
 test('битые новые события не бросают', () => {
   expect(() => replay([onboard, ev({ type: 'signal_logged', at: 'x', signal: null }), ev({ type: 'timer_logged', timer: 'nap', start: 5, end: 1 }),
     ev({ type: 'health_packet', date: D, health: { workouts: 'много' } }), sig(at(D), { kind: 'arrive', place: 'бар' })], at(D))).not.toThrow();

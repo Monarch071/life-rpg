@@ -120,11 +120,19 @@ describe('пуш после сна', () => {
     await store.upsertPushSub(parseSubscribe(body())!)
     await store.upsertPushSub(parseSubscribe(body({ subscription: { endpoint: 'https://web.push.apple.com/B', keys: { p256dh: P256DH, auth: AUTH } }, morning: null }))!)
     const f = (async () => new Response(null, { status: 201 })) as typeof fetch
-    expect(await sendWakePush(store, vapid, Date.UTC(2026, 10, 18, 0, 30), 7, f)).toBe(0) // 03:30 МСК
-    expect(await sendWakePush(store, vapid, Date.UTC(2026, 10, 18, 3, 30), 7.6, f)).toBe(1)
+    expect(await sendWakePush(store, vapid, Date.UTC(2026, 10, 18, 0, 30), '2026-11-18', 7, f)).toBe(0) // 03:30 МСК
+    expect(await sendWakePush(store, vapid, Date.UTC(2026, 10, 18, 3, 30), '2026-11-18', 7.6, f)).toBe(1)
     expect(await runCron(store, vapid, AT_8_MSK, f)).toBe(0)
   })
-  it('текст про сон', () => expect(message('wake', '2026-11-18', { sleepHours: 7.6 }).body).toContain('7,6 ч'))
+  it('пакет за вчера не шлёт и не блокирует сегодняшний', async () => {
+    await store.upsertPushSub(parseSubscribe(body())!)
+    let n = 0
+    const f = (async () => { n++; return new Response(null, { status: 201 }) }) as typeof fetch
+    expect(await sendWakePush(store, vapid, T0630, '2026-11-17', 7, f)).toBe(0)
+    expect((await store.getPushSub(EP))!.last_morning).not.toBe('2026-11-18')
+    expect(await sendWakePush(store, vapid, T0630, '2026-11-18', 7, f)).toBe(1)
+  })
+  it('текст про сон', () => expect(message('wake', '2026-11-18', { sleepHours: 7.6 }).body).toBe('Сон 7,6 ч засчитан. Открой «Мой день» — задания ждут'))
 })
 
 describe('тексты пушей', () => {

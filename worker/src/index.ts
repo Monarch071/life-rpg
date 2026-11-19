@@ -144,7 +144,7 @@ async function route(req: Request, store: Store, vapid: Vapid | undefined, now: 
       if (v.kind === 'health') {
         const { date, health, calendar } = v.packet
         if (!duplicate && v.packet.kind === 'morning' && health.sleepHours !== undefined && vapid) {
-          try { await sendWakePush(store, vapid, now, health.sleepHours, fetcher) } catch (e) { console.error('wake push', e) }
+          try { await sendWakePush(store, vapid, now, date, health.sleepHours, fetcher) } catch (e) { console.error('wake push', e) }
         }
         return { status: 200, body: { ok: true, duplicate, received: { date, ...health, calendar: calendar.length } } }
       }

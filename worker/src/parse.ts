@@ -28,15 +28,19 @@ function inRange(n: number | undefined, min: number, max: number): number | unde
   return n !== undefined && n >= min && n <= max ? n : undefined
 }
 
-const AT_PAST = 7 * 86_400_000, AT_FUTURE = 3_600_000 // окно времени сигнала от «Команд»
+const AT_PAST = 7 * 86_400_000, AT_FUTURE = 10 * 60_000 // окно времени сигнала от «Команд»
 const WORKOUTS_MAX = 50
+const stripCtl = (s: string) => s.replace(/[\u0000-\u001f\u007f]/g, '')
 
 function parseSignal(body: Obj, now: number): { ok: true; value: SyncPacket } | { ok: false; error: string } {
   const bad = (error: string) => ({ ok: false as const, error })
   let at = now
   if (body.at !== undefined) {
-    at = typeof body.at === 'string' ? Date.parse(body.at) : (num(body.at) ?? NaN)
-    if (!Number.isFinite(at) || at < now - AT_PAST || at > now + AT_FUTURE) return bad('Время at вне допустимого окна')
+    const p = typeof body.at === 'string' ? Date.parse(body.at) : (num(body.at) ?? NaN)
+    if (Number.isFinite(p)) { // не разобралось — время сервера (§3.1)
+      if (p < now - AT_PAST || p > now + AT_FUTURE) return bad('Время at вне допустимого окна')
+      at = p
+    }
   }
   let signal: Signal | null = null
   if (body.kind === 'arrive' && (body.place === 'gym' || body.place === 'work' || body.place === 'home')) signal = { kind: 'arrive', place: body.place }
@@ -44,7 +48,7 @@ function parseSignal(body: Obj, now: number): { ok: true; value: SyncPacket } | 
   else if (body.kind === 'focus' && (body.state === 'on' || body.state === 'off')) signal = { kind: 'focus', state: body.state }
   else if (body.kind === 'wallet') {
     const amount = num(body.amount)
-    if (amount === undefined || amount <= 0 || amount > 1e7) return bad('Некорректная сумма')
+    if (amount === undefined || amount === 0 || Math.abs(amount) > 1e7) return bad('Некорректная сумма')
     const merchant = (typeof body.merchant === 'string' ? body.merchant : '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60)
     signal = { kind: 'wallet', amount, merchant }
   }
@@ -92,10 +96,10 @@ export function parseSyncPayload(body: unknown, now: number): { ok: true; value:
   for (const w of rawW) {
     if (workouts.length >= WORKOUTS_MAX) break
     if (!isObj(w)) continue
-    const minutes = inRange(num(w.minutes), 0, 1440)
-    if (minutes === undefined) continue
     const s = typeof w.start === 'string' ? Date.parse(w.start) : NaN, e = typeof w.end === 'string' ? Date.parse(w.end) : NaN
-    workouts.push({ type: typeof w.type === 'string' ? w.type.slice(0, 60) : '', ...(e > s ? { start: s, end: e } : {}), minutes })
+    const minutes = inRange(num(w.minutes) ?? (e > s ? (e - s) / 60000 : undefined), 0, 1440)
+    if (minutes === undefined) continue
+    workouts.push({ type: typeof w.type === 'string' ? stripCtl(w.type).slice(0, 60) : '', ...(e > s ? { start: s, end: e } : {}), minutes })
   }
   if (workouts.length) health.workouts = workouts
 
@@ -106,7 +110,7 @@ export function parseSyncPayload(body: unknown, now: number): { ok: true; value:
       if (!isObj(e) || typeof e.start !== 'string' || typeof e.end !== 'string') continue
       const s = Date.parse(e.start), en = Date.parse(e.end)
       if (!Number.isFinite(s) || !Number.isFinite(en) || en <= s) continue
-      calendar.push({ title: typeof e.title === 'string' ? e.title.slice(0, 100) : '', start: e.start, end: e.end })
+      calendar.push({ title: typeof e.title === 'string' ? stripCtl(e.title).slice(0, 100) : '', start: e.start, end: e.end })
     }
   }
   return { ok: true, value: { kind: 'health', packet: { date, kind, health, calendar } } }
