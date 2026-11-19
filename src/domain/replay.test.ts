@@ -1569,3 +1569,20 @@ test('лестницы: мусор не бросает, поздний паке�
   const s = replay([onboard, ladder(), upd, ...rits(['2026-12-01', '2026-12-03', '2026-12-05', '2026-12-08', '2026-12-10'])], at('2026-12-15'));
   expect(s.ladders[0]).toMatchObject({ title: 'Книги', step: 2, label: 'каждый день' });
 });
+
+test('день только с ритуалами — активность: без «Ослабления» у первых заданий', () => {
+  const s = replay([onboard, ladder(), ...rits(['2026-12-01', '2026-12-02', '2026-12-03']),
+    issue('2026-12-04', [nq('a', '2026-12-04', 'E', ['strength'])]), done('2026-12-04', 'a')], at('2026-12-05'));
+  expect(s.ledger.find(r => r.source === 'quest')!.penalty).toBe(0);
+});
+test('очередь: снятая в день продвижения лестница не занимает слот', () => {
+  const ls = ['l1', 'l2', 'l3', 'l4', 'l5'].map(id => ladder(id));
+  const rm = (id: string, d: string) => ev({ type: 'ladder_removed', ladderId: id, ts: at(d, 10) });
+  const s = replay([onboard, ...ls, rm('l1', '2026-12-05'), rm('l4', '2026-12-06')], at('2026-12-07'));
+  expect(s.ladders.map(l => [l.id, l.status, l.windowStart])).toEqual([['l2', 'active', '2026-12-01'], ['l3', 'active', '2026-12-01'], ['l5', 'active', '2026-12-06']]);
+});
+test('per7 = 7 «по рабочим»: ритуал в выходной не засчитывается в окно', () => {
+  const daily = LADDER_PRESETS.read.steps.map(s => ({ ...s, per7: 7 as const }));
+  const s = replay([onboard, ladder('l1', { steps: daily, suitable: 'workdays' }), startDay('2026-12-01', { dayType: DT[2] }), rit('2026-12-01')], at('2026-12-02'));
+  expect(s.ladders[0]).toMatchObject({ windowDays: 1, done: 0, required: 13 });
+});

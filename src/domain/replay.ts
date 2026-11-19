@@ -675,7 +675,11 @@ export function replay(events: GameEvent[], now: number): GameState {
   };
   const ladderDay = (d: ISODate) => {
     // слот, освобождённый вчера и раньше, — первой в очереди (окно с сегодня); затем удаления и новые лестницы дня
-    while (queue.length && activeN() < L.maxActive) { const l = queue.shift()!; l.status = 'active'; startWindow(l, d); }
+    while (queue.length && activeN() < L.maxActive) {
+      const l = queue.shift()!;
+      if (l.removed !== null && l.removed <= d) { l.status = 'gone'; continue; } // снятая сегодня слот не занимает
+      l.status = 'active'; startWindow(l, d);
+    }
     for (const l of ladList) if (l.removed !== null && l.removed <= d && l.status !== 'gone') {
       if (l.status === 'queued') queue.splice(queue.indexOf(l), 1);
       l.status = 'gone';
@@ -695,7 +699,9 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (d === today) ladToday.set(l.id, auto ? 'auto' : 'honest');
       }
       if (d >= today || frozen) continue; // окно — только по закрытым незамороженным дням
-      l.win.push(isSuitable(l, d)); if (ok) l.done++;
+      // per7 = 7: нужны только подходящие дни — ритуал в неподходящий окно не добирает
+      const per7 = l.steps[(l.status === 'auto' ? L.steps - 1 : l.step) - 1].per7;
+      l.win.push(isSuitable(l, d)); if (ok && (per7 < 7 || isSuitable(l, d))) l.done++;
       if (l.status === 'active' && l.win.length === L.windowDays) {
         const req = requiredIn(l.steps[l.step - 1], l.win.map(suitable => ({ suitable })));
         const res = ladderAfterWindow({ step: l.step, attempt: l.attempt }, Math.min(1, l.done / req));
@@ -845,7 +851,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     streak = nextStreak(streak, o, freeze);
     if (o.perfect) add(flatRow(`perfect:${d}`, closesAtTs(d, closeOf(d)), d, 'perfect_day', BALANCE.streak.perfectXp, null));
     closed.push({ date: d, done: dq.length, rest });
-    if (!rest) idleRun = realDone ? 0 : idleRun + 1;
+    if (!rest) idleRun = realDone || (ritualsOn.get(d)?.done ?? 0) > 0 ? 0 : idleRun + 1; // ритуал — тоже активность
     dayOf(d).streak = streak;
     if (!qs.length) continue;
     history.push({ date: d, xp: dq.reduce((a, q) => a + q.xpFinal!, 0), completed: dq.length, issued: qs.length, counted: o.counted, perfect: o.perfect, rest, streak,
