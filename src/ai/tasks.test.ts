@@ -123,3 +123,6 @@ test('белый список ИИ: траты, магазины, приложе
   for (const p of prompts) for (const bad of ['spend', '5000', '777', 'Лавка Секретова', 'socialMin', 'social', 'gym', 'wallet', 'Траты', 'spendAuto'])
     expect(p, bad).not.toContain(bad)
 })
+
+// Включается в T5 (нужен replay для facet_added): названия граней Тени не уходят ни в один промпт ИИ.
+test.todo('грани Тени не уходят в ИИ (questContext, aiTuning, aiWeeklyReport)')
