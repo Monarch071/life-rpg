@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest';
+import { BALANCE } from './balance';
 import { addDays } from './day';
 import { closesAtTs, DEFAULT_DAY_TYPES } from './dayType';
 import { baseFromXp, rankCap, startBase } from './progression';
@@ -344,10 +345,10 @@ test('повторная анкета с меньшей самооценкой �
   expect(replay([ev({ type: 'onboarding_completed', profile: { ...low, selfRating: { str: 'x' } } })], NOW).profile).toBeNull();
 });
 
-test('окно засчёта не зависит от закрытия дня: 02:30 следующих суток — ещё в окне', () => {
-  for (const dayType of [DEFAULT_DAY_TYPES[0], DEFAULT_DAY_TYPES[1]]) {
+test('выполнение — до закрытия своего дня: 02:30 следующих суток — ещё в вечерней смене, уже не в дневной', () => {
+  for (const [dayType, n] of [[DEFAULT_DAY_TYPES[0], 0], [DEFAULT_DAY_TYPES[1], 1]] as const) {
     const evs = [startDay('2026-11-16', { dayType }), issue('2026-11-16', [q('a', '2026-11-16', 50)]), done('2026-11-16', 'a', at('2026-11-17', 2, 30))];
-    expect(replay(evs, NOW).history[0].completed).toBe(1);
+    expect(replay(evs, NOW).history[0].completed).toBe(n);
   }
   // на два дня позже — не засчитывается
   const late = [issue('2026-11-15', [q('b', '2026-11-15', 50)]), done('2026-11-15', 'b', at('2026-11-17', 2, 30))];
@@ -943,14 +944,14 @@ const custom = (quest: Quest, ts: number) => ev({ type: 'custom_quest_added', da
 /** 09.11: легаси 300 XP сделано + несделанное (не идеальный день) → 60 золота прошлых дней. */
 const gold60 = [issue('2026-11-09', [q('l1', '2026-11-09', 300), q('l2', '2026-11-09', 10)]), done('2026-11-09', 'l1')];
 
-test('переброс: 1-й бесплатно, 2-й за 50 при золоте прошлых дней, 3-й отклонён', () => {
-  const evs = [...gold60, issue(D10, ['x1', 'x2', 'x3'].map(id => nq(id, D10, 'E', ['strength']))),
+test('переброс: 1-й бесплатно, 2-й и 3-й за 50 при золоте прошлых дней (110 с достижениями), 4-й отклонён', () => {
+  const evs = [...gold60, issue(D10, ['x1', 'x2', 'x3', 'x4'].map(id => nq(id, D10, 'E', ['strength']))),
     reroll('x1', nq('r1', D10, 'E', ['cardio']), at(D10, 10)), reroll('x2', nq('r2', D10, 'E', ['cardio']), at(D10, 10, 1)),
-    reroll('x3', nq('r3', D10, 'E', ['cardio']), at(D10, 10, 2))];
+    reroll('x3', nq('r3', D10, 'E', ['cardio']), at(D10, 10, 2)), reroll('x4', nq('r4', D10, 'E', ['cardio']), at(D10, 10, 3))];
   const s = replay(evs, at(D10, 12));
-  expect(s.today.quests.map(q => q.id)).toEqual(['r1', 'r2', 'x3']);
-  expect(s.gold).toBe(60 - 50 + 25 * s.achievements.length); expect(s.today.nextRerollCost).toBe(50);
-  expect(s.today.rerollsUsed).toBe(2);
+  expect(s.today.quests.map(q => q.id)).toEqual(['r1', 'r2', 'r3', 'x4']);
+  expect(s.gold).toBe(60 - 100 + 25 * s.achievements.length); expect(s.today.nextRerollCost).toBe(50);
+  expect(s.today.rerollsUsed).toBe(3);
   expect(replay([...evs].reverse(), at(D10, 12))).toEqual(s);
 });
 
@@ -1101,10 +1102,11 @@ test('свои задания не дают недельный прогресс 
 
 test('today.spendable совпадает с проверкой трат; freezesLeft', () => {
   const s = replay([...gold60, issue(D10, [nq('x1', D10, 'C', ['strength'])]), done(D10, 'x1', at(D10, 9)), freezeR], at(D10, 12));
-  expect(s.today).toMatchObject({ spendable: 60, freezesLeft: 2, dayOff: false });
+  // 60 золота строк + first_quest и first_skill от 09.11
+  expect(s.today).toMatchObject({ spendable: 60 + 2 * BALANCE.achievementGold, freezesLeft: 2, dayOff: false });
   expect(s.gold).toBeGreaterThan(60);
   const f = replay([...streakDays, freezeR, buy('default:freeze', at(D10, 13))], at(D10, 22));
-  expect(f.today).toMatchObject({ spendable: 2010 - 300, freezesLeft: 1 });
+  expect(f.today).toMatchObject({ spendable: 2010 + BALANCE.achievementGold * f.achievements.filter(a => a.date < D10).length - 300, freezesLeft: 1 });
 });
 
 test('заморозка не тратится при нулевой серии; купленная до закрытия защищает этот день', () => {
@@ -1151,4 +1153,54 @@ test('переброс: замена с шаблоном, уже стоящим 
   // x2 → тот же t-dup, что у r1, — отказ; шаблон заменённого x1 в дне уже не стоит — можно
   expect(s.today.quests.map(q => q.id)).toEqual(['r1', 'x2', 'r3']);
   expect(s.today.rerollsUsed).toBe(2);
+});
+
+// ---- финальная проверка ветки ----
+test('золото достижений прошлых дней тратится; first_purchase — нет', () => {
+  const d9 = '2026-11-09';
+  const base = [issue(d9, [q('a', d9, 1350)]), done(d9, 'a'), freezeR];
+  const s = replay(base, at(D10, 12));
+  expect(s.ledger.reduce((a, r) => a + r.gold, 0)).toBeLessThan(300);
+  expect(s.gold).toBeGreaterThanOrEqual(300); expect(s.today.spendable).toBe(s.gold);
+  expect(replay([...base, buy('default:freeze', at(D10, 13))], at(D10, 22)).purchases).toHaveLength(1);
+  const n = replay([...base, buy('default:freeze', at(D10, 13))], at('2026-11-11', 12));
+  expect(n.achievements.map(a => a.id)).toContain('first_purchase');
+  expect(n.today.spendable).toBe(n.gold - BALANCE.achievementGold);
+});
+
+test('отклонённая обычная покупка не уменьшает spendable', () => {
+  const big = ev({ type: 'reward_created', rewardId: 'big', title: 'Дорого', price: 100000, ts: at('2026-11-01') });
+  const a = replay([...gold60, freezeR], at(D10, 12));
+  const b = replay([...gold60, freezeR, big, buy('big', at('2026-11-09', 21))], at(D10, 12));
+  expect(b.purchases).toEqual([]); expect(b.today.spendable).toBe(a.today.spendable);
+});
+
+test('поздний старт в 01:30 «Дневная смена»: начат новый день, серия не режется из-за старта', () => {
+  const y = '2026-11-17', d = '2026-11-18', n = '2026-11-19';
+  const base = [onboard, startDay(y), issue(y, [nq('p', y, 'E', ['strength'])]), done(y, 'p')];
+  const late = (date: string) => [ev({ type: 'day_started', date, work: null, wakeAt: '01:30', dayType: DT[0], ts: at(n, 1, 30) }),
+    ev({ type: 'quests_issued', date, quests: [nq(`z${date}`, date, 'E', ['strength'])], ts: at(n, 1, 30) })];
+  const now = at(n, 1, 31);
+  expect(replay(base, now).today).toMatchObject({ date: d, started: false });
+  // старт задним числом на вчера (после закрытия своего типа, 01:00) — отклоняется
+  expect(replay([...base, ...late(d)], now).today).toMatchObject({ date: d, started: false });
+  const s = replay([...base, ...late(n)], now);
+  expect(s.today).toMatchObject({ date: n, started: true }); expect(s.today.quests).toHaveLength(1);
+  expect(s.history.map(h => h.date)).toEqual([y]);
+  expect(s.streak).toBe(replay(base, at(n, 5)).streak);
+  // до старта — ещё вчера (несданный день закрывается в момент старта следующего)
+  expect(replay([...base, ...late(n)], at(n, 1, 20)).today.date).toBe(d);
+});
+
+test('выполнение принимается только до закрытия своего дня', () => {
+  const d = '2026-11-17', n = '2026-11-18';
+  const base = [onboard, startDay(d), issue(d, [nq('x', d, 'E', ['strength'])])];
+  expect(replay([...base, done(d, 'x', at(n, 0, 50))], at(n, 12)).history[0].completed).toBe(1);
+  expect(replay([...base, done(d, 'x', at(n, 1, 30))], at(n, 12)).history[0].completed).toBe(0);
+});
+
+test('смена типа на тип, чьё закрытие уже прошло, — отказ', () => {
+  const d = '2026-11-17', n = '2026-11-18';
+  const evs = [onboard, startDay(d, { dayType: DT[2] }), ev({ type: 'day_changed', date: d, dayType: DT[0], at: '01:30', ts: at(n, 1, 30) })];
+  expect(replay(evs, at(n, 1, 40)).today).toMatchObject({ date: d, changed: false });
 });

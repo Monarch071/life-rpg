@@ -127,25 +127,23 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
   // один переброс в полёте на все задания: цена и занятые шаблоны устаревают до перезагрузки состояния
   const rerollRef = useRef(false)
   const [rerolling, setRerolling] = useState(false)
-  useEffect(() => { rerollRef.current = false; setRerolling(false) }, [today.rerollsUsed, today.quests])
+  useEffect(() => { rerollRef.current = false; setRerolling(false) }, [today.rerollsUsed])
   const reroll = (q: DayQuest) => {
     if (rerollRef.current || pending.current.has(q.id)) return
     rerollRef.current = true
     setRerolling(true)
     const free = () => { rerollRef.current = false; setRerolling(false) }
     return guarded(q.id, 'Не удалось перебросить, попробуй ещё раз', async () => {
-      try { if (!(await rerollOne(q))) free() } catch (e) { free(); throw e }
+      try { await rerollOne(q) } finally { free() }
       return false
     })
   }
-  // true — событие записано (снятие блокировки — по новому состоянию)
   const rerollOne = async (q: DayQuest) => {
     const wakeAt = today.wakeAt ?? hhmmNow()
     const ctx = assembleCtx(state, today.dayType ?? legacyDayType(today.work, wakeAt, profile.sleep), wakeAt, today.energy ?? BALANCE.energy.fallback)
     const r = rerollCandidate(ctx, q, today.quests)
-    if (!r) { setErr('Замены того же ранга нет'); return false }
+    if (!r) { setErr('Замены того же ранга нет'); return }
     await appendEvent({ type: 'quest_rerolled', date: today.date, questId: q.id, replacement: r })
-    return true
   }
 
   const allDone = today.quests.length > 0 && today.quests.every(q => q.done || q.dropped)

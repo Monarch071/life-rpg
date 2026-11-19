@@ -17,9 +17,9 @@ const hm = isHM;
 export function validDayType(x: unknown): DayType | null {
   if (!x || typeof x !== 'object') return null;
   const o = x as Record<string, unknown>;
-  if (typeof o.id !== 'string' || !o.id || o.id.length > 40) return null;
+  if (typeof o.id !== 'string' || !o.id || o.id.length > BALANCE.day.labelMax) return null;
   if (typeof o.kind !== 'string' || !KINDS.includes(o.kind)) return null;
-  if (typeof o.label !== 'string' || o.label.length < 1 || o.label.length > 40) return null;
+  if (typeof o.label !== 'string' || o.label.length < 1 || o.label.length > BALANCE.day.labelMax) return null;
   if (o.wake !== null && !hm(o.wake)) return null;
   if (o.bed !== null && !hm(o.bed)) return null;
   let busy: DayType['busy'] = null;
@@ -36,7 +36,7 @@ export function validDayType(x: unknown): DayType | null {
 export function closeMinutes(t: DayType | null): number {
   if (!t || !t.bed) return BALANCE.day.closeDefaultMin;
   const m = toMin(t.bed);
-  const r = m < 720 ? m + BALANCE.day.closeAfterBedMin : m + BALANCE.day.closeAfterBedMin - 1440;
+  const r = m < BALANCE.day.noonMin ? m + BALANCE.day.closeAfterBedMin : m + BALANCE.day.closeAfterBedMin - BALANCE.day.minutesPerDay;
   return Math.min(BALANCE.day.closeLatestMin, Math.max(0, r));
 }
 
@@ -55,9 +55,10 @@ export function closesAtTs(date: ISODate, closeMin: number): number {
   return new Date(y, m - 1, d + 1, 0, closeMin).getTime();
 }
 
-/** Старые события без типа дня: смена с началом до 12:00 — дневная, позже — вечерняя, нет смены — выходной. */
+/** Старые события без типа дня: смена с началом 06:00–12:00 — дневная, иначе (ночная тоже) — вечерняя, нет смены — выходной. */
 export function legacyDayType(work: Win | null, wakeAt: HHMM, bed: HHMM | null): DayType {
-  const kind: DayKind = !work ? 'off' : toMin(work.start) < 720 ? 'day' : 'evening';
+  const s = work ? toMin(work.start) : 0;
+  const kind: DayKind = !work ? 'off' : s >= BALANCE.day.legacyEarlyStartMin && s < BALANCE.day.noonMin ? 'day' : 'evening';
   const base = DEFAULT_DAY_TYPES.find(d => d.kind === kind)!;
   return { ...base, wake: wakeAt, busy: work ? { start: work.start, end: work.end } : null, bed };
 }

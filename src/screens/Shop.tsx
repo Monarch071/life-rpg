@@ -40,7 +40,7 @@ export default function Shop({ state }: { state: GameState }) {
       <section className="panel stack" aria-label="Магазин">
         <h1>Магазин</h1>
         <div className="balance" aria-label={`Золото: ${state.gold}`}><span className="coin big" aria-hidden="true"><Coins size={22} /></span><b>{state.gold}</b><small>Золото</small></div>
-        {state.rewards.some(r => r.effect) && <p className="muted">Золото {state.gold} · на заморозку и день без заданий можно потратить {state.today.spendable}: они оплачиваются золотом прошлых дней, без сегодняшнего и наград за достижения.</p>}
+        {state.rewards.some(r => r.effect) && <p className="muted">Золото {state.gold} · на заморозку и день без заданий можно потратить {state.today.spendable}: они оплачиваются золотом прошлых дней, без сегодняшнего.</p>}
         {state.rewards.length === 0 && <p className="muted">Придумай награды за своё золото — например, «1 час игр — 150».</p>}
         {state.rewards.map(r => { const why = blocked(r, state); return (
           <div key={r.id} className="card">

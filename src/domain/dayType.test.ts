@@ -26,5 +26,6 @@ describe('dayType', () => {
     expect(legacyDayType(null, '09:00', '23:00')).toMatchObject({ kind: 'off', wake: '09:00', bed: '23:00', busy: null });
     expect(legacyDayType({ start: '16:00', end: '02:00' }, '11:00', '03:00')).toMatchObject({ kind: 'evening', busy: { start: '16:00', end: '02:00' } });
     expect(legacyDayType({ start: '10:00', end: '19:00' }, '08:00', '00:00').kind).toBe('day');
+    expect(legacyDayType({ start: '05:00', end: '13:00' }, '04:00', '22:00').kind).toBe('evening'); // ночная смена
   });
 });

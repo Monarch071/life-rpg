@@ -9,9 +9,9 @@ export default function Celebration({ state }: { state: GameState }) {
   const [seen, setSeen] = useState<Seen | null>(null) // null — настройки ещё читаются
   useEffect(() => {
     void (async () => {
-      const level = await getSetting<number | undefined>('seenLevel', undefined)
+      const level = await getSetting<number | undefined>('seenLevelV2', undefined)
       const perfectDate = await getSetting<string | undefined>('seenPerfectDate', undefined)
-      if (level === undefined) await setSetting('seenLevel', state.level) // первый запуск
+      if (level === undefined) await setSetting('seenLevelV2', state.level) // первый запуск v2: уровень с учётом стартового — только запомнить
       setSeen({ level: level ?? state.level, perfectDate })
     })().catch(() => setSeen({ level: state.level }))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -20,7 +20,7 @@ export default function Celebration({ state }: { state: GameState }) {
   const close = () => {
     const next = c.kind === 'level' ? { ...seen, level: c.level } : { ...seen, perfectDate: c.date }
     setSeen(next)
-    void (c.kind === 'level' ? setSetting('seenLevel', c.level) : setSetting('seenPerfectDate', c.date)).catch(() => {})
+    void (c.kind === 'level' ? setSetting('seenLevelV2', c.level) : setSetting('seenPerfectDate', c.date)).catch(() => {})
   }
   return <Overlay key={c.kind} c={c} onClose={close} />
 }

@@ -5,9 +5,10 @@ import { getAiConfig } from '../ai/config'
 import { aiQuestTexts, applyTexts } from '../ai/tasks'
 import { getSyncConfig, syncNow } from '../sync'
 import { loadState } from '../useGame'
-import type { DayType } from '../domain/dayType'
+import { closeMinutes, closesAtTs, type DayType } from '../domain/dayType'
+import { addDays, weekStart } from '../domain/day'
 import type { GameState, Quest } from '../domain/types'
-import { hhmmNow } from '../now'
+import { hhmmNow, now } from '../now'
 import { useDialog } from '../ui/useDialog'
 import { generateWeeklyQuests } from '../domain/weekly'
 import { BALANCE } from '../domain/balance'
@@ -29,7 +30,6 @@ export default function MyDay({ state, onLater }: { state: GameState; onLater: (
     setErr(null)
     try {
       const wakeAt = hhmmNow()
-      const date = state.today.date
       // первое устройство выдаёт задания: подтянуть чужие события и смотреть уже свежее состояние
       let cur = state
       try {
@@ -40,6 +40,10 @@ export default function MyDay({ state, onLater }: { state: GameState; onLater: (
           cur = await loadState()
         }
       } catch { /* синк не должен мешать началу дня */ }
+      // выбранный тип уже закрылся бы (01:30 при «Дневной смене») — начинаем следующую игровую дату, иначе replay отклонит старт
+      const next = now() >= closesAtTs(cur.today.date, closeMinutes(dayType))
+      const date = next ? addDays(cur.today.date, 1) : cur.today.date
+      if (next) cur = { ...cur, today: { ...cur.today, date, quests: [] } }
       const work = dayType.busy
       // сначала сборка по правилам (+ тексты ИИ), потом одна атомарная запись — день не останется без заданий
       let quests: Quest[] | null = null
@@ -61,7 +65,8 @@ export default function MyDay({ state, onLater }: { state: GameState; onLater: (
       }
       await appendEvents([
         { type: 'day_started', date, work, wakeAt, dayType, ...(morning !== null ? { energy: morning } : {}) },
-        ...(cur.weekly.quests.length === 0
+        // новая неделя при старте следующей даты — недельные выдаст следующий старт
+        ...(cur.weekly.quests.length === 0 && weekStart(date) === cur.weekly.weekStart
           ? [{ type: 'weekly_issued' as const, weekStart: cur.weekly.weekStart, quests: generateWeeklyQuests(cur.genWeekly) }] : []),
         ...(quests ? [{ type: 'quests_issued' as const, date, quests }] : []),
       ])

@@ -39,3 +39,9 @@ test('потолок ранга [S§6]', () => {
   expect(rankCap(1, 9)).toBe('E'); expect(rankCap(20, 3)).toBe('C'); expect(rankCap(70, 10)).toBe('S');
   expect(rankShift('E', -1)).toBe('E'); expect(rankShift('S', 1)).toBe('S'); expect(rankShift('C', 1)).toBe('B');
 });
+
+test('Форма без нормы — null; отрицательные бонусы и штрафы — 0', () => {
+  expect(formOf(10, 3, 0)).toBeNull();
+  expect(formOf(10, 3, -5)).toBeNull();
+  expect(questReward({ rank: 'C', verify: 'auto', bonuses: [-0.5, 0.1], penalties: [-0.3] })).toMatchObject({ bonus: 0.1, penalty: 0 });
+});

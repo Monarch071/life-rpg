@@ -41,7 +41,7 @@ export const BALANCE = {
   restore: { mult: 2, cooldownDays: 7 },
   startLevel: { rulesMax: 50, aiMax: 60, scoreDiv: 2 },
   skill:   { maxLevel: 10, costK: 100, rulesStartMax: 4, aiStartMax: 7, mainShare: 0.6, nearRustDays: 23 },
-  day:     { closeAfterBedMin: 60, closeLatestMin: 240, closeDefaultMin: 240, maxSlots: 7, minWindowMin: 20, workoutBeforeBedMin: 120 },
+  day:     { noonMin: 720, minutesPerDay: 1440, legacyEarlyStartMin: 360, labelMax: 40, closeAfterBedMin: 60, closeLatestMin: 240, closeDefaultMin: 240, maxSlots: 7, minWindowMin: 20, workoutBeforeBedMin: 120 },
   energy:  { low: 40, high: 70, fallback: 50 },
   assembly:{ maxPerStat: 2, statEveryDays: 3, p: { boss: 3, form: 2, theme: 1.5, idle: 1, idleDays: 7, repeat: -2 } },
   streak:  { countShare: 0.6, missFactor: 0.5, perfectXp: 50, restDaysPerMonth: 14 },

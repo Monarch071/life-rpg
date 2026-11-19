@@ -115,7 +115,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   // Проход 1: старт/смена дня и отбой профиля → закрытие каждого дня → игровые даты.
   let sleep: HHMM | null = null; // отбой последнего валидного профиля — для синтеза типа старых day_started
   for (const e of evs) if (e.type === 'onboarding_completed' && validProfile(e.profile)) sleep = isHM(e.profile.sleep) ? e.profile.sleep : null;
-  const dayStart = new Map<ISODate, { work: { start: HHMM; end: HHMM } | null; wakeAt: HHMM; dayType: DayType | null; energy: number | null }>();
+  const dayStart = new Map<ISODate, { ts: number; work: { start: HHMM; end: HHMM } | null; wakeAt: HHMM; dayType: DayType | null; energy: number | null }>();
   const dayChange = new Map<ISODate, { type: DayType; ts: number }>();
   let dayTypes: DayType[] = DEFAULT_DAY_TYPES;
   // Тип дня: последний принятый day_changed, иначе day_started (старый — синтез).
@@ -125,15 +125,16 @@ export function replay(events: GameEvent[], now: number): GameState {
   };
   for (const e of evs) {
     if (e.type === 'day_started') {
-      // побеждает первый; старт задним числом для уже закрытого (даже по позднему 04:00) дня отбрасывается
-      if (!isDate(e.date) || dayStart.has(e.date) || !isHM(e.wakeAt) || !nearTs(e.date, e.ts) || e.ts >= closesAtTs(e.date, BALANCE.day.closeLatestMin)) continue;
+      // побеждает первый; старт задним числом для дня, уже закрытого по своему типу (без типа — по 04:00), отбрасывается
+      if (!isDate(e.date) || dayStart.has(e.date) || !isHM(e.wakeAt) || !nearTs(e.date, e.ts) || e.ts >= closesAtTs(e.date, closeMinutes(validDayType(e.dayType)))) continue;
       const w = e.work as { start?: unknown; end?: unknown } | null;
-      dayStart.set(e.date, { work: w && typeof w === 'object' && isHM(w.start) && isHM(w.end) ? { start: w.start, end: w.end } : null, wakeAt: e.wakeAt,
+      dayStart.set(e.date, { ts: e.ts, work: w && typeof w === 'object' && isHM(w.start) && isHM(w.end) ? { start: w.start, end: w.end } : null, wakeAt: e.wakeAt,
         dayType: validDayType(e.dayType), energy: Number.isInteger(e.energy) && e.energy! >= 1 && e.energy! <= 10 ? e.energy! : null });
     } else if (e.type === 'day_changed') {
-      // только после старта и до закрытия дня по типу, действующему до смены (события идут по ts) — иначе устаревшее устройство
+      // только после старта и до закрытия дня и по типу до смены, и по новому (события идут по ts) — иначе устаревшее устройство
+      // или смена задним числом закрыла бы день раньше уже принятых событий
       const t = validDayType(e.dayType), cur = isDate(e.date) ? typeNow(e.date) : null;
-      if (t && isHM(e.at) && cur && e.ts < closesAtTs(e.date, closeMinutes(cur)))
+      if (t && isHM(e.at) && cur && e.ts < closesAtTs(e.date, Math.min(closeMinutes(cur), closeMinutes(t))))
         dayChange.set(e.date, { type: t, ts: dayChange.get(e.date)?.ts ?? e.ts }); // тип — последний, ts строки XP — первый
     } else if (e.type === 'day_types_set' && Array.isArray(e.types)) {
       const ts = e.types.map(validDayType).filter((t): t is DayType => !!t);
@@ -143,7 +144,13 @@ export function replay(events: GameEvent[], now: number): GameState {
   // Тип дня: последний day_changed, иначе day_started (старый — синтез); смена без старта не действует.
   const types = new Map<ISODate, DayType>();
   for (const d of dayStart.keys()) types.set(d, typeNow(d)!);
-  const closeOf = (d: ISODate) => closeMinutes(types.get(d) ?? null);
+  /** Не начатый день, чей следующий уже начат, закрывается в момент того старта (не раньше полуночи, не позже 04:00): события до старта остаются в нём. */
+  const closeOf = (d: ISODate) => {
+    const t = types.get(d), next = t ? undefined : dayStart.get(addDays(d, 1));
+    if (!next) return closeMinutes(t ?? null);
+    const cal = gameDate(next.ts, 0), at = new Date(next.ts);
+    return cal < addDays(d, 1) ? 0 : cal > addDays(d, 1) ? BALANCE.day.closeDefaultMin : Math.min(BALANCE.day.closeDefaultMin, at.getHours() * 60 + at.getMinutes());
+  };
   const gd = (ts: number) => gameDateAt(ts, closeOf);
   const today = gd(now);
   // Дни отдыха и купленные дни без заданий: один счётчик на месяц, решается в цикле дней по датам (позднее не меняет раннее).
@@ -206,8 +213,8 @@ export function replay(events: GameEvent[], now: number): GameState {
       }
       case 'quest_completed': {
         const q = questById.get(e.questId);
-        // окно 00:00–06:00 следующих суток не зависит от закрытия дня (оно в пределах 00:00–04:00)
-        if (q && !q.done && gameDate(e.ts, 6) <= q.date && q.date <= gameDate(e.ts, 0)) {
+        // до закрытия своего дня (по его типу)
+        if (q && !q.done && e.ts < closesAtTs(q.date, closeOf(q.date)) && q.date <= gameDate(e.ts, 0)) {
           q.done = true; completedAt.set(q.id, e.ts);
           if (e.verify === 'photo' && typeof e.photo === 'string' && BLOB.test(e.photo)) photoOk.add(q.id);
         }
@@ -393,6 +400,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const skillLast: Partial<Record<SkillId, ISODate>> = {};
   const baseNow = () => Object.fromEntries(STAT_KEYS.map(k => [k, baseFromXp(start.base[k], statXp[k]).value])) as Record<Stat, number>;
   const ledger: LedgerEntry[] = [];
+  for (const [d, m] of metrics) if (m.steps !== undefined) dayOf(d).steps = m.steps; // до цикла: золото достижений прошлых дней
   let goldSoFar = 0, xpSoFar = 0; // цикл идёт по датам: на начало дня d — строки с датой < d
   const statByDate = new Map<ISODate, Record<Stat, number>>(); // XP характеристик по датам — для «Перекоса» и Формы
   const add = (r: LedgerEntry) => {
@@ -406,6 +414,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       if (before < 2 && skillFromXp(start.skills[id], skillXp[id]).level >= 2) bump(r.date, 'skills');
     }
   };
+  const achGoldBefore = (d: ISODate) => BALANCE.achievementGold * earnAchievements(days, addDays(d, -1), startLevel).filter(a => a.id !== 'first_purchase').length;
   const skillLevels = () => Object.fromEntries(SKILL_IDS.map(id => [id, skillFromXp(start.skills[id], skillXp[id]).level])) as Record<SkillId, number>;
   let dayStartCaps: GameState['today']['dayStart'] | null = null; // потолки рангов сегодня (переброс, своё задание) — на начало дня
   const history: DayResult[] = [], statHistory: GameState['statHistory'] = [];
@@ -428,8 +437,12 @@ export function replay(events: GameEvent[], now: number): GameState {
     const lvl = levelFromXp(xpSoFar, startLevel).level;
     if (d === today) dayStartCaps = { level: lvl, skills: skillLevels() };
     const capOf = (q: DayQuest) => RANKS.indexOf(rankCap(lvl, skillFromXp(start.skills[q.skills[0]], skillXp[q.skills[0]]).level));
+    // золото достижений дат < d: их счётчики к этому моменту окончательны; first_purchase — нет (покупки решаются после цикла)
+    const achGold = spendsOn.has(d) ? achGoldBefore(d) : 0;
     for (const s of spendsOn.get(d) ?? []) {
-      const avail = goldSoFar - ordinaryBuys.reduce((a, b) => a + (b.ts < s.ts ? b.r.price : 0), 0) - paidSum;
+      // shortcut: обычные покупки — все кандидаты (принятие решается после цикла); расходится со spendable только после отклонённой
+      // обычной покупки, т. е. когда золота и так не хватало
+      const avail = goldSoFar + achGold - ordinaryBuys.reduce((a, b) => a + (b.ts < s.ts ? b.r.price : 0), 0) - paidSum;
       if ('orig' in s) {
         const i = qs.findIndex(q => q.id === s.orig), used = rerollsOn.get(d) ?? 0;
         const price = used >= BALANCE.reroll.free ? BALANCE.reroll.cost : 0;
@@ -532,7 +545,6 @@ export function replay(events: GameEvent[], now: number): GameState {
   dayOf(today).streak = streakNow;
   const todayReal = todayQuests.filter(q => q.kind !== 'custom');
   if (todayReal.length >= 3 && todayReal.every(q => q.done)) bump(today, 'perfectDays');
-  for (const [d, m] of metrics) if (m.steps !== undefined) dayOf(d).steps = m.steps;
   // Золото достижений учитывается при покупках по дате покупки; first_purchase зависит от покупок, поэтому считаем дважды
   // (золото самого first_purchase на проверку покупок не влияет — баланс не уходит в минус).
   let achs = earnAchievements(days, today, startLevel);
@@ -597,8 +609,9 @@ export function replay(events: GameEvent[], now: number): GameState {
       date: today, started: !!st, work: st?.work ?? null, wakeAt: st?.wakeAt ?? null,
       closesAt: closesAtTs(today, closeOf(today)), dayType: types.get(today) ?? null, energy, changed: !!st && dayChange.has(today),
       restDaysLeft: Math.max(0, BALANCE.streak.restDaysPerMonth - (restInMonth.get(today.slice(0, 7)) ?? 0)),
-      // то же правило, что у платных трат: золото прошлых дней − все обычные покупки − принятые платные траты
-      spendable: Math.max(0, ledger.reduce((a, r) => a + (r.date < today ? r.gold : 0), 0) - ordinaryBuys.reduce((a, b) => a + b.r.price, 0) - paidSum),
+      // то же правило, что у платных трат: золото строк и достижений прошлых дней − принятые обычные покупки − принятые платные траты
+      spendable: Math.max(0, ledger.reduce((a, r) => a + (r.date < today ? r.gold : 0), 0) + achGoldBefore(today)
+        - purchases.reduce((a, p) => a + (shop.get(p.rewardId)?.effect ? 0 : p.price), 0) - paidSum),
       freezesLeft: Math.max(0, BALANCE.shop.freezePerMonth - (freezeMonth.get(today.slice(0, 7)) ?? 0)), dayOff: dayOff.has(today),
       dayStart: dayStartCaps ?? { level, skills: skillLevels() }, // сегодня не в цикле — сегодняшних строк нет
       rerollsUsed, nextRerollCost: rerollsUsed >= BALANCE.reroll.free ? BALANCE.reroll.cost : 0, customCount: customs.get(today)?.length ?? 0,

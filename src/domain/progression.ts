@@ -2,7 +2,7 @@ import { BALANCE as B, RANKS } from './balance';
 import type { Rank, Verify } from './types';
 
 const r9 = (x: number) => Math.round(x * 1e9) / 1e9;
-const sum = (a: number[]) => r9(a.reduce((s, x) => s + x, 0));
+const sum = (a: number[]) => r9(a.reduce((s, x) => s + Math.max(0, x), 0)); // отрицательные слагаемые — 0
 
 export const startBase = (score: number): number =>
   Math.min(B.stat.startMax, Math.round(B.stat.startBase + B.stat.startK * score));
@@ -18,7 +18,7 @@ export function baseFromXp(start: number, xp: number): { value: number; into: nu
 export const formNorm = (avgDailyXp: number): number => Math.max(B.form.normMin, r9(B.form.normShare * avgDailyXp));
 
 export const formOf = (xpWindow: number, days: number, norm: number): number | null =>
-  days <= 0 ? null : Math.min(1, xpWindow / (days * norm));
+  days <= 0 || norm <= 0 ? null : Math.min(1, xpWindow / (days * norm));
 
 export function formStatus(form: number | null): 'new' | 'in_form' | 'sagging' | 'abandoned' {
   if (form === null) return 'new';
