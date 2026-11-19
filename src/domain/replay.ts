@@ -434,7 +434,8 @@ export function replay(events: GameEvent[], now: number): GameState {
         const i = qs.findIndex(q => q.id === s.orig), used = rerollsOn.get(d) ?? 0;
         const price = used >= BALANCE.reroll.free ? BALANCE.reroll.cost : 0;
         // замена не выше потолка своего навыка (+1, только если заменяется вызов) — журнал недоверенный
-        if (i < 0 || (price > 0 && avail < price) || RANKS.indexOf(s.repl.rank) > capOf(s.repl) + (qs[i].kind === 'challenge' ? 1 : 0)) continue;
+        // замена не дублирует шаблон, уже стоящий в этом дне (два устройства / недоверенный журнал)
+        if (i < 0 || qs.some(q => q.templateId === s.repl.templateId) || (price > 0 && avail < price) || RANKS.indexOf(s.repl.rank) > capOf(s.repl) + (qs[i].kind === 'challenge' ? 1 : 0)) continue;
         qs[i] = s.repl; rerollsOn.set(d, used + 1);
         if (price) { rerollPaid.push({ ts: s.ts, price }); paidSum += price; }
       } else {

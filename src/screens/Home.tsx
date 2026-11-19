@@ -23,7 +23,7 @@ import CustomQuest from './CustomQuest'
 import DayChanged from './DayChanged'
 import MyDay from './MyDay'
 import QuickInput from './QuickInput'
-import { replanAfterBusy, replanForDayType } from './replan'
+import { replanToday } from './replan'
 
 type Sheet = null | 'quick' | 'busy' | 'checkin' | 'changed' | 'custom'
 
@@ -85,10 +85,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
   }
 
   const quests = useMemo(() => {
-    // после «День изменился» — окна нового типа (dropped скрыты); иначе — после «Занят до…»
-    const qs = today.changed && today.dayType ? replanForDayType(today.quests, hhmmNow(), today.dayType, profile)
-      : today.busyUntil && today.wakeAt ? replanAfterBusy(today.quests, hhmmNow(), today.busyUntil, today.wakeAt, profile, today.work)
-      : today.quests.filter(q => !q.dropped)
+    const qs = replanToday(today, hhmmNow(), profile)
     const key = (w: { start: string } | null) => (w ? (toMin(w.start) - toMin(today.wakeAt ?? profile.wake) + 1440) % 1440 : 1e9)
     return [...qs].sort((a, b) => key(a.window) - key(b.window))
   }, [today, profile])
@@ -127,14 +124,29 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
   const cost = today.nextRerollCost
   // платный переброс — только из золота прошлых дней (spendable), как его проверяет replay
   const rerollInfo = { label: cost ? String(cost) : 'бесплатно', off: cost > today.spendable ? `мало золота (${today.spendable})` : null }
-  const reroll = (q: DayQuest) => guarded(q.id, 'Не удалось перебросить, попробуй ещё раз', async () => {
+  // один переброс в полёте на все задания: цена и занятые шаблоны устаревают до перезагрузки состояния
+  const rerollRef = useRef(false)
+  const [rerolling, setRerolling] = useState(false)
+  useEffect(() => { rerollRef.current = false; setRerolling(false) }, [today.rerollsUsed, today.quests])
+  const reroll = (q: DayQuest) => {
+    if (rerollRef.current || pending.current.has(q.id)) return
+    rerollRef.current = true
+    setRerolling(true)
+    const free = () => { rerollRef.current = false; setRerolling(false) }
+    return guarded(q.id, 'Не удалось перебросить, попробуй ещё раз', async () => {
+      try { if (!(await rerollOne(q))) free() } catch (e) { free(); throw e }
+      return false
+    })
+  }
+  // true — событие записано (снятие блокировки — по новому состоянию)
+  const rerollOne = async (q: DayQuest) => {
     const wakeAt = today.wakeAt ?? hhmmNow()
     const ctx = assembleCtx(state, today.dayType ?? legacyDayType(today.work, wakeAt, profile.sleep), wakeAt, today.energy ?? BALANCE.energy.fallback)
     const r = rerollCandidate(ctx, q, today.quests)
     if (!r) { setErr('Замены того же ранга нет'); return false }
     await appendEvent({ type: 'quest_rerolled', date: today.date, questId: q.id, replacement: r })
-    return false
-  })
+    return true
+  }
 
   const allDone = today.quests.length > 0 && today.quests.every(q => q.done || q.dropped)
   const hour = new Date(now()).getHours()
@@ -165,7 +177,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
         <ul>
           {(today.started || !later) && quests.map((q, i) => (
             <QuestCard key={q.id} q={q} i={i} pop={pop?.id === q.id ? pop.k : null} busy={busyIds.has(q.id)}
-              reroll={rerollable(q) ? rerollInfo : null}
+              reroll={rerollable(q) ? { ...rerollInfo, off: rerolling ? 'подожди…' : rerollInfo.off } : null}
               onDone={() => void complete(q.id)} onPhoto={f => void photo(q.id, f)} onReroll={() => void reroll(q)} />
           ))}
         </ul>

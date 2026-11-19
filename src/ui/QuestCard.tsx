@@ -20,14 +20,14 @@ export default function QuestCard({ q, i, pop, busy, reroll, onDone, onPhoto, on
   const open = !q.done && !q.legacy
   return (
     <li className={`q${q.done ? ' done' : ''}`} style={{ '--i': i } as React.CSSProperties}>
-      <span className={`rk rk-${q.rank}`} aria-label={`Ранг ${q.rank}`}>{q.rank}</span>
+      <span className={`rk rk-${q.rank}`} role="img" aria-label={`Ранг ${q.rank}`}>{q.rank}</span>
       <div className="t">
         <b>{q.title}</b>
         <small>{q.skills.map(skillTitle).join(' + ')} · {q.window ? `${q.window.start}–${q.window.end}` : 'в течение дня'}</small>
         {q.why && <small className="why">{q.why}</small>}
       </div>
       <span className="vf" title={v.text} aria-label={v.text} role="img"><v.Icon size={16} aria-hidden="true" /></span>
-      <span className="xpchip" aria-label={q.done ? `Получено ${xp} XP` : `Около ${xp} XP`}>
+      <span className="xpchip" role="img" aria-label={q.done ? `Получено ${xp} XP` : `Около ${xp} XP`}>
         +{xp}{q.kind === 'restore' && <em className="x2">×2</em>}
       </span>
       <button className="chk" disabled={q.done || busy} aria-label={`Выполнить (честное слово): ${q.title}`} onClick={onDone}>

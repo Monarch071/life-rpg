@@ -1142,3 +1142,13 @@ test('today.dayStart: уровень и навыки на начало дня �
   const e = replay([onboard], at('2026-11-17', 12));
   expect(e.today.dayStart).toEqual({ level: e.level, skills: Object.fromEntries(Object.entries(e.skills).map(([k, v]) => [k, v.level])) });
 });
+
+test('переброс: замена с шаблоном, уже стоящим в этом дне, — отказ (недоверенный журнал)', () => {
+  const dup = (id: string) => ({ ...nq(id, D10, 'E', ['cardio']), templateId: 't-dup' });
+  const s = replay([...gold60, issue(D10, ['x1', 'x2', 'x3'].map(id => nq(id, D10, 'E', ['strength']))),
+    reroll('x1', dup('r1'), at(D10, 10)), reroll('x2', dup('r2'), at(D10, 10, 1)),
+    reroll('x3', { ...nq('r3', D10, 'E', ['cardio']), templateId: 't-x1' }, at(D10, 10, 2))], at(D10, 12));
+  // x2 → тот же t-dup, что у r1, — отказ; шаблон заменённого x1 в дне уже не стоит — можно
+  expect(s.today.quests.map(q => q.id)).toEqual(['r1', 'x2', 'r3']);
+  expect(s.today.rerollsUsed).toBe(2);
+});

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { toMin } from '../domain/day'
 import type { Profile, Quest } from '../domain/types'
-import { replanAfterBusy, replanForDayType } from './replan'
+import { replanAfterBusy, replanForDayType, replanToday } from './replan'
 
 const profile = { sleep: '23:00', energy: { morning: 3, day: 3, evening: 3, night: 1 } } as Profile
 const q = (id: string, start: string | null, minutes: number, done = false): Quest & { done: boolean } => ({
@@ -51,5 +51,23 @@ describe('replanForDayType', () => {
   it('после отбоя нового типа — «в течение дня»', () => {
     const r = replanForDayType([dq('a', '18:00', 30)], '03:30', { ...evening, busy: { ...evening.busy } }, { ...profile, wake: '11:00' })
     expect(r[0].window).toBeNull()
+  })
+})
+
+describe('replanToday', () => {
+  const evening = { id: 'evening', kind: 'evening', label: 'Вечерняя смена', wake: '11:00', busy: { start: '16:00', end: '02:00' }, bed: '03:00', slots: 3 } as const
+  const dq = (id: string, start: string, minutes: number) => ({ ...q(id, start, minutes), dropped: false }) as Parameters<typeof replanForDayType>[0][number]
+  const base = { quests: [dq('a', '18:00', 30), dq('b', '20:00', 30)], changed: true, dayType: { ...evening, busy: { ...evening.busy } }, wakeAt: '11:00', work: null }
+  it('«Занят до…» после смены дня: окна нового типа после busyUntil', () => {
+    const r = replanToday({ ...base, busyUntil: '14:00' } as Parameters<typeof replanToday>[0], '12:00', { ...profile, wake: '11:00' })
+    for (const x of r) {
+      expect(toMin(x.window!.start)).toBeGreaterThanOrEqual(toMin('14:00'))
+      expect(toMin(x.window!.end)).toBeLessThanOrEqual(toMin('16:00'))
+    }
+  })
+  it('без «Занят до…» — с текущего времени', () => {
+    const r = replanToday({ ...base, busyUntil: null } as Parameters<typeof replanToday>[0], '12:00', { ...profile, wake: '11:00' })
+    expect(toMin(r[0].window!.start)).toBeGreaterThanOrEqual(toMin('12:00'))
+    expect(r.some(x => toMin(x.window!.start) < toMin('14:00'))).toBe(true)
   })
 })

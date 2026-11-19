@@ -15,7 +15,7 @@ export default function DayChanged({ state, onClose }: { state: GameState; onClo
   const { today } = state
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  const dlg = useDialog<HTMLDivElement>(onClose)
+  const dlg = useDialog<HTMLDivElement>(busy ? undefined : onClose)
   const pick = async (t: DayType) => {
     setBusy(true)
     setErr(null)
@@ -28,11 +28,11 @@ export default function DayChanged({ state, onClose }: { state: GameState; onClo
     }
   }
   return (
-    <div className="sheet-wrap" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="sheet-wrap" onClick={e => !busy && e.target === e.currentTarget && onClose()}>
       <div className="sheet" ref={dlg} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="dch-title">
         <div className="sheet-head">
           <h2 id="dch-title">День изменился</h2>
-          <button className="icon-btn" aria-label="Закрыть" onClick={onClose}><X size={20} aria-hidden="true" /></button>
+          <button className="icon-btn" aria-label="Закрыть" disabled={busy} onClick={onClose}><X size={20} aria-hidden="true" /></button>
         </div>
         <p className="muted">Выполненное остаётся. Если у нового дня меньше слотов, лишние задания снимутся без штрафа, остальные переедут в свободное время.</p>
         <p className="ok">{today.changed ? 'XP за гибкость сегодня уже получен' : `+${BALANCE.dayChangedXp} XP за гибкость`}</p>

@@ -2,7 +2,7 @@ import { BALANCE } from '../domain/balance'
 import { toMin } from '../domain/day'
 import type { DayType } from '../domain/dayType'
 import { freeWindows, latestEnd, placeQuests, type Win } from '../domain/schedule'
-import type { HHMM, Profile, Quest } from '../domain/types'
+import type { GameState, HHMM, Profile, Quest } from '../domain/types'
 
 type DayQuest = Quest & { done: boolean }
 
@@ -34,4 +34,17 @@ export function replanForDayType<Q extends DayQuest & { dropped: boolean }>(ques
   const placed = placeQuests(shown.filter(q => !q.done && q.window), ws, profile.energy, nowAt)
   const byId = new Map(placed.map(q => [q.id, q.window]))
   return shown.map(q => (byId.has(q.id) ? { ...q, window: byId.get(q.id)! } : q))
+}
+
+/** Что показать на Главной: после «День изменился» — окна нового типа, начиная не раньше «Занят до…»;
+ *  без смены — перестановка после «Занят до…»; dropped скрыты всегда. */
+export function replanToday<Q extends DayQuest & { dropped: boolean }>(
+  t: Pick<GameState['today'], 'changed' | 'dayType' | 'busyUntil' | 'wakeAt' | 'work'> & { quests: Q[] }, nowAt: HHMM, profile: Profile,
+): Q[] {
+  if (t.changed && t.dayType) {
+    const rel = (h: HHMM) => (toMin(h) - toMin(t.wakeAt ?? profile.wake) + 1440) % 1440
+    return replanForDayType(t.quests, t.busyUntil && rel(t.busyUntil) > rel(nowAt) ? t.busyUntil : nowAt, t.dayType, profile)
+  }
+  const shown = t.quests.filter(q => !q.dropped)
+  return t.busyUntil && t.wakeAt ? replanAfterBusy(shown, nowAt, t.busyUntil, t.wakeAt, profile, t.work) : shown
 }
