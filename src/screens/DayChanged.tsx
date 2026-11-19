@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import { appendEvent } from '../db'
 import { BALANCE } from '../domain/balance'
-import type { DayType } from '../domain/dayType'
+import { closeMinutes, closesAtTs, type DayType } from '../domain/dayType'
 import type { GameState } from '../domain/types'
-import { hhmmNow } from '../now'
+import { hhmmNow, now } from '../now'
 import { DAY_ICONS } from '../ui/icons'
 import { useDialog } from '../ui/useDialog'
 
@@ -39,9 +39,10 @@ export default function DayChanged({ state, onClose }: { state: GameState; onClo
         <div className="stack">
           {state.dayTypes.map(t => {
             const Icon = DAY_ICONS[t.kind], cur = today.dayType?.id === t.id
+            const late = closesAtTs(today.date, closeMinutes(t)) <= now() // такой день уже закрылся бы — replay отклонит
             return (
-              <button key={t.id} className="btn day-card" disabled={busy || cur} aria-current={cur || undefined} onClick={() => pick(t)}>
-                <Icon size={22} aria-hidden="true" /> <span>{t.label}{cur && ' · сейчас'}</span> <small>{span(t)} · {t.slots} зад.</small>
+              <button key={t.id} className="btn day-card" disabled={busy || cur || late} aria-current={cur || undefined} onClick={() => pick(t)}>
+                <Icon size={22} aria-hidden="true" /> <span>{t.label}{cur && ' · сейчас'}</span> <small>{late ? 'уже поздно для этого типа' : `${span(t)} · ${t.slots} зад.`}</small>
               </button>
             )
           })}
