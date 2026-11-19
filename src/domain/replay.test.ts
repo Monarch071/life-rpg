@@ -1586,3 +1586,65 @@ test('per7 = 7 «по рабочим»: ритуал в выходной не з
   const s = replay([onboard, ladder('l1', { steps: daily, suitable: 'workdays' }), startDay('2026-12-01', { dayType: DT[2] }), rit('2026-12-01')], at('2026-12-02'));
   expect(s.ladders[0]).toMatchObject({ windowDays: 1, done: 0, required: 13 });
 });
+
+// ---- Этап 4: Враг-тень ----
+const facet = (id = 'f1', start = 50, kind = 'custom', date = '2026-12-01') => ev({ type: 'facet_added', facetId: id, name: 'Сладкое', kind, start, ts: at(date, 9) });
+const relapse = (date: string, id = 'f1', ts = at(date, 21)) => ev({ type: 'shadow_relapse', facetId: id, date, ts });
+
+test('сила по дням и честная отметка +5 XP в «Контроль привычек»', () => {
+  const s = replay([onboard, facet(), relapse('2026-12-07'), relapse('2026-12-07', 'f1', at('2026-12-07', 22))], at('2026-12-15'));
+  expect(s.shadow.facets[0]).toMatchObject({ strength: 27, cleanRun: 7, banished: false });
+  expect(s.shadow.strength).toBe(27);
+  expect(s.ledger.filter(r => r.source === 'shadow')).toMatchObject([{ xp: 5, date: '2026-12-07', skills: [['habits', 5]] }]);
+});
+test('срыв за вчера и после закрытия — игнор; 4-я грань и start 90 — игнор', () => {
+  const s = replay([onboard, facet(), relapse('2026-12-02', 'f1', at('2026-12-03', 10)), facet('f2', 90), facet('f3'), facet('f4'), facet('f5')], at('2026-12-04'));
+  expect(s.ledger.some(r => r.source === 'shadow')).toBe(false);
+  expect(s.shadow.facets.map(f => f.id)).toEqual(['f1', 'f3', 'f4']);
+});
+test('Усталость +5 за срыв вчера [S§3]', () => {
+  const sleep5 = (d: string) => ev({ type: 'health_packet', date: d, kind: 'morning', health: { sleepHours: 5 }, calendar: [], ts: at(d, 8), deviceId: 'shortcuts' });
+  const base = [onboard, facet(), issue('2026-12-01', [nq('a', '2026-12-01', 'E', ['strength'])]), sleep5('2026-12-07'), sleep5('2026-12-08')];
+  expect(replay(base, at('2026-12-08')).today.vitals.fatigue).toBe(20);
+  expect(replay([...base, relapse('2026-12-07')], at('2026-12-08')).today.vitals.fatigue).toBe(25);
+});
+test('битва 27 декабря: сила 0 → 400 XP и редкий трофей; изгнание на 30-й день', () => {
+  const evs = [onboard, facet('f1', 30)];
+  const s = replay(evs, at('2026-12-28'));
+  expect(s.shadow.lastBattle).toMatchObject({ date: '2026-12-27', strength: 0, result: 'crush', xp: 400 });
+  expect(s.ledger.find(r => r.id.startsWith('battle:'))).toMatchObject({ xp: 400, source: 'shadow', date: '2026-12-27' });
+  expect(s.trophies).toMatchObject([{ kind: 'rare', date: '2026-12-27' }]);
+  expect(replay(evs, at('2026-12-30')).shadow.facets[0].banished).toBe(false);   // закрыто 29 дней
+  const t = replay(evs, at('2026-12-31'));
+  expect(t.shadow.facets[0].banished).toBe(true); expect(t.shadow.strength).toBeNull();
+  expect(t.achievements.some(a => a.id === 'banish')).toBe(true);
+});
+test('битва в день отдыха проходит; без граней битвы нет', () => {
+  const rest = startDay('2026-12-27', { dayType: DT[3] });
+  // старт 60 c 20 декабря: 8 чистых дней → 60 − 16 − 5 = 39
+  expect(replay([onboard, facet('f1', 60, 'custom', '2026-12-20'), rest], at('2026-12-28')).shadow.lastBattle).toMatchObject({ strength: 39, result: 'win', xp: 250 });
+  expect(replay([onboard], at('2026-12-28')).shadow.lastBattle).toBeNull();
+});
+test('срыв по данным: соцсети 150 мин при живом источнике — +8 без XP', () => {
+  const sig = (h: number, m: number, state: string) => ev({ type: 'signal_logged', at: at('2026-12-02', h, m), signal: { kind: 'app', app: 'social', state }, ts: at('2026-12-02', h, m), deviceId: 'shortcuts' });
+  const s = replay([onboard, facet('f1', 50, 'social'), sig(10, 0, 'open'), sig(12, 30, 'close')], at('2026-12-03'));
+  expect(s.shadow.facets[0].strength).toBe(50 - 2 + 8);
+  expect(s.ledger.some(r => r.source === 'shadow')).toBe(false);
+});
+test('Тень: серьёзная грань не добавляется, ничья даёт план, снятие, мусор не бросает, поздняя отметка не меняет битву', () => {
+  const alco = ev({ type: 'facet_added', facetId: 'a', name: 'Пиво', kind: 'alcohol', start: 65, ts: at('2026-12-01', 9) });
+  const bet = ev({ type: 'facet_added', facetId: 'b', name: 'Ставки', kind: 'custom', start: 30, ts: at('2026-12-01', 9) });
+  expect(replay([onboard, alco, bet], at('2026-12-03')).shadow).toMatchObject({ facets: [], strength: null, nextBattle: '2026-12-27' });
+  const draw = replay([onboard, facet('f1', 80, 'custom', '2026-12-20')], at('2026-12-28')).shadow;
+  expect(draw.lastBattle).toMatchObject({ result: 'draw', xp: 50 }); expect(draw.lastBattle!.plan).toContain('Сладкое');
+  expect(draw.nextBattle).toBe('2027-01-31');
+  const rm = ev({ type: 'facet_removed', facetId: 'f1', ts: at('2026-12-03', 8) });
+  expect(replay([onboard, facet(), rm, facet('f2', 50, 'custom', '2026-12-03')], at('2026-12-04')).shadow.facets.map(f => f.id)).toEqual(['f2']);
+  const junk = [ev({ type: 'facet_added', facetId: 7, name: 'x', kind: 'custom', start: 50 }), ev({ type: 'facet_added', facetId: 'j', name: '', kind: 'custom', start: 50 }),
+    ev({ type: 'facet_added', facetId: 'k', name: 'K', kind: 'evil', start: 50 }), ev({ type: 'facet_added', facetId: 'm', name: 'M', kind: 'custom', start: 50.5 }),
+    ev({ type: 'shadow_relapse', facetId: 'nope', date: '2026-12-02' }), ev({ type: 'shadow_relapse', facetId: 'f1', date: 'x' }), ev({ type: 'facet_removed', facetId: null })];
+  expect(() => replay([onboard, facet(), ...junk], at('2026-12-03'))).not.toThrow();
+  expect(replay([onboard, facet(), ...junk], at('2026-12-03')).shadow.facets.map(f => f.id)).toEqual(['f1']);
+  const evs = [onboard, facet('f1', 30)];
+  expect(replay([...evs, relapse('2026-12-27', 'f1', at('2026-12-28', 10))], at('2027-01-05')).shadow.lastBattle).toEqual(replay(evs, at('2027-01-05')).shadow.lastBattle);
+});

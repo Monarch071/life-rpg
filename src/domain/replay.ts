@@ -10,11 +10,12 @@ import { AUTO_METRIC_INFO, METRIC_INFO } from './metricInfo';
 import { baseFromXp, fatiguePenalty, formNorm, formOf, formStatus, goldFor, questReward, rankCap, skillFromXp, streakBonus } from './progression';
 import { DEFAULT_SKILL_BY_STAT, LEGACY_SKILL_BY_TEMPLATE, legacyRank } from './questBank';
 import { isSkillId, primaryStat, SKILL_CATALOG, splitXp, type SkillId } from './skillCatalog';
+import { banished, battleOutcome, facetDay, isSerious, lastSunday, masterPlan } from './shadow';
 import { startProfile } from './startProfile';
 import { dayOutcome, nextStreak } from './streak';
 import { classFor, isStat, STATS, tierFor } from './stats';
 import { cleanText } from './text';
-import type { Analysis, Answers, AutoMetric, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, WeeklyQuest } from './types';
+import type { Analysis, Answers, AutoMetric, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, WeeklyQuest } from './types';
 import { weakestStat } from './weekly';
 import { energyScore, fatigueNext, focusScore, hpScore, intFocusMult, sessionMinutes, unionMinutes, workoutKind } from './vitals';
 import { levelFromXp } from './xp';
@@ -40,6 +41,7 @@ const validProfile = (p: any): p is Profile => !!p && typeof p === 'object' && !
 const validAvatar = (p: any): p is AvatarParams => !!p && typeof p === 'object' && (['hair', 'hairColor', 'outfitColor', 'eyes'] as const).every(k => typeof p[k] === 'string');
 const strongestStat = (st: Record<Stat, number>): Stat => STAT_KEYS.reduce((a, k) => (st[k] > st[a] ? k : a)); // ничья — по порядку STATS
 const QUEST_KINDS: readonly string[] = ['daily', 'challenge', 'restore', 'custom'];
+const FACET_KINDS: readonly string[] = ['games', 'social', 'late', 'junk', 'smoke', 'procr', 'alcohol', 'custom'];
 const clampXp = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(BALANCE.legacy.questXpMax, Math.max(0, v))) : 0);
 
 /** Задание из журнала → задание дня. Граница доверия: без rank — легаси (ранг/навык по картам), с rank — 1–2 различных навыка, иначе null. */
@@ -250,6 +252,12 @@ export function replay(events: GameEvent[], now: number): GameState {
     status: 'new' | 'active' | 'queued' | 'auto' | 'gone'; step: number; attempt: 1 | 2; windowStart: ISODate | null;
     win: boolean[]; done: number; ask: boolean; askFrom: ISODate; weekRates: number[]; mastered: boolean };
   const lads = new Map<string, Lad>();
+  // Враг-тень (спека §4): грани принимаются (лимит) и снимаются в цикле дней — операции по игровой дате в порядке событий.
+  const S = BALANCE.shadow;
+  type Facet = { id: string; name: string; kind: FacetKind; added: ISODate; strength: number; cleanRun: number; banished: boolean; status: 'new' | 'on' | 'gone' };
+  const facetMap = new Map<string, Facet>(), facetOps = new Map<ISODate, { f: Facet; add: boolean }[]>();
+  const facetOp = (d: ISODate, f: Facet, add: boolean) => facetOps.set(d, [...(facetOps.get(d) ?? []), { f, add }]);
+  const relapseAt = new Map<string, number>(); // `${facetId}|${date}` → ts первой честной отметки
 
   for (const e of evs) {
     if (e.deviceId === 'shortcuts') sync.last = e.ts; // события по возрастанию ts
@@ -405,6 +413,23 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (l && isDate(e.date) && e.date === gd(e.ts) && !l.rit.has(e.date)) l.rit.set(e.date, e.ts);
         break;
       }
+      case 'facet_added': {
+        const name = cleanText(e.name, 40), d = gd(e.ts);
+        // частота — из стартовой силы; серьёзная зависимость — карточка безопасности, не грань (решение контролёра)
+        const freq = (['daily', 'often', 'sometimes', 'rare'] as const).find(k => e.start >= S.start[k]);
+        if (typeof e.facetId !== 'string' || e.facetId.length > 64 || facetMap.has(e.facetId) || !name || !FACET_KINDS.includes(e.kind)
+          || !Number.isInteger(e.start) || e.start < S.startMin || e.start > S.startMax || d < MIN_ISSUE_DATE || isSerious(name, e.kind, null, freq)) break;
+        const f: Facet = { id: e.facetId, name, kind: e.kind, added: d, strength: e.start, cleanRun: 0, banished: false, status: 'new' };
+        facetMap.set(f.id, f); facetOp(d, f, true);
+        break;
+      }
+      case 'facet_removed': { const f = facetMap.get(e.facetId); if (f) facetOp(gd(e.ts), f, false); break; }
+      case 'shadow_relapse': {
+        // только за сегодня (поздняя отметка за закрытый день — игнор); повтор в ту же дату — та же отметка
+        const k = `${e.facetId}|${e.date}`;
+        if (facetMap.has(e.facetId) && isDate(e.date) && e.date === gd(e.ts) && !relapseAt.has(k)) relapseAt.set(k, e.ts);
+        break;
+      }
       case 'busy_until': if (e.date === today && isHM(e.until)) busyUntil = e.until; break;
       case 'checkin': {
         if (!isDate(e.date)) break;
@@ -471,12 +496,13 @@ export function replay(events: GameEvent[], now: number): GameState {
     if (s.kind === 'wallet') { addTo(s.d, 'spendAuto', s.amount); dd(s.d).spendAuto = Math.round(dd(s.d).spendAuto! * 100) / 100; } // копейки без хвоста float
   }
   /** «Без соцсетей/игр»: источник жив за autoLeSourceDays до даты; сигналы — только принятые до закрытия дня (позднее решение не меняют). */
-  const leOk = (d: ISODate, app: string, value: number) => {
+  const appMin = (d: ISODate, app: string): number | null => {
     const close = closesAtTs(d, closeOf(d)), from = addDays(d, 1 - BALANCE.autoLeSourceDays), next = addDays(d, 1);
     const sg = appSigs(app, sigs.filter(s => s.ts < close && s.d >= from && s.d <= next));
-    if (!sigs.some(s => s.kind === 'app' && s.app === app && s.ts < close && s.d >= from && s.d <= d)) return false;
-    return sessionMinutes(sg).reduce((a, x) => a + (gd(x.start) === d ? x.min : 0), 0) <= value;
+    if (!sigs.some(s => s.kind === 'app' && s.app === app && s.ts < close && s.d >= from && s.d <= d)) return null; // источник не жив
+    return sessionMinutes(sg).reduce((a, x) => a + (gd(x.start) === d ? x.min : 0), 0);
   };
+  const leOk = (d: ISODate, app: string, value: number) => { const m = appMin(d, app); return m !== null && m <= value; };
   // Параметры дня (спека §5): каждая дата — по событиям, принятым до её закрытия, как данные дня выше.
   const V = BALANCE.vitals;
   const hvMemo = new Map<ISODate, { sleep?: number; steps?: number; rhr?: number; mindful?: number; feel?: number }>();
@@ -669,7 +695,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const isSuitable = (l: Lad, d: ISODate) => l.suitable === 'all' || types.get(d)?.kind === 'day' || types.get(d)?.kind === 'evening';
   /** Нужно за окно (k = 2, 14 дней) или неделю (k = 1, 7 дней); per7 = 7 — подходящие дни, ещё не прожитые считаются подходящими. */
   const reqOf = (per7: number, win: boolean[], span: number, k: number) => (per7 < 7 ? k * per7 : win.filter(Boolean).length + span - win.length);
-  const ladRow = (id: string, ts: number, d: ISODate, source: 'ritual' | 'ladder', xp: number, skill: SkillId, verified: boolean): LedgerEntry => {
+  const ladRow = (id: string, ts: number, d: ISODate, source: 'ritual' | 'ladder' | 'shadow', xp: number, skill: SkillId, verified: boolean): LedgerEntry => {
     const sp = splitXp(xp, [skill]);
     return { id, ts, date: d, source, base: xp, k: 1, bonus: 0, penalty: 0, mult: 1, xp, gold: goldFor(xp), skills: sp.skills, stats: sp.stats, verified };
   };
@@ -697,6 +723,7 @@ export function replay(events: GameEvent[], now: number): GameState {
         done++;
         add(ladRow(`ritual:${l.id}:${d}`, l.rit.get(d) ?? close, d, 'ritual', ritualXp(l.step), l.skill, auto));
         if (d === today) ladToday.set(l.id, auto ? 'auto' : 'honest');
+        if (l.kind === 'dont' && l.facetId) assist.add(`${l.facetId}|${d}`);
       }
       if (d >= today || frozen) continue; // окно — только по закрытым незамороженным дням
       // per7 = 7: нужны только подходящие дни — ритуал в неподходящий окно не добирает
@@ -722,6 +749,38 @@ export function replay(events: GameEvent[], now: number): GameState {
     }
     ritualsOn.set(d, { due, done });
   };
+  // Тень: по каждой дате от первой грани до сегодня — приём/снятие, честная отметка (XP), закрытие дня граней, битва.
+  const assist = new Set<string>(), relapsesOn = new Map<ISODate, number>(), facetList: Facet[] = [];
+  let lastBattle: GameState['shadow']['lastBattle'] = null;
+  const liveFacets = () => facetList.filter(f => f.status === 'on' && !f.banished);
+  const shadowStrength = (fs: Facet[]) => (fs.length ? Math.round(fs.reduce((a, f) => a + f.strength, 0) / fs.length) : null);
+  const shadowDay = (d: ISODate) => {
+    for (const { f, add } of facetOps.get(d) ?? []) {
+      if (!add) f.status = 'gone'; // не принятая (лимит) тоже не вернётся
+      else if (f.status === 'new' && liveFacets().length < S.maxFacets) { f.status = 'on'; facetList.push(f); }
+    }
+    for (const f of liveFacets()) {
+      const honest = relapseAt.get(`${f.id}|${d}`);
+      if (honest !== undefined) add(ladRow(`shadow:${f.id}:${d}`, honest, d, 'shadow', S.honestXp, 'habits', false));
+      if (d >= today) continue;
+      // срыв: честная отметка или данные группы приложений (те же правила, что у «<=»-заданий)
+      const m = f.kind === 'social' || f.kind === 'games' ? appMin(d, f.kind) : null;
+      const relapse = honest !== undefined || (m !== null && m > S.dataRelapseMin);
+      Object.assign(f, facetDay(f, relapse, assist.has(`${f.id}|${d}`)));
+      if (relapse) relapsesOn.set(d, (relapsesOn.get(d) ?? 0) + 1);
+      if (banished(f)) { f.banished = true; bump(d, 'facetsBanished'); }
+    }
+    const month = d.slice(0, 7), fs = liveFacets();
+    if (d >= today || d !== lastSunday(month) || !fs.length) return;
+    // битва — при закрытии последнего воскресенья, и в замороженный день тоже
+    const strength = shadowStrength(fs)!, o = battleOutcome(strength)!;
+    if (o.xp) add(ladRow(`battle:${month}`, closesAtTs(d, closeOf(d)), d, 'shadow', o.xp, 'habits', false));
+    if (o.trophy) trophies.push({ id: `battle:${month}`, kind: o.trophy, title: BALANCE.trophies.rare, date: d });
+    if (o.result === 'crush' || o.result === 'win') bump(d, 'shadowWins');
+    const top = fs.reduce((a, b) => (b.strength > a.strength ? b : a));
+    const hasDont = ladList.some(l => l.kind === 'dont' && l.facetId === top.id && l.status !== 'gone' && l.status !== 'new');
+    lastBattle = { date: d, strength, result: o.result, xp: o.xp, plan: o.plan ? masterPlan(fs, hasDont) : null };
+  };
   let dayStartCaps: GameState['today']['dayStart'] | null = null; // потолки рангов сегодня (переброс, своё задание) — на начало дня
   const history: DayResult[] = [], statHistory: GameState['statHistory'] = [];
   const finalized: { stat: Stat; done: boolean }[][] = [];
@@ -734,6 +793,8 @@ export function replay(events: GameEvent[], now: number): GameState {
   const firstDay = [...issued.keys(), ...(firstLadder ? [firstLadder] : [])].sort()[0] as ISODate | undefined;
   const dates = new Set([...issued.keys(), ...extra.keys(), ...weeklyAt.keys(), ...spendsOn.keys(), ...restTyped]);
   if (firstDay) for (let d = firstDay; d <= today; d = addDays(d, 1)) dates.add(d);
+  const firstFacet = [...facetMap.values()].map(f => f.added).filter(d => d <= today).sort()[0] as ISODate | undefined;
+  if (firstFacet) for (let d = firstFacet; d <= today; d = addDays(d, 1)) dates.add(d);
   const recAll = [...recSpans, ...(recOn ? [{ from: recOn.since, to: addDays(today, 1) }] : [])];
   for (const p of recAll) for (let d = p.from; d < p.to && d <= today; d = addDays(d, 1)) dates.add(d);
   for (const d of [...dates].sort()) {
@@ -760,7 +821,7 @@ export function replay(events: GameEvent[], now: number): GameState {
         day = { bigDay: norm > 0 && (rawXp.get(y.date) ?? 0) > F.bigDayShare * norm, rest: y.rest,
           calm: (issued.get(y.date) ?? []).some(q => q.done && (q.skills.some(s => s === 'mindfulness' || s === 'rest') || q.templateId === 'stretch'))
             || (yh.mindful ?? 0) >= F.calmMindfulMin,
-          lowEvening: yh.feel !== undefined && yh.feel <= F.lowEveningMax };
+          lowEvening: yh.feel !== undefined && yh.feel <= F.lowEveningMax, relapses: relapsesOn.get(y.date) ?? 0 };
       }
       // до старта Автоматики Усталость 0, штрафа и множителя Фокуса нет: закрытые дни старого журнала не меняются
       fatigue = d < BALANCE.automationSince ? 0 : fatigueNext(fatigue, day, hv(d).sleep ?? null);
@@ -842,6 +903,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     }
     for (const r of extra.get(d) ?? []) add(r);
     if (firstLadder && d >= firstLadder && d <= today) ladderDay(d);
+    if (firstFacet && d >= firstFacet && d <= today) shadowDay(d);
     if (!firstDay || d < firstDay || d >= today) continue;
     // закрытие дня: серия (заморозка гасит ближайший пропуск), идеальный день; история — для дней с выдачей
     const o = outcomeOf(d), rest = restDays.has(d) || dayOff.has(d), dq = qs.filter(q => q.done);
@@ -989,6 +1051,14 @@ export function replay(events: GameEvent[], now: number): GameState {
         ask: l.ask && !l.upd.some(u => u.date >= l.askFrom), facetId: l.facetId }; // «что мешает?» снимается правкой ступеней
     }),
     trophies,
+    shadow: {
+      strength: shadowStrength(liveFacets()),
+      // serious всегда false: серьёзная грань не принимается (решение контролёра)
+      facets: facetList.filter(f => f.status === 'on').map(f => ({ id: f.id, name: f.name, kind: f.kind, strength: f.strength, cleanRun: f.cleanRun,
+        banished: f.banished, serious: false, relapsedToday: relapseAt.has(`${f.id}|${today}`) })),
+      nextBattle: today <= lastSunday(today.slice(0, 7)) ? lastSunday(today.slice(0, 7)) : lastSunday(addDays(`${today.slice(0, 7)}-28`, 7).slice(0, 7)),
+      lastBattle,
+    },
     genInputs: {
       bestSteps7: best7(metrics, today, 'steps'),
       lastSleepHours: sleepDate ? metrics.get(sleepDate)!.sleepHours! : null, fatigue: vitals.fatigue,

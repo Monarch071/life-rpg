@@ -3,7 +3,7 @@ import { levelFromXp } from './xp';
 
 export interface AchievementCounters { questsDone: number; streak: number; level: number;
   maxStepsDay: number; perfectDays: number; checkins: number; purchases: number; skills: number; weeklyDone: number; bossesDefeated: number;
-  laddersMastered: number }
+  laddersMastered: number; facetsBanished: number; shadowWins: number }
 export interface AchievementDef { id: string; icon: string; title: string; desc: string; titleReward: string | null; test: (c: AchievementCounters) => boolean }
 
 const a = (id: string, icon: string, title: string, desc: string, titleReward: string | null, test: AchievementDef['test']): AchievementDef =>
@@ -31,15 +31,17 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   a('weekly_first', '📅', 'Недельный рубеж', 'Выполни недельное задание', null, c => c.weeklyDone >= 1),
   a('boss_first', '🐉', 'Босс повержен', 'Победи босса', 'Победитель боссов', c => c.bossesDefeated >= 1),
   a('ladder_master', '🪜', 'Мастер привычки', 'Пройди 4-ю ступень лестницы привычки', null, c => c.laddersMastered >= 1),
+  a('banish', '🌅', 'Изгнание', 'Изгони грань Врага-тени', null, c => c.facetsBanished >= 1),
+  a('shadow_win', '⚔️', 'Тень отступила', 'Победи Врага-тень в битве месяца', null, c => c.shadowWins >= 1),
 ];
 
 /** Приращения счётчиков по игровой дате. xp — для уровня; steps — максимум; streak — значение на конец дня. */
 export type Delta = Partial<Omit<AchievementCounters, 'level' | 'maxStepsDay'>> & { xp?: number; steps?: number };
-const ADDITIVE = ['questsDone', 'perfectDays', 'checkins', 'purchases', 'skills', 'weeklyDone', 'bossesDefeated', 'laddersMastered'] as const;
+const ADDITIVE = ['questsDone', 'perfectDays', 'checkins', 'purchases', 'skills', 'weeklyDone', 'bossesDefeated', 'laddersMastered', 'facetsBanished', 'shadowWins'] as const;
 
 /** Один проход по датам с событиями (по возрастанию, ≤ today): достижение получено в первую дату, где условие верно. */
 export function earnAchievements(days: Map<ISODate, Delta>, today: ISODate, startLevel = 1): { id: string; date: ISODate }[] {
-  const c: AchievementCounters = { questsDone: 0, streak: 0, level: startLevel, maxStepsDay: 0, perfectDays: 0, checkins: 0, purchases: 0, skills: 0, weeklyDone: 0, bossesDefeated: 0, laddersMastered: 0 };
+  const c: AchievementCounters = { questsDone: 0, streak: 0, level: startLevel, maxStepsDay: 0, perfectDays: 0, checkins: 0, purchases: 0, skills: 0, weeklyDone: 0, bossesDefeated: 0, laddersMastered: 0, facetsBanished: 0, shadowWins: 0 };
   const got = new Set<string>(), out: { id: string; date: ISODate }[] = [];
   let xp = 0;
   for (const d of [...days.keys()].filter(k => k <= today).sort()) {

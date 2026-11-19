@@ -164,6 +164,10 @@ export interface GameState {
     step: 1 | 2 | 3 | 4 | 5; attempt: 1 | 2; windowStart: ISODate | null; windowDays: number; done: number; required: number;
     todayDone: boolean; todayVerify: 'auto' | 'honest' | null; label: string; xp: number; ask: boolean; facetId: string | null }[];
   trophies: { id: string; kind: 'avatar' | 'rare' | 'legendary'; title: string; date: ISODate }[];   // спека §8.3, по дате
+  /** Враг-тень (спека §4): strength — среднее неизгнанных граней, нет — null; названия граней — только на экране владельца, не в ИИ. */
+  shadow: { strength: number | null;
+    facets: { id: string; name: string; kind: FacetKind; strength: number; cleanRun: number; banished: boolean; serious: boolean; relapsedToday: boolean }[];
+    nextBattle: ISODate; lastBattle: { date: ISODate; strength: number; result: 'crush' | 'win' | 'draw' | 'lost'; xp: number; plan: string | null } | null };
   title: string;          // titleReward последнего достижения с титулом, иначе 'Новичок'
   statHistory: { date: ISODate; stats: Record<Stat, number> }[];   // Основа на конец каждого финализированного дня
   metricHistory: { date: ISODate; metrics: Partial<Record<Metric, number>> }[];   // даты ≤ сегодня с метриками, по возрастанию

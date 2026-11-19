@@ -124,5 +124,24 @@ test('белый список ИИ: траты, магазины, приложе
     expect(p, bad).not.toContain(bad)
 })
 
-// Включается в T5 (нужен replay для facet_added): названия граней Тени не уходят ни в один промпт ИИ.
-test.todo('грани Тени не уходят в ИИ (questContext, aiTuning, aiWeeklyReport)')
+// Названия граней Тени не уходят ни в один промпт ИИ.
+test('грани Тени не уходят в ИИ (questContext, aiTuning, aiWeeklyReport)', async () => {
+  const T = new Date(2026, 11, 3, 12).getTime()
+  const ev = (i: number, e: object) => ({ id: `s${i}`, ts: T - 2 * 86400e3 + i, deviceId: 'd', ...e }) as GameEvent
+  const st = replay([
+    { id: 'o', ts: 1, deviceId: 'd', type: 'onboarding_completed', profile } as GameEvent,
+    ev(1, { type: 'facet_added', facetId: 'f1', name: 'Тайная Грань', kind: 'custom', start: 50 }),
+    ev(2, { type: 'facet_added', facetId: 'f2', name: 'Ночной Холодильник', kind: 'junk', start: 65 }),
+    { id: 's3', ts: T, deviceId: 'd', type: 'shadow_relapse', facetId: 'f1', date: '2026-12-03' } as GameEvent,
+  ], T + 60e3)
+  expect(st.shadow.facets.map(f => f.name)).toEqual(['Тайная Грань', 'Ночной Холодильник'])
+  gen.mockResolvedValue({ texts: [], text: 'отчёт', factors: {}, note: 'ок' })
+  await aiWeeklyReport(cfg, st)
+  await aiQuestTexts(cfg, st, [quest('a')])
+  await aiTuning(cfg, st, { went: '', notWent: '', energy: 5 })
+  const prompts = [questContext(st, profile), ...gen.mock.calls.map(c => `${c[1]}
+${c[2]}`)]
+  expect(prompts).toHaveLength(4)
+  for (const p of prompts) for (const bad of ['Тайная', 'Холодильник', 'f1', 'f2', 'Тень', 'тени'])
+    expect(p, bad).not.toContain(bad)
+})
