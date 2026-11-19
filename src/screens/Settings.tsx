@@ -77,7 +77,7 @@ export default function Settings({ state, sync }: { state: GameState; sync: Sync
       </section>
       <DayTypes key={JSON.stringify(state.dayTypes)} saved={state.dayTypes} />
       <SeasonTheme state={state} />
-      <SyncPanel state={state} sync={sync} />
+      <div id="sync-panel"><SyncPanel state={state} sync={sync} /></div>
       <div id="ai-panel"><AiPanel /></div>
       <NotifyPanel sync={sync} />
       <p className="muted center">Версия {__APP_VERSION__}</p>

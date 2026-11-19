@@ -3,11 +3,11 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { appendEvent, getSetting, setSetting } from '../db'
 import { ACHIEVEMENTS } from '../domain/achievements'
 import { fromMin, gameDate, toMin } from '../domain/day'
-import type { DayQuest, GameState, Profile } from '../domain/types'
+import type { DataFlag, DayQuest, GameState, Profile } from '../domain/types'
 import { hhmmNow, now } from '../now'
 import { imageNameFor, PHOTO_ERROR_TEXT, shrinkImage } from '../ai/avatar'
 import { saveBlob, useBlobUrl } from '../blobs'
-import { Bot, Check, Gem, Hourglass, Moon, PenLine, Shuffle, Zap, X } from 'lucide-react'
+import { Bed, Bot, Check, Gem, Hourglass, Moon, PenLine, Shuffle, Timer as TimerIcon, TriangleAlert, Zap, X } from 'lucide-react'
 import HeroStage from '../ui/HeroStage'
 import HeroExtras from '../ui/HeroExtras'
 import QuestCard from '../ui/QuestCard'
@@ -24,8 +24,11 @@ import DayChanged from './DayChanged'
 import MyDay from './MyDay'
 import QuickInput from './QuickInput'
 import { replanToday } from './replan'
+import Recovery from './Recovery'
+import Timer, { readRunning, type TimerKind } from './Timer'
+import { autoHint, VITAL_LABEL, type VitalId } from '../ui/vitalsView'
 
-type Sheet = null | 'quick' | 'busy' | 'checkin' | 'changed' | 'custom'
+type Sheet = null | 'quick' | 'busy' | 'checkin' | 'changed' | 'custom' | 'timer' | 'recovery' | VitalId
 
 // «Позже» на «Мой день» — до перезапуска приложения (переживает переключение вкладок)
 let deferredDay = false
@@ -34,6 +37,18 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
   const { today } = state
   const img = useBlobUrl(imageNameFor(state.avatarImages, state.tier))
   const [sheet, setSheet] = useState<Sheet>(null)
+  const [timerKind, setTimerKind] = useState<TimerKind>('focus')
+  const openTimer = (k: TimerKind) => { setTimerKind(k); setSheet('timer') }
+  const timerOn = sheet === null ? readRunning() : null // перечитываем после закрытия листа
+  const [hideBanner, setHideBanner] = useState<string | null>(null)
+  const [leaving, setLeaving] = useState(false)
+  // «Вернуться» из баннера: дата — игровая (тап между полуночью и закрытием дня не теряется)
+  const leaveRecovery = async () => {
+    if (leaving) return
+    setLeaving(true)
+    setErr(null)
+    try { await appendEvent({ type: 'recovery_ended', date: today.date }) } catch { setErr('Не удалось сохранить, попробуй ещё раз') } finally { setLeaving(false) }
+  }
   const [pop, setPop] = useState<{ id: string; k: number } | null>(null)
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set())
   const [err, setErr] = useState<string | null>(null)
@@ -157,7 +172,17 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       <div role="status">{toast && <div className="toast" onClick={() => void dismiss()}><Gem size={22} aria-hidden="true" /><span><small>ДОСТИЖЕНИЕ</small>{toast.text}</span></div>}</div>
       <HeroStage state={state} profile={profile} image={img}
         cta={!today.started ? 'Начать день' : remaining > 0 ? `Задания дня · осталось ${remaining}` : null}
-        onCta={() => (!today.started ? setLater(false) : document.getElementById('quests')?.scrollIntoView({ behavior: 'smooth' }))} />
+        onCta={() => (!today.started ? setLater(false) : document.getElementById('quests')?.scrollIntoView({ behavior: 'smooth' }))}
+        onVital={id => setSheet(id)} onSyncHelp={() => go('Настройки', 'sync-panel')} />
+      <Banner state={state} hidden={hideBanner} onHide={setHideBanner} busy={leaving}
+        onRecovery={() => setSheet('recovery')} onLeave={() => void leaveRecovery()} onChangeDay={() => setSheet('changed')} />
+      {state.recovery.active && (
+        <div className="glass tavern">
+          <Bed size={22} aria-hidden="true" />
+          <span><b>Отдых в таверне</b><small>{state.recovery.frozenToday ? 'Серия заморожена' : 'Лимит отдыха исчерпан — день не заморожен'} · заданий: {state.recovery.quests}</small></span>
+          <button className="btn sm" onClick={() => setSheet('recovery')}>Режим</button>
+        </div>
+      )}
       {!img && <PhotoCta go={go} />}
       {!state.character && !ivwSeen && <InterviewCta onStart={() => { hideIvw(); interview() }} onLater={hideIvw} />}
 
@@ -176,6 +201,8 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
           {(today.started || !later) && quests.map((q, i) => (
             <QuestCard key={q.id} q={q} i={i} pop={pop?.id === q.id ? pop.k : null} busy={busyIds.has(q.id)}
               reroll={rerollable(q) ? { ...rerollInfo, off: rerolling ? 'подожди…' : rerollInfo.off } : null}
+              hint={autoHint(q, today.data)}
+              onTimer={!q.done && (q.templateId === 'focus' || q.templateId === 'read') ? () => openTimer(q.templateId === 'read' ? 'reading' : 'focus') : null}
               onDone={() => void complete(q.id)} onPhoto={f => void photo(q.id, f)} onReroll={() => void reroll(q)} />
           ))}
         </ul>
@@ -185,6 +212,10 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       <div className="actions">
         <button className="btn" onClick={() => setSheet('quick')}><Zap size={18} aria-hidden="true" /> Быстрый ввод</button>
         <button className="btn ghost" onClick={() => setSheet('busy')}><Hourglass size={18} aria-hidden="true" /> Занят до…</button>
+        <button className="btn ghost" onClick={() => openTimer(timerOn ? timerOn.timer : 'focus')}>
+          <TimerIcon size={18} aria-hidden="true" /> {timerOn ? 'Таймер · идёт' : 'Таймер'}
+        </button>
+        {!state.recovery.active && <button className="btn ghost" onClick={() => setSheet('recovery')}><Bed size={18} aria-hidden="true" /> Отдых</button>}
         {today.started && <>
           <button className="btn ghost" onClick={() => setSheet('changed')}><Shuffle size={18} aria-hidden="true" /> День изменился</button>
           <button className="btn ghost" disabled={customFull} aria-describedby={customFull ? 'custom-full' : undefined} onClick={() => setSheet('custom')}>
@@ -209,6 +240,9 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       {sheet === 'checkin' && <Checkin date={today.date} onClose={() => setSheet(null)} />}
       {sheet === 'changed' && <DayChanged state={state} onClose={() => setSheet(null)} />}
       {sheet === 'custom' && <CustomQuest state={state} onClose={() => setSheet(null)} />}
+      {sheet === 'timer' && <Timer initial={timerKind} onClose={() => setSheet(null)} />}
+      {sheet === 'recovery' && <Recovery state={state} onClose={() => setSheet(null)} />}
+      {(sheet === 'hp' || sheet === 'energy' || sheet === 'focus' || sheet === 'fatigue') && <VitalInfo id={sheet} state={state} onClose={() => setSheet(null)} />}
       {!today.started && !later && <MyDay state={state} onLater={() => setLater(true)} />}
     </div>
   )
@@ -241,6 +275,60 @@ function BusyUntil({ date, onClose }: { date: string; onClose: () => void }) {
         <label className="field">Время<input type="time" value={until} onChange={e => setUntil(e.target.value)} /></label>
         {err && <p className="err" role="alert">{err}</p>}
         <button className="btn primary big" disabled={saving} onClick={save}>Сохранить</button>
+      </div>
+    </div>
+  )
+}
+
+const FLAG_TEXT: Record<DataFlag['reason'], string> = {
+  too_many_steps: 'Шагов больше, чем правдоподобно — проверь источник в «Командах»',
+  too_long_sleep: 'Сон длиннее, чем правдоподобно — проверь «Здоровье»',
+  overlap: 'Тренировки пересекаются — время посчитано без двойного счёта',
+}
+
+/** Один баннер по приоритету: today.suggest, иначе пометка правдоподобия данных. */
+function Banner({ state, hidden, onHide, busy, onRecovery, onLeave, onChangeDay }: {
+  state: GameState; hidden: string | null; onHide: (key: string) => void; busy: boolean
+  onRecovery: () => void; onLeave: () => void; onChangeDay: () => void
+}) {
+  const { suggest, data, vitals } = state.today
+  const lowHp = vitals.hp !== null && vitals.hp < BALANCE.recovery.enterHp
+  const b = suggest === 'recovery_enter' ? { text: `Мастер предлагает режим восстановления: ${lowHp ? `HP ${vitals.hp}` : `Усталость ${vitals.fatigue}`}`, act: 'Включить режим', go: onRecovery }
+    : suggest === 'recovery_exit' ? { text: 'Силы вернулись — HP держится уже два дня. Пора из таверны?', act: 'Вернуться', go: onLeave }
+    : suggest === 'day_change_work' ? { text: 'Похоже, ты на работе — сменить тип дня?', act: 'Сменить тип дня', go: onChangeDay }
+    : data.flags[0] ? { text: FLAG_TEXT[data.flags[0].reason], act: null, go: null }
+    : null
+  if (!b || hidden === b.text) return null
+  return (
+    <div className="glass banner" role="status">
+      <TriangleAlert size={20} aria-hidden="true" />
+      <p>{b.text}</p>
+      {b.act && b.go && <button className="btn primary sm" disabled={busy} onClick={b.go}>{b.act}</button>}
+      <button className="icon-btn" aria-label="Скрыть подсказку" onClick={() => onHide(b.text)}><X size={18} aria-hidden="true" /></button>
+    </div>
+  )
+}
+
+const PART_LABEL: Record<string, string> = { sleep: 'Сон', steps: 'Шаги', rhr: 'Пульс', feel: 'Самочувствие', focus: 'Фокусирование', social: 'Соцсети' }
+
+/** Разбор параметра HUD: из чего он сложился сегодня. */
+function VitalInfo({ id, state, onClose }: { id: VitalId; state: GameState; onClose: () => void }) {
+  const v = state.today.vitals, ei = v.energyInputs
+  const dlg = useDialog<HTMLDivElement>(onClose)
+  const parts = (p: Record<string, number | undefined>) => Object.entries(p).filter(([, x]) => x !== undefined).map(([k, x]) => `${PART_LABEL[k] ?? k} ${x}`).join(' · ')
+  const body = id === 'hp' ? parts(v.parts.hp) || 'Нет данных: нужны сон, шаги или пульс из «Команд», либо вечерний чек‑ин'
+    : id === 'focus' ? parts(v.parts.focus) || 'Нет данных: включай «Фокусирование» через «Команды» или запусти таймер'
+    : id === 'energy' ? [ei.sleep !== null && `Сон ночью ${Math.round(ei.sleep * 10) / 10} ч`, ei.hp !== null && `HP ${ei.hp}`, ei.weekMorning !== null && `Утро в среднем ${Math.round(ei.weekMorning * 10) / 10}/10`]
+      .filter(Boolean).join(' · ') || 'Нет данных: оцени утро в «Моём дне»'
+    : `Растёт от коротких ночей и тяжёлых дней, спадает от долгого сна и отдыха. С ${BALANCE.vitals.fatigue.suggestAt} Мастер предложит режим восстановления.`
+  return (
+    <div className="sheet-wrap" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="sheet" ref={dlg} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="vital-title">
+        <div className="sheet-head">
+          <h2 id="vital-title">{VITAL_LABEL[id]}: {v[id] ?? '—'}</h2>
+          <button className="icon-btn" aria-label="Закрыть" onClick={onClose}><X size={20} aria-hidden="true" /></button>
+        </div>
+        <p>{body}</p>
       </div>
     </div>
   )

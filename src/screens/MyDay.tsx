@@ -12,6 +12,7 @@ import { hhmmNow, now } from '../now'
 import { useDialog } from '../ui/useDialog'
 import { generateWeeklyQuests } from '../domain/weekly'
 import { BALANCE } from '../domain/balance'
+import { energyScore } from '../domain/vitals'
 import { DAY_ICONS } from '../ui/icons'
 import { buildQuests } from './issue'
 
@@ -48,10 +49,11 @@ export default function MyDay({ state, onLater }: { state: GameState; onLater: (
       // сначала сборка по правилам (+ тексты ИИ), потом одна атомарная запись — день не останется без заданий
       let quests: Quest[] | null = null
       // утренняя Energy пишется в day_started (целое 1–10, как его принимает replay) — переброс и Home берут её, а не поздний чек-ин;
-      // сборка использует то же значение, что потом даст replay: оценка ×10, нет — fallback; оценка — своя утренняя, иначе последнего чек-ина
+      // сборка использует то же значение, что потом даст replay: energyScore (сон, оценка, HP), нет данных — fallback; оценка — своя утренняя, иначе последнего чек-ина
       const morning = energy !== null ? energy : cur.today.lastEnergy !== null ? Math.min(10, Math.max(1, Math.round(cur.today.lastEnergy))) : null
       if (cur.today.quests.length === 0) {
-        quests = buildQuests(cur, dayType, wakeAt, morning !== null ? morning * 10 : BALANCE.energy.fallback)
+        const ei = cur.today.vitals.energyInputs
+        quests = buildQuests(cur, dayType, wakeAt, energyScore({ sleepLast: ei.sleep, hp: ei.hp, weekMorning: ei.weekMorning, morning }) ?? BALANCE.energy.fallback)
         const cfg = await getAiConfig().catch(() => null)
         if (cfg) {
           let timer: ReturnType<typeof setTimeout> | undefined

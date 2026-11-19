@@ -39,6 +39,8 @@ const ago = (t: number) => {
   return m < 60 ? `${m} мин назад` : hhmm(t)
 }
 
+const SOURCES: [keyof GameState['sync']['bySource'], string][] = [['health', 'Здоровье'], ['arrive', 'Прибытие'], ['app', 'Приложения'], ['focus', 'Фокусирование'], ['wallet', 'Wallet'], ['timer', 'Таймер в приложении']]
+
 export default function SyncPanel({ state, sync }: { state: GameState; sync: SyncState }) {
   const [cfg, setCfg] = useState<SyncConfig | null | undefined>(undefined)
   const [url, setUrl] = useState(DEFAULT_SYNC_URL)
@@ -113,6 +115,13 @@ export default function SyncPanel({ state, sync }: { state: GameState; sync: Syn
             ? `${new Date(h.ts).toLocaleString('ru-RU')}${h.health.steps != null ? `, шаги ${h.health.steps}` : ''}${h.health.sleepHours != null ? `, сон ${h.health.sleepHours} ч` : ''}`
             : 'ещё не приходили'}
         </p>
+        <h3>Последние данные по источникам</h3>
+        <ul className="src-list">
+          {SOURCES.map(([k, label]) => {
+            const t = state.sync.bySource[k]
+            return <li key={k}><span>{label}</span><b>{t ? new Date(t).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</b></li>
+          })}
+        </ul>
         <button className="btn" onClick={() => copy(loginLink(cfg, location.origin + import.meta.env.BASE_URL), 'Ссылка')}>Ссылка для входа с компьютера</button>
         <button className="btn ghost" onClick={() => setRotate(true)}>Сбросить токен</button>
         <button className="btn ghost" onClick={() => setConfirmOff(true)}>Отключить на этом устройстве</button>

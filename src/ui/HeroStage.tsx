@@ -1,22 +1,26 @@
 import { Coins, Flame, Swords, User } from 'lucide-react'
+import { now } from '../now'
 import { STATS } from '../domain/stats'
 import type { GameState, Profile, Stat, StatInfo } from '../domain/types'
 import Avatar from './Avatar'
 import { STAT_COLORS, STAT_ICONS } from './icons'
 import { pathLabel, statBar } from './statBar'
+import { freshness, vitalChips, type VitalId } from './vitalsView'
 
 export const STATUS: Record<StatInfo['status'], string> = { new: 'новая', in_form: 'в форме', sagging: 'проседает', abandoned: 'заброшена' }
 const statAria = (name: string, base: number, i: StatInfo) =>
   i.form === null ? `${name} ${base}, форма ещё не посчитана` : `${name} ${base}, форма ${Math.round(i.form * 100)}%, ${STATUS[i.status]}`
 
 /** Главный экран: арт героя на весь экран и стеклянные HUD-панели поверх. */
-export default function HeroStage({ state, profile, image, cta, onCta }: {
+export default function HeroStage({ state, profile, image, cta, onCta, onVital, onSyncHelp }: {
   state: GameState; profile: Profile; image: string | null; cta: string | null; onCta: () => void
+  onVital: (id: VitalId) => void; onSyncHelp: () => void
 }) {
   const { today } = state
   const keys = Object.keys(STATS) as Stat[]
   const quote = profile.goals[0]?.text || state.character?.archetype || 'Каждый день — шаг вперёд.'
   const path = pathLabel(state.season, today.date)
+  const fresh = freshness(state.sync.last, now())
   const pct = state.xpNeed > 0 ? Math.min(100, (state.xpInto / state.xpNeed) * 100) : 0
 
   return (
@@ -40,6 +44,23 @@ export default function HeroStage({ state, profile, image, cta, onCta }: {
         </div>
         <span className="glass coins-pill" aria-label={`Золото: ${state.gold}`}><Coins size={16} aria-hidden="true" />{state.gold}<small aria-hidden="true">Золото</small></span>
       </div>
+
+      <ul className="vitals" aria-label="Состояние дня">
+        {vitalChips(today.vitals).map(c => (
+          <li key={c.id}>
+            <button className={`glass vital t-${c.tone}`} onClick={() => onVital(c.id)}
+              aria-label={`${c.label}: ${c.value === '—' ? 'нет данных' : `${c.value} из 100`}. Подробнее`}>
+              <small aria-hidden="true">{c.label}</small>
+              <b aria-hidden="true">{c.value}</b>
+              <i aria-hidden="true"><i style={{ width: `${c.pct}%` }} /></i>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className={`fresh${fresh.stale ? ' stale' : ''}`}>
+        {fresh.text}
+        {fresh.stale && <>{state.sync.last !== null && ' · «Команды» давно не присылали данные'} <button className="link" onClick={onSyncHelp}>Настроить</button></>}
+      </p>
 
       <div className="glass quote-card">
         <small>{profile.name || 'Герой'} · {state.className} · «{state.title}»</small>

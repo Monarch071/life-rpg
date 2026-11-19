@@ -1,4 +1,4 @@
-import { Camera, Check, Hand, Shuffle, Zap } from 'lucide-react'
+import { Camera, Check, Hand, Shuffle, Timer, Zap } from 'lucide-react'
 import { SKILL_CATALOG } from '../domain/skillCatalog'
 import type { DayQuest, Verify } from '../domain/types'
 
@@ -10,8 +10,10 @@ const VERIFY: Record<Verify, { Icon: typeof Zap; text: string }> = {
 const skillTitle = (id: string) => SKILL_CATALOG.find(s => s.id === id)?.title ?? id
 
 /** Карточка задания: ранг, навыки и окно, «почему», способ проверки, «+XP», галочка, фото и переброс. */
-export default function QuestCard({ q, i, pop, busy, reroll, onDone, onPhoto, onReroll }: {
+export default function QuestCard({ q, i, pop, busy, reroll, hint, onDone, onPhoto, onReroll, onTimer }: {
   q: DayQuest; i: number; pop: number | null; busy: boolean
+  hint: string | null                                     // «засчитается само: …»
+  onTimer: (() => void) | null                            // таймер фокуса/чтения для этого задания
   reroll: { label: string; off: string | null } | null   // null — переброс недоступен для этого задания
   onDone: () => void; onPhoto: (f: File) => void; onReroll: () => void
 }) {
@@ -25,6 +27,7 @@ export default function QuestCard({ q, i, pop, busy, reroll, onDone, onPhoto, on
         <b>{q.title}</b>
         <small>{q.skills.map(skillTitle).join(' + ')} · {q.window ? `${q.window.start}–${q.window.end}` : 'в течение дня'}</small>
         {q.why && <small className="why">{q.why}</small>}
+        {hint && <small className="auto-hint">{hint}</small>}
       </div>
       <span className="vf" title={v.text} aria-label={v.text} role="img"><v.Icon size={16} aria-hidden="true" /></span>
       <span className="xpchip" role="img" aria-label={q.done ? `Получено ${xp} XP` : `Около ${xp} XP`}>
@@ -41,6 +44,11 @@ export default function QuestCard({ q, i, pop, busy, reroll, onDone, onPhoto, on
               aria-label={`Выполнить с фото: ${q.title}`}
               onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onPhoto(f) }} />
           </label>
+          {onTimer && (
+            <button className="btn ghost sm" disabled={busy} onClick={onTimer} aria-label={`Таймер для задания: ${q.title}`}>
+              <Timer size={16} aria-hidden="true" /> Таймер
+            </button>
+          )}
           {reroll && (
             <button className="btn ghost sm" disabled={busy || !!reroll.off} onClick={onReroll}
               aria-label={`Перебросить за ${reroll.label}${reroll.off ? `: ${reroll.off}` : ''}`}>

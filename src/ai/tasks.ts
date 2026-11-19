@@ -25,11 +25,15 @@ function portrait(state: GameState): string[] {
     ...(key.length ? [`Ключевые ответы: ${key.join('; ')}`] : [])]
 }
 
+/** Белый список: только эти метрики уходят в промпты ИИ. Траты (в т.ч. ручные), магазины, приложения и места — никогда. */
+export const AI_METRICS = ['steps', 'sleepHours', 'readPages', 'water', 'mood', 'screenMin', 'workoutMin'] as const
+const aiMetrics = (m: GameState['metricHistory'][number]['metrics']) => Object.fromEntries(AI_METRICS.filter(k => m[k] !== undefined).map(k => [k, m[k]]))
+
 /** Компактный русский контекст для ИИ. */
 export function questContext(state: GameState, profile: Profile): string {
   const m7: string[] = []
   const recent = state.metricHistory.filter(h => h.date >= addDays(state.today.date, -7))
-  for (const k of ['steps', 'sleepHours', 'readPages', 'water', 'screenMin', 'mood'] as const) {
+  for (const k of AI_METRICS) {
     const v = recent.map(h => h.metrics[k]).filter((x): x is number => x !== undefined)
     if (v.length) m7.push(`${k} ${Math.round(v.reduce((a, b) => a + b, 0) / v.length * 10) / 10}`)
   }
@@ -113,7 +117,7 @@ export async function aiWeeklyReport(cfg: AiConfig, state: GameState): Promise<s
   const user = [`Герой: ${state.profile?.name ?? ''}, уровень ${state.level}`,
     `Характеристики: ${STAT_KEYS.map(s => statLine(s, state)).join(', ')}`,
     `Дни (дата: xp/выполнено из выдано/засчитан): ${state.history.filter(h => h.date >= from).map(h => `${h.date}: ${h.xp}/${h.completed} из ${h.issued}/${h.counted ? 'да' : 'нет'}`).join('; ') || 'нет'}`,
-    `Метрики: ${state.metricHistory.filter(h => h.date >= from).map(h => `${h.date} ${JSON.stringify(h.metrics)}`).join('; ') || 'нет'}`,
+    `Метрики: ${state.metricHistory.filter(h => h.date >= from).map(h => `${h.date} ${JSON.stringify(aiMetrics(h.metrics))}`).join('; ') || 'нет'}`,
   ].join('\n')
   const raw = await generateJson(cfg, REPORT_SYSTEM, user, REPORT_SCHEMA) as any
   const text = typeof raw === 'string' ? raw : raw?.text

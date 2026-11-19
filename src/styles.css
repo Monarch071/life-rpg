@@ -540,3 +540,33 @@ label.btn:focus-within { outline: 2px solid var(--fire); outline-offset: 2px; }
 .why { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid #ffffff0d; }
 .why .grow { display: flex; flex-direction: column; gap: 2px; }
 .why small { overflow-wrap: anywhere; }
+
+/* ===== этап 3: HUD параметров, свежесть, баннер, таверна, таймер ===== */
+:root { --v-good: var(--up); --v-mid: var(--fire); --v-bad: var(--str); --v-none: var(--muted); }
+.vitals { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.vital { width: 100%; min-height: 52px; padding: 6px 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; color: var(--text); font-family: inherit; text-align: left; --vc: var(--v-none); }
+.vital.t-good { --vc: var(--v-good); } .vital.t-mid { --vc: var(--v-mid); } .vital.t-bad { --vc: var(--v-bad); }
+.vital small { font: 700 10.5px Manrope, sans-serif; color: var(--muted); letter-spacing: 0.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.vital b { font: 800 18px/1 Manrope, sans-serif; font-variant-numeric: tabular-nums; color: var(--vc); }
+.vital > i { display: block; width: 100%; height: 2px; border-radius: 2px; background: rgba(255,255,255,0.1); overflow: hidden; }
+.vital > i > i { display: block; height: 100%; background: var(--vc); box-shadow: 0 0 6px var(--vc); transition: width 0.6s; }
+.fresh { margin: -4px 0 0; font: 600 11.5px Manrope, sans-serif; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; }
+.fresh.stale { color: var(--fire2); }
+.link { background: none; border: 0; padding: 0 4px; min-height: 44px; color: var(--ice2); font: inherit; text-decoration: underline; }
+.banner, .tavern { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; }
+.banner > svg { flex: none; color: var(--fire2); }
+.banner p { flex: 1; min-width: 0; margin: 0; font-size: 13.5px; line-height: 1.35; overflow-wrap: anywhere; }
+.banner .btn, .tavern .btn { flex: none; }
+.banner .icon-btn { flex: none; border: 0; }
+.tavern > svg { flex: none; color: var(--shadow2); filter: drop-shadow(0 0 8px var(--shadow)); }
+.tavern span { flex: 1; min-width: 0; }
+.tavern b { display: block; font: 800 14px Manrope, sans-serif; }
+.tavern small { display: block; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+@media (max-width: 380px) { .banner { flex-wrap: wrap; } .banner p { flex-basis: calc(100% - 30px); } }
+.q .t small.auto-hint { display: block; margin-top: 2px; color: var(--ice2); overflow-wrap: anywhere; }
+.timer-face { margin: 4px 0; text-align: center; font: 800 52px/1.1 Manrope, sans-serif; font-variant-numeric: tabular-nums; color: var(--fire2); text-shadow: 0 0 18px rgba(243,189,90,0.35); }
+.src-list { list-style: none; margin: 0; padding: 0; }
+.src-list li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(160,190,255,0.09); font-size: 14px; }
+.src-list b { font-weight: 700; color: var(--muted); }
+.sheet h2 svg { vertical-align: -2px; }
+@media (prefers-reduced-motion: reduce) { .vital > i > i { transition: none; } }

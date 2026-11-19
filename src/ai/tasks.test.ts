@@ -2,7 +2,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 
 vi.mock('./providers', async (orig) => ({ ...(await orig<typeof import('./providers')>()), generateJson: vi.fn() }))
 import { AiError, generateJson } from './providers'
-import { aiCustomRank, aiQuestTexts, aiTuning, aiWeeklyReport, applyTexts, questContext, validateAiTexts } from './tasks'
+import { AI_METRICS, aiCustomRank, aiQuestTexts, aiTuning, aiWeeklyReport, applyTexts, questContext, validateAiTexts } from './tasks'
 import { replay } from '../domain/replay'
 import type { GameEvent, Profile, Quest } from '../domain/types'
 import type { AiConfig } from './config'
@@ -99,4 +99,27 @@ test('aiCustomRank: ранг из ответа ИИ не выше потолка
   expect(await aiCustomRank(cfg, 'Сходить в бассейн', 'Кардио', 'D')).toBe('D')
   gen.mockResolvedValueOnce({ rank: 'Z' })
   await expect(aiCustomRank(cfg, 'Сходить в бассейн', 'Кардио', 'D')).rejects.toThrow()
+})
+
+test('белый список ИИ: траты, магазины, приложения, места и время в соцсетях не уходят ни в один промпт', async () => {
+  const T = new Date(2026, 10, 17, 10).getTime()
+  const ev = (i: number, e: object) => ({ id: `p${i}`, ts: T + i, deviceId: 'd', ...e }) as GameEvent
+  const st = replay([
+    { id: 'o', ts: 1, deviceId: 'd', type: 'onboarding_completed', profile } as GameEvent,
+    ev(1, { type: 'metric_logged', date: '2026-11-17', metric: 'spend', value: 5000, mode: 'set' }),
+    ev(2, { type: 'metric_logged', date: '2026-11-17', metric: 'steps', value: 8000, mode: 'set' }),
+    ev(3, { type: 'signal_logged', at: T - 3600e3, signal: { kind: 'wallet', amount: 777, merchant: 'Лавка Секретова' } }),
+    ev(4, { type: 'signal_logged', at: T - 3000e3, signal: { kind: 'app', app: 'social', state: 'open' } }),
+    ev(5, { type: 'signal_logged', at: T - 1200e3, signal: { kind: 'app', app: 'social', state: 'close' } }),
+    ev(6, { type: 'signal_logged', at: T - 600e3, signal: { kind: 'arrive', place: 'gym' } }),
+  ], T + 60e3)
+  expect(AI_METRICS).not.toContain('spend')
+  gen.mockResolvedValue({ texts: [], text: 'отчёт', factors: {}, note: 'ок' })
+  await aiWeeklyReport(cfg, st)
+  await aiQuestTexts(cfg, st, [quest('a')])
+  await aiTuning(cfg, st, { went: '', notWent: '', energy: 5 })
+  const prompts = [questContext(st, profile), ...gen.mock.calls.map(c => `${c[1]}\n${c[2]}`)]
+  expect(prompts[1]).toContain('steps')
+  for (const p of prompts) for (const bad of ['spend', '5000', '777', 'Лавка Секретова', 'socialMin', 'social', 'gym', 'wallet', 'Траты', 'spendAuto'])
+    expect(p, bad).not.toContain(bad)
 })
