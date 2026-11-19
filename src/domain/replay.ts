@@ -637,6 +637,11 @@ export function replay(events: GameEvent[], now: number): GameState {
     if (d <= today && types.get(d)?.kind === 'rest' && (restInMonth.get(rm) ?? 0) < BALANCE.streak.restDaysPerMonth) {
       restDays.add(d); restInMonth.set(rm, (restInMonth.get(rm) ?? 0) + 1);
     }
+    // день восстановления — замороженный день отдыха, пока в месяце (по датам раньше d) меньше лимита; сверх — обычный.
+    // До трат дня: день без заданий на замороженный день отклоняется без списания, как на день отдыха.
+    if (d <= today && recAll.some(p => d >= p.from && d < p.to) && !restDays.has(d) && (restInMonth.get(rm) ?? 0) < BALANCE.streak.restDaysPerMonth) {
+      restDays.add(d); restInMonth.set(rm, (restInMonth.get(rm) ?? 0) + 1);
+    }
     // HP/Energy/Фокус/Усталость дня — до его строк леджера; Усталость: F(d) = f(F(d−1), день d−1, ночь d)
     let vit: Vitals | null = null;
     if (firstDay && d >= firstDay && d <= today) {
@@ -682,10 +687,6 @@ export function replay(events: GameEvent[], now: number): GameState {
         acceptedFx.add(s.id); paidSum += r.price;
         if (r.effect === 'streak_freeze') { freezes++; freezeMonth.set(m, nf + 1); } else { dayOff.add(d); restInMonth.set(m, nr + 1); }
       }
-    }
-    // день восстановления — замороженный день отдыха, пока в месяце (по датам раньше d) меньше лимита; сверх — обычный; купленный день без заданий не считается дважды
-    if (d <= today && recAll.some(p => d >= p.from && d < p.to) && !restDays.has(d) && !dayOff.has(d) && (restInMonth.get(rm) ?? 0) < BALANCE.streak.restDaysPerMonth) {
-      restDays.add(d); restInMonth.set(rm, (restInMonth.get(rm) ?? 0) + 1);
     }
     // «День изменился»: при меньшем числе слотов последние по выдаче невыполненные — dropped (вне знаменателя 60%); свои не трогаются.
     const ch = dayChange.get(d);
@@ -818,9 +819,9 @@ export function replay(events: GameEvent[], now: number): GameState {
   const lastEnd = recOn ? undefined : recSpans.at(-1)?.to;
   if (lastEnd) for (let i = 0; i < R.afterDays; i++) if (addDays(lastEnd, i) === today) afterLeft = R.afterDays - i;
   const suggest: GameState['today']['suggest'] =
-    !recOn && (vitals.fatigue >= V.fatigue.suggestAt || (vitals.hp !== null && vitals.hp < R.enterHp)) ? 'recovery_enter'
+    !recOn && !afterLeft && (vitals.fatigue >= V.fatigue.suggestAt || (vitals.hp !== null && vitals.hp < R.enterHp)) ? 'recovery_enter'
     : recOn && span(today, 1 - R.exitDays, 0).every(x => ((x === today ? vitals.hp : vitalsOn(x, 0).hp) ?? 0) > R.exitHp) ? 'recovery_exit'
-    : (types.get(today)?.kind === 'off' || types.get(today)?.kind === 'rest') && sigs.some(x => x.kind === 'arrive' && x.place === 'work' && x.d === today) ? 'day_change_work'
+    : !recOn && (types.get(today)?.kind === 'off' || types.get(today)?.kind === 'rest') && sigs.some(x => x.kind === 'arrive' && x.place === 'work' && x.d === today) ? 'day_change_work'
     : null;
   const skills = Object.fromEntries(SKILL_IDS.map(id => [id,
     { ...skillFromXp(start.skills[id], skillXp[id]), xp: skillXp[id], start: start.skills[id], lastDate: skillLast[id] ?? null } satisfies SkillState])) as Record<SkillId, SkillState>;

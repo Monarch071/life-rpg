@@ -1378,14 +1378,16 @@ test('восстановление замораживает серию и дел
   expect(early.genInputs).toMatchObject({ recovery: { quests: 1 }, afterRecovery: false });
   expect(early.history.filter(x => x.date >= '2026-12-11')).toEqual(s.history.filter(x => x.date >= '2026-12-11' && x.date < '2026-12-13'));
 });
-test('сверх лимита режим остаётся включённым, день обычный; день без заданий не считается дважды', () => {
+test('сверх лимита режим остаётся включённым, день обычный; день без заданий на замороженный день — отказ без списания', () => {
   const rest = span('2026-12-01', 14).flatMap(d => [startDay(d, { dayType: DT[3] }), issue(d, [nq(`r${d}`, d, 'E', ['rest'])])]);
   const s = replay([onboard, ...rest, recStart('2026-12-15', 2)], at('2026-12-15', 12));
   expect(s.recovery).toMatchObject({ active: true, quests: 2, frozenToday: false });
   expect(s.genInputs.recovery).toEqual({ quests: 2 });
   const gold = [issue('2026-11-30', [q('g', '2026-11-30', 10000)]), done('2026-11-30', 'g'), dayoffR, buy('default:dayoff', at('2026-12-01', 8))];
-  const t = replay([...gold, recStart('2026-12-01')], at('2026-12-01', 12));
-  expect(t.today).toMatchObject({ dayOff: true, restDaysLeft: 13 });
+  const t = replay([...gold, recStart('2026-12-01')], at('2026-12-01', 12)), paid = replay(gold, at('2026-12-01', 12));
+  expect(paid.today).toMatchObject({ dayOff: true, restDaysLeft: 13 });
+  expect(t.today).toMatchObject({ dayOff: false, restDaysLeft: 13 });
+  expect(t.purchases).toEqual([]); expect(t.today.spendable).toBe(paid.today.spendable + 600);
   expect(t.recovery.frozenToday).toBe(true);
 });
 test('замороженный день восстановления — отдых для Усталости (−15)', () => {
@@ -1424,6 +1426,14 @@ test('подсказки: Усталость 70 → recovery_enter; HP 61 вче
   const t = replay([onboard, ...bad, hp(d, { sleepHours: 8 }), recStart(c)], at(d, 12));
   expect(t.today.vitals.hp).toBeGreaterThan(60);
   expect(t.today.suggest).toBeNull();
+  // день возвращения при Усталости ≥ 70 — без предложения войти; в режиме — без «сменить тип дня»
+  const nine = span('2026-12-01', 9);
+  const back = replay([onboard, ...nine.flatMap(x => [issue(x, [nq(`x${x}`, x, 'E', ['reading'])]), hp(x, { sleepHours: 5 })]), recStart(nine[7], 1, 13), recEnd(nine[8], 14)], at(nine[8], 15));
+  expect(back.recovery.afterLeft).toBe(2);
+  expect(back.today.vitals.fatigue).toBeGreaterThanOrEqual(70);
+  expect(back.today.suggest).toBeNull();
+  const wd = '2026-12-20';
+  expect(replay([onboard, startDay(wd, { dayType: DT[2] }), recStart(wd), sig(at(wd, 10), { kind: 'arrive', place: 'work' })], at(wd, 12)).today.suggest).toBeNull();
 });
 test('после возвращения 2 дня afterLeft 2 → 1 → 0', () => {
   const evs = [onboard, recStart('2026-12-01'), recEnd('2026-12-03')];
