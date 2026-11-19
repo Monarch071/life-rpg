@@ -58,3 +58,11 @@ test('сервер недоступен: остаётся uploaded:0, потом
   expect((await db.blobs.get('av-1'))!.uploaded).toBe(1)
   expect(await store.getBlob('av-1')).not.toBeNull()
 })
+
+test('фото-доказательства (proof-*) не выгружаются ни сразу, ни потом', async () => {
+  await enable()
+  await saveBlob('proof-1', png())
+  await uploadPendingBlobs()
+  expect((await db.blobs.get('proof-1'))!.uploaded).toBe(0)
+  expect(await store.getBlob('proof-1')).toBeNull()
+})

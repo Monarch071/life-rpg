@@ -1,8 +1,13 @@
-import { Coins, Swords, User } from 'lucide-react'
+import { Coins, Flame, Swords, User } from 'lucide-react'
 import { STATS } from '../domain/stats'
-import type { GameState, Profile, Stat } from '../domain/types'
+import type { GameState, Profile, Stat, StatInfo } from '../domain/types'
 import Avatar from './Avatar'
 import { STAT_COLORS, STAT_ICONS } from './icons'
+import { pathLabel, statBar } from './statBar'
+
+const STATUS: Record<StatInfo['status'], string> = { new: 'новая', in_form: 'в форме', sagging: 'проседает', abandoned: 'заброшена' }
+const statAria = (name: string, base: number, i: StatInfo) =>
+  i.form === null ? `${name} ${base}, форма ещё не посчитана` : `${name} ${base}, форма ${Math.round(i.form * 100)}%, ${STATUS[i.status]}`
 
 /** Главный экран: арт героя на весь экран и стеклянные HUD-панели поверх. */
 export default function HeroStage({ state, profile, image, cta, onCta }: {
@@ -10,9 +15,8 @@ export default function HeroStage({ state, profile, image, cta, onCta }: {
 }) {
   const { today } = state
   const keys = Object.keys(STATS) as Stat[]
-  const max = Math.max(20, ...keys.map(k => state.stats[k]))
   const quote = profile.goals[0]?.text || state.character?.archetype || 'Каждый день — шаг вперёд.'
-  const share = today.quests.length ? (today.quests.filter(q => q.done).length / today.quests.length) * 100 : 0
+  const path = pathLabel(state.season, today.date)
   const pct = state.xpNeed > 0 ? Math.min(100, (state.xpInto / state.xpNeed) * 100) : 0
 
   return (
@@ -34,7 +38,7 @@ export default function HeroStage({ state, profile, image, cta, onCta }: {
             <small className="n"><em>{state.xpInto}</em> / {state.xpNeed} XP</small>
           </div>
         </div>
-        <span className="glass coins-pill" aria-label={`Золото: ${state.gold}`}><Coins size={16} aria-hidden="true" />{state.gold}</span>
+        <span className="glass coins-pill" aria-label={`Золото: ${state.gold}`}><Coins size={16} aria-hidden="true" />{state.gold}<small aria-hidden="true">Золото</small></span>
       </div>
 
       <div className="glass quote-card">
@@ -43,22 +47,34 @@ export default function HeroStage({ state, profile, image, cta, onCta }: {
       </div>
 
       <ul className="glass stat-card" aria-label="Характеристики">
-        {keys.map(k => { const Icon = STAT_ICONS[k]; return (
-          <li key={k}>
-            <span className="ic" style={{ color: STAT_COLORS[k] }}><Icon size={17} aria-hidden="true" /></span>
-            <span>{STATS[k].name}</span>
-            <b>{state.stats[k]}</b>
-            <i className="sbar" aria-hidden="true"><i style={{ width: `${(state.stats[k] / max) * 100}%`, background: STAT_COLORS[k] }} /></i>
-          </li>
-        ) })}
+        {keys.map(k => {
+          const Icon = STAT_ICONS[k], info = state.statInfo[k], w = statBar(state.stats[k], info.form)
+          return (
+            <li key={k}>
+              <span className="sr-only">{statAria(STATS[k].name, state.stats[k], info)}</span>
+              <span className="ic" style={{ color: STAT_COLORS[k] }} aria-hidden="true"><Icon size={17} /></span>
+              <span aria-hidden="true">{STATS[k].name}</span>
+              <b aria-hidden="true"><i className={`fdot f-${info.status}`} />{state.stats[k]}</b>
+              <i className="sbar" aria-hidden="true" style={{ '--c': STAT_COLORS[k] } as React.CSSProperties}>
+                <i className="sb-base" style={{ width: `${w.base}%` }} />
+                <i className="sb-form" style={{ width: `${w.form}%` }} />
+              </i>
+            </li>
+          )
+        })}
       </ul>
 
       <div className="glass versus-card">
         <div className="vs-row" aria-live="polite">
           <span>Сегодня <b>{today.xp}</b> XP</span>
-          <span>серия <b>{state.streak}</b> дн.</span>
+          <span className="streak-n"><Flame size={18} aria-hidden="true" />серия <b>{state.streak}</b> дн.</span>
         </div>
-        <div className="rope" aria-hidden="true" style={{ '--p': `${share}%` } as React.CSSProperties} />
+        <div className="path">
+          <div className="path-t"><b>{path.title}</b><small>{path.sub}</small></div>
+          <div className="path-bar" role="progressbar" aria-label={`Путь сезона: ${path.title}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(path.pct)}>
+            <i style={{ width: `${path.pct}%` }} />
+          </div>
+        </div>
         {cta && <button className="btn primary big" onClick={onCta}><Swords size={18} aria-hidden="true" />{cta}</button>}
       </div>
     </section>

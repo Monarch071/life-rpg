@@ -1,30 +1,28 @@
 import { useRef, useState } from 'react'
-import { Briefcase, Palmtree, Clock } from 'lucide-react'
+import { Zap } from 'lucide-react'
 import { appendEvents, setSetting } from '../db'
 import { getAiConfig } from '../ai/config'
 import { aiQuestTexts, applyTexts } from '../ai/tasks'
 import { getSyncConfig, syncNow } from '../sync'
 import { loadState } from '../useGame'
-import type { Win } from '../domain/schedule'
-import type { GameState, Profile, Quest } from '../domain/types'
+import type { DayType } from '../domain/dayType'
+import type { GameState, Quest } from '../domain/types'
 import { hhmmNow } from '../now'
 import { useDialog } from '../ui/useDialog'
 import { generateWeeklyQuests } from '../domain/weekly'
 import { BALANCE } from '../domain/balance'
-import { legacyDayType } from '../domain/dayType'
+import { DAY_ICONS } from '../ui/icons'
 import { buildQuests } from './issue'
 
-/** Модальное «Мой день»: выбор режима дня → day_started, затем выдача заданий (если их ещё нет). */
-export default function MyDay({ state, profile, onLater }: { state: GameState; profile: Profile; onLater: () => void }) {
-  const [custom, setCustom] = useState(false)
-  const [start, setStart] = useState('09:00')
-  const [end, setEnd] = useState('18:00')
+/** Модальное «Мой день»: тип дня и (необязательно) утренняя энергия → day_started, затем выдача заданий (если их ещё нет). */
+export default function MyDay({ state, onLater }: { state: GameState; onLater: () => void }) {
+  const [energy, setEnergy] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const lock = useRef(false)
   const dlg = useDialog<HTMLDivElement>() // закрывается только «Позже»: лист перекрывает панель вкладок
 
-  const begin = async (work: Win | null) => {
+  const begin = async (dayType: DayType) => {
     if (lock.current) return
     lock.current = true
     setBusy(true)
@@ -42,16 +40,14 @@ export default function MyDay({ state, profile, onLater }: { state: GameState; p
           cur = await loadState()
         }
       } catch { /* синк не должен мешать началу дня */ }
-      // тип дня синтезируется из выбора смены (полноценный выбор типа — позже)
-      const dayType = legacyDayType(work, wakeAt, profile.sleep)
+      const work = dayType.busy
       // сначала сборка по правилам (+ тексты ИИ), потом одна атомарная запись — день не останется без заданий
       let quests: Quest[] | null = null
       // утренняя Energy пишется в day_started (целое 1–10, как его принимает replay) — переброс и Home берут её, а не поздний чек-ин;
-      // сборка использует то же значение, что потом даст replay: оценка ×10, нет — fallback
-      const morning = cur.today.lastEnergy !== null ? Math.min(10, Math.max(1, Math.round(cur.today.lastEnergy))) : null
+      // сборка использует то же значение, что потом даст replay: оценка ×10, нет — fallback; оценка — своя утренняя, иначе последнего чек-ина
+      const morning = energy !== null ? energy : cur.today.lastEnergy !== null ? Math.min(10, Math.max(1, Math.round(cur.today.lastEnergy))) : null
       if (cur.today.quests.length === 0) {
-        const energy = morning !== null ? morning * 10 : BALANCE.energy.fallback
-        quests = buildQuests(cur, dayType, wakeAt, energy)
+        quests = buildQuests(cur, dayType, wakeAt, morning !== null ? morning * 10 : BALANCE.energy.fallback)
         const cfg = await getAiConfig().catch(() => null)
         if (cfg) {
           let timer: ReturnType<typeof setTimeout> | undefined
@@ -81,25 +77,25 @@ export default function MyDay({ state, profile, onLater }: { state: GameState; p
       <div className="sheet" ref={dlg} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="myday-title">
         <h2 id="myday-title">Мой день</h2>
         <p className="muted">Какой сегодня день? Задания подстроятся под расписание.</p>
+        <div className="field">
+          <span className="lbl"><Zap size={16} aria-hidden="true" /> Сколько сил с утра? {energy ? `${energy}/10` : '(необязательно)'}</span>
+          <div className="scale energy">
+            {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+              <button key={n} style={{ '--e': n } as React.CSSProperties} className={`btn${energy === n ? ' on' : ''}`} disabled={busy}
+                aria-label={`Энергия ${n} из 10`} aria-pressed={energy === n} onClick={() => setEnergy(energy === n ? null : n)}>{n}</button>
+            ))}
+          </div>
+        </div>
         <div className="stack">
-          {profile.workTemplates.map((t, i) => (
-            <button key={i} className="btn day-card" disabled={busy} onClick={() => begin({ start: t.start, end: t.end })}>
-              <Briefcase size={22} aria-hidden="true" /> <span>{t.label}</span> <small>{t.start}–{t.end}</small>
-            </button>
-          ))}
-          <button className="btn day-card" disabled={busy} onClick={() => begin(null)}><Palmtree size={22} aria-hidden="true" /> <span>Выходной</span></button>
-          <button className="btn day-card ghost" disabled={busy} aria-expanded={custom} onClick={() => setCustom(!custom)}><Clock size={22} aria-hidden="true" /> <span>Другое время</span></button>
-          {custom && (
-            <div className="row">
-              <label className="field">С<input type="time" value={start} onChange={e => setStart(e.target.value)} /></label>
-              <label className="field">До<input type="time" value={end} onChange={e => setEnd(e.target.value)} /></label>
-            </div>
-          )}
-          {custom && (
-            <button className="btn primary" disabled={busy || !start || !end || start === end} onClick={() => begin({ start, end })}>
-              Начать день
-            </button>
-          )}
+          {state.dayTypes.map(t => {
+            const Icon = DAY_ICONS[t.kind]
+            return (
+              <button key={t.id} className="btn day-card" disabled={busy} onClick={() => begin(t)}>
+                <Icon size={22} aria-hidden="true" /> <span>{t.label}</span>
+                <small>{t.busy ? `${t.busy.start}–${t.busy.end}` : t.kind === 'rest' ? `без давления · осталось ${state.today.restDaysLeft}` : 'весь день свободен'}</small>
+              </button>
+            )
+          })}
         </div>
         <p role="status" className="muted">{busy ? 'Подбираю задания… это может занять до 30 секунд' : ''}</p>
         {err && <p className="err" role="alert">{err}</p>}

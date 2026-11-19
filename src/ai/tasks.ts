@@ -1,6 +1,7 @@
 import { addDays } from '../domain/day'
 import { STATS } from '../domain/stats'
-import type { GameState, Profile, Quest, Stat } from '../domain/types'
+import { RANKS } from '../domain/balance'
+import type { GameState, Profile, Quest, Rank, Stat } from '../domain/types'
 import { weakestStat } from '../domain/weekly'
 import type { AiConfig } from './config'
 import { AiError, generateJson } from './providers'
@@ -118,4 +119,16 @@ export async function aiWeeklyReport(cfg: AiConfig, state: GameState): Promise<s
   const text = typeof raw === 'string' ? raw : raw?.text
   if (typeof text !== 'string' || !text.trim()) throw new AiError('пустой отчёт', 'bad_response')
   return text.trim().slice(0, 4000)
+}
+
+const RANK_SYSTEM = `Ты — Мастер в игре по прокачке. Оцени трудность задания, которое герой придумал себе сам, рангом E (совсем легко, ~10 минут) … S (очень тяжело). Ранги: ${RANKS.join(', ')}. Ответ — только ранг.`
+const RANK_SCHEMA = { type: 'object', required: ['rank'], properties: { rank: { type: 'string', enum: [...RANKS] } } }
+
+/** Ранг своего задания от ИИ, не выше потолка `cap`; ответ — недоверенные данные. */
+export async function aiCustomRank(cfg: AiConfig, title: string, skill: string, cap: Rank): Promise<Rank> {
+  const raw = await generateJson(cfg, RANK_SYSTEM, `Задание: ${title}
+Навык: ${skill}`, RANK_SCHEMA) as any
+  const r = raw?.rank
+  if (!RANKS.includes(r)) throw new AiError('нет ранга', 'bad_response')
+  return RANKS[Math.min(RANKS.indexOf(r), RANKS.indexOf(cap))]
 }

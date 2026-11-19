@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { toMin } from '../domain/day'
 import type { Profile, Quest } from '../domain/types'
-import { replanAfterBusy } from './replan'
+import { replanAfterBusy, replanForDayType } from './replan'
 
 const profile = { sleep: '23:00', energy: { morning: 3, day: 3, evening: 3, night: 1 } } as Profile
 const q = (id: string, start: string | null, minutes: number, done = false): Quest & { done: boolean } => ({
@@ -30,5 +30,26 @@ describe('replanAfterBusy', () => {
     const r = replanAfterBusy(qs, '20:00', until, '07:00', { ...profile, sleep }, null)
     expect(r.find(x => x.id === 'a')!.window).toBeNull()
     expect(r.find(x => x.id === 'done')).toBe(qs[1])
+  })
+})
+
+describe('replanForDayType', () => {
+  const evening = { id: 'evening', kind: 'evening', label: 'Вечерняя смена', wake: '11:00', busy: { start: '16:00', end: '02:00' }, bed: '03:00', slots: 3 } as const
+  const dq = (id: string, start: string | null, minutes: number, o: { done?: boolean; dropped?: boolean } = {}) =>
+    ({ ...q(id, start, minutes, o.done), dropped: !!o.dropped }) as Parameters<typeof replanForDayType>[0][number]
+  it('вечерняя смена: невыполненные — в окна до 16:00, dropped скрыты, сделанные не двигаются', () => {
+    const qs = [dq('a', '18:00', 30), dq('b', '20:00', 60), dq('done', '19:00', 30, { done: true }), dq('drop', '21:00', 30, { dropped: true })]
+    const r = replanForDayType(qs, '12:00', { ...evening, busy: { ...evening.busy } }, { ...profile, wake: '11:00' })
+    expect(r.map(x => x.id)).toEqual(['a', 'b', 'done'])
+    for (const id of ['a', 'b']) {
+      const w = r.find(x => x.id === id)!.window!
+      expect(toMin(w.start)).toBeGreaterThanOrEqual(toMin('12:00'))
+      expect(toMin(w.end)).toBeLessThanOrEqual(toMin('16:00'))
+    }
+    expect(r.find(x => x.id === 'done')).toBe(qs[2])
+  })
+  it('после отбоя нового типа — «в течение дня»', () => {
+    const r = replanForDayType([dq('a', '18:00', 30)], '03:30', { ...evening, busy: { ...evening.busy } }, { ...profile, wake: '11:00' })
+    expect(r[0].window).toBeNull()
   })
 })

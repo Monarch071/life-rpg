@@ -3,27 +3,29 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { appendEvent, getSetting, setSetting } from '../db'
 import { ACHIEVEMENTS } from '../domain/achievements'
 import { fromMin, gameDate, toMin } from '../domain/day'
-import { STATS } from '../domain/stats'
-import type { GameState, Profile } from '../domain/types'
+import type { DayQuest, GameState, Profile } from '../domain/types'
 import { hhmmNow, now } from '../now'
-import { imageNameFor } from '../ai/avatar'
-import { useBlobUrl } from '../blobs'
-import { Bot, Check, Gem, Hourglass, Moon, Zap, X } from 'lucide-react'
+import { imageNameFor, PHOTO_ERROR_TEXT, shrinkImage } from '../ai/avatar'
+import { saveBlob, useBlobUrl } from '../blobs'
+import { Bot, Check, Gem, Hourglass, Moon, PenLine, Shuffle, Zap, X } from 'lucide-react'
 import HeroStage from '../ui/HeroStage'
 import HeroExtras from '../ui/HeroExtras'
+import QuestCard from '../ui/QuestCard'
 import { PhotoCta, type Go } from './AvatarAi'
 import { InterviewCta } from './Interview'
-import { StatIcon } from '../ui/icons'
 import { useDialog } from '../ui/useDialog'
-import { buildQuests } from './issue'
+import { rerollCandidate } from '../domain/assemble'
+import { assembleCtx, buildQuests } from './issue'
 import { BALANCE } from '../domain/balance'
 import { legacyDayType } from '../domain/dayType'
 import Checkin from './Checkin'
+import CustomQuest from './CustomQuest'
+import DayChanged from './DayChanged'
 import MyDay from './MyDay'
 import QuickInput from './QuickInput'
-import { replanAfterBusy } from './replan'
+import { replanAfterBusy, replanForDayType } from './replan'
 
-type Sheet = null | 'quick' | 'busy' | 'checkin'
+type Sheet = null | 'quick' | 'busy' | 'checkin' | 'changed' | 'custom'
 
 // «Позже» на «Мой день» — до перезапуска приложения (переживает переключение вкладок)
 let deferredDay = false
@@ -32,7 +34,8 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
   const { today } = state
   const img = useBlobUrl(imageNameFor(state.avatarImages, state.tier))
   const [sheet, setSheet] = useState<Sheet>(null)
-  const [pop, setPop] = useState<{ id: string; xp: number; k: number } | null>(null)
+  const [pop, setPop] = useState<{ id: string; k: number } | null>(null)
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set())
   const [err, setErr] = useState<string | null>(null)
   const pending = useRef(new Set<string>())
   const [issuing, setIssuing] = useState(false)
@@ -82,33 +85,62 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
   }
 
   const quests = useMemo(() => {
-    const qs = today.busyUntil && today.wakeAt
-      ? replanAfterBusy(today.quests, hhmmNow(), today.busyUntil, today.wakeAt, profile, today.work)
-      : today.quests
+    // после «День изменился» — окна нового типа (dropped скрыты); иначе — после «Занят до…»
+    const qs = today.changed && today.dayType ? replanForDayType(today.quests, hhmmNow(), today.dayType, profile)
+      : today.busyUntil && today.wakeAt ? replanAfterBusy(today.quests, hhmmNow(), today.busyUntil, today.wakeAt, profile, today.work)
+      : today.quests.filter(q => !q.dropped)
     const key = (w: { start: string } | null) => (w ? (toMin(w.start) - toMin(today.wakeAt ?? profile.wake) + 1440) % 1440 : 1e9)
     return [...qs].sort((a, b) => key(a.window) - key(b.window))
   }, [today, profile])
 
-  const complete = async (id: string, xp: number) => {
+  // одно действие на задание за раз; игровые сутки сменились — не пишем (иначе «+XP» потом исчезнет), а пересчитываем день.
+  // act → true: задание закрыто, остаётся заблокированным до смены дня
+  const guarded = async (id: string, fail: string, act: () => Promise<boolean>) => {
     if (pending.current.has(id)) return
-    // игровые сутки уже сменились: не пишем (иначе «+XP» потом исчезнет), а пересчитываем день
     if (now() >= today.closesAt) return void document.dispatchEvent(new Event('visibilitychange'))
     pending.current.add(id)
     setErr(null)
-    try {
-      await appendEvent({ type: 'quest_completed', date: today.date, questId: id })
-      setPop({ id, xp, k: Date.now() })
-      setTimeout(() => setPop(p => (p?.id === id ? null : p)), 1200)
-    } catch {
-      pending.current.delete(id)
-      setErr('Не удалось отметить задание, попробуй ещё раз')
-    }
+    setBusyIds(new Set(pending.current))
+    let keep = false
+    try { keep = await act() } catch (e) { setErr(e instanceof Error && e.message === PHOTO_ERROR_TEXT ? PHOTO_ERROR_TEXT : fail) }
+    if (!keep) pending.current.delete(id)
+    setBusyIds(new Set(pending.current))
   }
+  const celebrate = (id: string) => {
+    setPop({ id, k: Date.now() })
+    setTimeout(() => setPop(p => (p?.id === id ? null : p)), 1200)
+    return true
+  }
+  const complete = (id: string) => guarded(id, 'Не удалось отметить задание, попробуй ещё раз', async () => {
+    await appendEvent({ type: 'quest_completed', date: today.date, questId: id })
+    return celebrate(id)
+  })
+  // фото хранится только на этом устройстве (proof-*): синк его не выгружает
+  const photo = (id: string, f: File) => guarded(id, 'Не удалось сохранить фото, попробуй ещё раз', async () => {
+    const blob = await shrinkImage(f).catch(() => { throw new Error(PHOTO_ERROR_TEXT) })
+    const name = `proof-${crypto.randomUUID()}`
+    await saveBlob(name, blob)
+    await appendEvent({ type: 'quest_completed', date: today.date, questId: id, verify: 'photo', photo: name })
+    return celebrate(id)
+  })
+  const rerollable = (q: DayQuest) => !q.done && !q.legacy && !q.dropped && (q.kind === 'daily' || q.kind === 'challenge')
+  const cost = today.nextRerollCost
+  // платный переброс — только из золота прошлых дней (spendable), как его проверяет replay
+  const rerollInfo = { label: cost ? String(cost) : 'бесплатно', off: cost > today.spendable ? `мало золота (${today.spendable})` : null }
+  const reroll = (q: DayQuest) => guarded(q.id, 'Не удалось перебросить, попробуй ещё раз', async () => {
+    const wakeAt = today.wakeAt ?? hhmmNow()
+    const ctx = assembleCtx(state, today.dayType ?? legacyDayType(today.work, wakeAt, profile.sleep), wakeAt, today.energy ?? BALANCE.energy.fallback)
+    const r = rerollCandidate(ctx, q, today.quests)
+    if (!r) { setErr('Замены того же ранга нет'); return false }
+    await appendEvent({ type: 'quest_rerolled', date: today.date, questId: q.id, replacement: r })
+    return false
+  })
 
-  const allDone = today.quests.length > 0 && today.quests.every(q => q.done)
+  const allDone = today.quests.length > 0 && today.quests.every(q => q.done || q.dropped)
   const hour = new Date(now()).getHours()
   const checkinOpen = allDone || hour >= 18 || gameDate(now(), 0) !== today.date // после полуночи игровой день ещё вчерашний
-  const remaining = today.quests.filter(q => !q.done).length
+  const remaining = today.quests.filter(q => !q.done && !q.dropped).length
+  const customFull = today.customCount >= BALANCE.custom.perDay
 
   return (
     <div className="home">
@@ -132,23 +164,9 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
         )}
         <ul>
           {(today.started || !later) && quests.map((q, i) => (
-            <li key={q.id} className={`q${q.done ? ' done' : ''}`} style={{ '--i': i } as React.CSSProperties}>
-              <StatIcon stat={q.stat} />
-              <div className="t">
-                <b>{q.title}</b>
-                <small>{STATS[q.stat].name} · {q.window ? `${q.window.start}–${q.window.end}` : 'в течение дня'}</small>
-              </div>
-              <span className="xpchip">+{q.xp}</span>
-              <button className="chk" disabled={q.done} aria-label={`Выполнить: ${q.title}`} onClick={() => complete(q.id, q.xp)}>
-                {q.done && <Check size={20} aria-hidden="true" />}
-              </button>
-              {pop?.id === q.id && (
-                <span key={pop.k} className="burst" aria-hidden="true">
-                  <span className="float">+{pop.xp} XP</span>
-                  {[0, 1, 2, 3, 4].map(n => <i key={n} className="spark" />)}
-                </span>
-              )}
-            </li>
+            <QuestCard key={q.id} q={q} i={i} pop={pop?.id === q.id ? pop.k : null} busy={busyIds.has(q.id)}
+              reroll={rerollable(q) ? rerollInfo : null}
+              onDone={() => void complete(q.id)} onPhoto={f => void photo(q.id, f)} onReroll={() => void reroll(q)} />
           ))}
         </ul>
         {err && <p className="err" role="alert">{err}</p>}
@@ -157,6 +175,12 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       <div className="actions">
         <button className="btn" onClick={() => setSheet('quick')}><Zap size={18} aria-hidden="true" /> Быстрый ввод</button>
         <button className="btn ghost" onClick={() => setSheet('busy')}><Hourglass size={18} aria-hidden="true" /> Занят до…</button>
+        {today.started && <>
+          <button className="btn ghost" onClick={() => setSheet('changed')}><Shuffle size={18} aria-hidden="true" /> День изменился</button>
+          <button className="btn ghost" disabled={customFull} aria-describedby={customFull ? 'custom-full' : undefined} onClick={() => setSheet('custom')}>
+            <PenLine size={18} aria-hidden="true" /> Своё задание
+          </button>
+        </>}
         {!today.checkedIn && (
           <button className="btn primary" disabled={!checkinOpen} onClick={() => setSheet('checkin')}
             title={checkinOpen ? undefined : 'Доступен после 18:00 или когда все задания выполнены'}>
@@ -164,6 +188,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
           </button>
         )}
       </div>
+      {today.started && customFull && <p className="muted center" id="custom-full">Своих заданий сегодня уже {BALANCE.custom.perDay} — это максимум</p>}
       {!today.checkedIn && !checkinOpen && <p className="muted center">Чек‑ин откроется в 18:00 или когда выполнишь все задания</p>}
       {today.checkedIn && <p className="ok center"><Check size={14} aria-hidden="true" /> Чек‑ин сделан</p>}
 
@@ -172,7 +197,9 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       {sheet === 'quick' && <QuickInput state={state} onClose={() => setSheet(null)} />}
       {sheet === 'busy' && <BusyUntil date={today.date} onClose={() => setSheet(null)} />}
       {sheet === 'checkin' && <Checkin date={today.date} onClose={() => setSheet(null)} />}
-      {!today.started && !later && <MyDay state={state} profile={profile} onLater={() => setLater(true)} />}
+      {sheet === 'changed' && <DayChanged state={state} onClose={() => setSheet(null)} />}
+      {sheet === 'custom' && <CustomQuest state={state} onClose={() => setSheet(null)} />}
+      {!today.started && !later && <MyDay state={state} onLater={() => setLater(true)} />}
     </div>
   )
 }

@@ -20,14 +20,19 @@ async function upload(name: string, blob: Blob): Promise<boolean> {
   }
 }
 
+// фото-доказательства заданий приватны: только на этом устройстве, синк их не выгружает
+const PRIVATE = 'proof-'
+const shared = (name: string) => !name.startsWith(PRIVATE)
+
 export async function saveBlob(name: string, blob: Blob): Promise<void> {
   await db.blobs.put({ name, blob, uploaded: 0 })
-  if (await upload(name, blob)) await db.blobs.update(name, { uploaded: 1 })
+  if (shared(name) && await upload(name, blob)) await db.blobs.update(name, { uploaded: 1 })
 }
 
 export async function getBlob(name: string): Promise<Blob | null> {
   const local = await db.blobs.get(name)
   if (local) return local.blob
+  if (!shared(name)) return null
   try {
     const cfg = await getSyncConfig()
     if (!cfg) return null
@@ -42,7 +47,7 @@ export async function getBlob(name: string): Promise<Blob | null> {
 }
 
 export async function uploadPendingBlobs(): Promise<void> {
-  for (const b of await db.blobs.filter(b => b.uploaded === 0).toArray()) {
+  for (const b of await db.blobs.filter(b => b.uploaded === 0 && shared(b.name)).toArray()) {
     if (await upload(b.name, b.blob)) await db.blobs.update(b.name, { uploaded: 1 })
   }
 }

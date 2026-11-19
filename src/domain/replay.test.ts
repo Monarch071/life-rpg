@@ -1129,3 +1129,16 @@ test('лимит отдыха монотонен: день без заданий
   expect(h('2026-12-15').rest).toBe(false); // 15-й отдых в месяце (с днём без заданий) — обычный день
   expect(s.today.restDaysLeft).toBe(0);
 });
+
+test('today.dayStart: уровень и навыки на начало дня — потолок переброса не растёт от сегодняшнего XP', () => {
+  const ids = ['b1', 'b2', 'b3', 'b4'];
+  const s = replay([onboard, issue('2026-11-17', ids.map(id => q(id, '2026-11-17', 10_000, 'str', 1, 'pushups'))),
+    ...ids.map((id, i) => done('2026-11-17', id, at('2026-11-17', 10, i)))], at('2026-11-17', 12));
+  expect(s.level).toBeGreaterThan(s.today.dayStart.level);
+  expect(s.today.dayStart.level).toBe(s.startLevel);
+  expect(s.skills.strength.level).toBeGreaterThan(s.today.dayStart.skills.strength);
+  expect(s.today.dayStart.skills.strength).toBe(s.skills.strength.start);
+  // без выдач — текущие значения
+  const e = replay([onboard], at('2026-11-17', 12));
+  expect(e.today.dayStart).toEqual({ level: e.level, skills: Object.fromEntries(Object.entries(e.skills).map(([k, v]) => [k, v.level])) });
+});

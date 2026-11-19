@@ -406,6 +406,8 @@ export function replay(events: GameEvent[], now: number): GameState {
       if (before < 2 && skillFromXp(start.skills[id], skillXp[id]).level >= 2) bump(r.date, 'skills');
     }
   };
+  const skillLevels = () => Object.fromEntries(SKILL_IDS.map(id => [id, skillFromXp(start.skills[id], skillXp[id]).level])) as Record<SkillId, number>;
+  let dayStartCaps: GameState['today']['dayStart'] | null = null; // потолки рангов сегодня (переброс, своё задание) — на начало дня
   const history: DayResult[] = [], statHistory: GameState['statHistory'] = [];
   const finalized: { stat: Stat; done: boolean }[][] = [];
   const closed: { date: ISODate; done: number; rest: boolean }[] = []; // все закрытые дни от первого дня с заданиями (пустые тоже)
@@ -424,6 +426,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     }
     // потолок ранга: уровень и навык на начало дня
     const lvl = levelFromXp(xpSoFar, startLevel).level;
+    if (d === today) dayStartCaps = { level: lvl, skills: skillLevels() };
     const capOf = (q: DayQuest) => RANKS.indexOf(rankCap(lvl, skillFromXp(start.skills[q.skills[0]], skillXp[q.skills[0]]).level));
     for (const s of spendsOn.get(d) ?? []) {
       const avail = goldSoFar - ordinaryBuys.reduce((a, b) => a + (b.ts < s.ts ? b.r.price : 0), 0) - paidSum;
@@ -596,6 +599,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       // то же правило, что у платных трат: золото прошлых дней − все обычные покупки − принятые платные траты
       spendable: Math.max(0, ledger.reduce((a, r) => a + (r.date < today ? r.gold : 0), 0) - ordinaryBuys.reduce((a, b) => a + b.r.price, 0) - paidSum),
       freezesLeft: Math.max(0, BALANCE.shop.freezePerMonth - (freezeMonth.get(today.slice(0, 7)) ?? 0)), dayOff: dayOff.has(today),
+      dayStart: dayStartCaps ?? { level, skills: skillLevels() }, // сегодня не в цикле — сегодняшних строк нет
       rerollsUsed, nextRerollCost: rerollsUsed >= BALANCE.reroll.free ? BALANCE.reroll.cost : 0, customCount: customs.get(today)?.length ?? 0,
       quests: todayQuests, xp: todayQuests.reduce((s, q) => s + (q.done ? q.xpFinal ?? 0 : 0), 0),
       metrics: metrics.get(today) ?? {}, checkedIn, lastEnergy, busyUntil, calendar,

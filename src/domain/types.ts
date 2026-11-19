@@ -93,6 +93,7 @@ export interface GameState {
            energy: number | null;         // 0–100: утренняя оценка ×10 → чек-ин ×10 → fallback; день не начат — null
            changed: boolean;              // был «День изменился»
            restDaysLeft: number;          // дней отдыха в этом календарном месяце осталось
+           dayStart: { level: number; skills: Record<SkillId, number> };   // уровень и навыки на начало дня — потолки рангов для переброса и своих
            rerollsUsed: number; nextRerollCost: number;   // принятые перебросы сегодня; цена следующего (0 | 50)
            customCount: number;           // своих заданий сегодня
            spendable: number;             // золото для платных трат (переброс, покупки с эффектом)

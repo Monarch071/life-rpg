@@ -2,7 +2,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 
 vi.mock('./providers', async (orig) => ({ ...(await orig<typeof import('./providers')>()), generateJson: vi.fn() }))
 import { AiError, generateJson } from './providers'
-import { aiQuestTexts, aiTuning, aiWeeklyReport, applyTexts, questContext, validateAiTexts } from './tasks'
+import { aiCustomRank, aiQuestTexts, aiTuning, aiWeeklyReport, applyTexts, questContext, validateAiTexts } from './tasks'
 import { replay } from '../domain/replay'
 import type { GameEvent, Profile, Quest } from '../domain/types'
 import type { AiConfig } from './config'
@@ -90,4 +90,13 @@ test('KEY_ANSWERS ссылаются на существующие вопрос�
   const { QUESTIONS } = await import('../domain/interview')
   const ids = new Set(QUESTIONS.map(q => q.id))
   expect(KEY_ANSWERS.map(([id]) => id).filter(id => !ids.has(id))).toEqual([])
+})
+
+test('aiCustomRank: ранг из ответа ИИ не выше потолка; мусор — ошибка', async () => {
+  gen.mockResolvedValueOnce({ rank: 'C' })
+  expect(await aiCustomRank(cfg, 'Сходить в бассейн', 'Кардио', 'B')).toBe('C')
+  gen.mockResolvedValueOnce({ rank: 'S' })
+  expect(await aiCustomRank(cfg, 'Сходить в бассейн', 'Кардио', 'D')).toBe('D')
+  gen.mockResolvedValueOnce({ rank: 'Z' })
+  await expect(aiCustomRank(cfg, 'Сходить в бассейн', 'Кардио', 'D')).rejects.toThrow()
 })
