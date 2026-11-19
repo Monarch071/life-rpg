@@ -5,6 +5,8 @@ const MIN_MS = 60_000;
 
 const num = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 const clamp = (x: number, lo = 0, hi = 100) => Math.min(hi, Math.max(lo, x));
+/** NaN/Infinity/не-число на входе = источника нет (как null). */
+const src = (x: number | null): number | null => (num(x) ? x : null);
 /** round(Σ wᵢsᵢ / Σ wᵢ) по доступным (не-null) частям; null — частей нет. */
 const blend = (parts: [number, number | undefined][]): number | null => {
   const ok = parts.filter((p): p is [number, number] => p[1] !== undefined);
@@ -19,6 +21,7 @@ export function sleepScore(hours: number): number {
 
 export function hpScore(i: { sleepAvg: number | null; stepsAvg: number | null; stepsGoal: number; rhr: number | null; rhrMean: number | null; feel: number | null }):
   { hp: number | null; parts: Partial<Record<'sleep' | 'steps' | 'rhr' | 'feel', number>> } {
+  i = { ...i, sleepAvg: src(i.sleepAvg), stepsAvg: src(i.stepsAvg), rhr: src(i.rhr), rhrMean: src(i.rhrMean), feel: src(i.feel) };
   const parts: Partial<Record<'sleep' | 'steps' | 'rhr' | 'feel', number>> = {};
   if (i.sleepAvg !== null) parts.sleep = sleepScore(i.sleepAvg);
   if (i.stepsAvg !== null) {
@@ -35,6 +38,7 @@ export function hpScore(i: { sleepAvg: number | null; stepsAvg: number | null; s
 
 export function energyScore(i: { sleepLast: number | null; morning: number | null; weekMorning: number | null; hp: number | null }): number | null {
   const w = V.energy.w;
+  i = { sleepLast: src(i.sleepLast), morning: src(i.morning), weekMorning: src(i.weekMorning), hp: src(i.hp) };
   const m = i.morning ?? i.weekMorning;
   const ok = (x: number | null) => (x === null ? undefined : num(x) ? clamp(x) : 0);
   return blend([
@@ -46,6 +50,7 @@ export function energyScore(i: { sleepLast: number | null; morning: number | nul
 
 export function focusScore(i: { focusMin: number | null; socialMin: number | null }): { focus: number | null; parts: Partial<Record<'focus' | 'social', number>> } {
   const F = V.focus;
+  i = { focusMin: src(i.focusMin), socialMin: src(i.socialMin) };
   const parts: Partial<Record<'focus' | 'social', number>> = {};
   if (i.focusMin !== null) parts.focus = Math.round(clamp(num(i.focusMin) ? (i.focusMin / F.fullMin) * 100 : 0));
   if (i.socialMin !== null) {
@@ -68,7 +73,8 @@ export function fatigueNext(prev: number, day: { bigDay: boolean; rest: boolean;
 
 /** Сессии одной группы: open→close; open без close — до следующего сигнала, не больше openTailMin; close без open игнорируется. */
 export function sessionMinutes(sig: { at: number; state: 'open' | 'close' }[]): { start: number; min: number }[] {
-  const s = sig.filter((x) => num(x.at)).sort((a, b) => a.at - b.at);
+  // при равном времени open раньше close — результат не зависит от порядка входа
+  const s = sig.filter((x) => num(x.at)).sort((a, b) => a.at - b.at || (a.state === b.state ? 0 : a.state === 'open' ? -1 : 1));
   const out: { start: number; min: number }[] = [];
   for (let i = 0; i < s.length; i++) {
     if (s[i].state !== 'open') continue;

@@ -5,15 +5,16 @@ import { addDays, gameDate, weekStart } from './day';
 import { closeMinutes, closesAtTs, DEFAULT_DAY_TYPES, gameDateAt, isHM, legacyDayType, validDayType, type DayType } from './dayType';
 import { adjustMultipliers } from './difficulty';
 import { cleanAnswers, validAnalysis } from './interview';
-import { METRIC_INFO } from './metricInfo';
+import { AUTO_METRIC_INFO, METRIC_INFO } from './metricInfo';
 import { baseFromXp, formNorm, formOf, formStatus, goldFor, questReward, rankCap, skillFromXp, streakBonus } from './progression';
 import { DEFAULT_SKILL_BY_STAT, LEGACY_SKILL_BY_TEMPLATE, legacyRank } from './questBank';
 import { isSkillId, primaryStat, SKILL_CATALOG, splitXp, type SkillId } from './skillCatalog';
 import { startProfile } from './startProfile';
 import { dayOutcome, nextStreak } from './streak';
 import { classFor, isStat, STATS, tierFor } from './stats';
-import type { Analysis, Answers, AvatarParams, Boss, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, WeeklyQuest } from './types';
+import type { Analysis, Answers, AutoMetric, AvatarParams, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, WeeklyQuest } from './types';
 import { weakestStat } from './weekly';
+import { sessionMinutes, unionMinutes, workoutKind } from './vitals';
 import { levelFromXp } from './xp';
 
 export const DEFAULT_AVATAR: AvatarParams = { hair: 'short', hairColor: '#2b1d14', outfitColor: '#4f46e5', eyes: 'round' };
@@ -36,7 +37,6 @@ const validProfile = (p: any): p is Profile => !!p && typeof p === 'object' && !
   && STAT_KEYS.every(k => typeof p.selfRating[k] === 'number' && Number.isFinite(p.selfRating[k]));
 const validAvatar = (p: any): p is AvatarParams => !!p && typeof p === 'object' && (['hair', 'hairColor', 'outfitColor', 'eyes'] as const).every(k => typeof p[k] === 'string');
 const strongestStat = (st: Record<Stat, number>): Stat => STAT_KEYS.reduce((a, k) => (st[k] > st[a] ? k : a)); // ничья — по порядку STATS
-const AUTO_METRICS: readonly string[] = ['steps', 'sleepHours', 'weightKg', 'workoutMin'];
 const QUEST_KINDS: readonly string[] = ['daily', 'challenge', 'restore', 'custom'];
 const clampXp = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(BALANCE.legacy.questXpMax, Math.max(0, v))) : 0);
 
@@ -57,7 +57,7 @@ export function normQuest(raw: unknown, date: ISODate): DayQuest | null {
     rank = r.rank; skills = [...s] as DayQuest['skills'];
   }
   const a = r.auto, w = r.window;
-  const auto: Quest['auto'] = a && typeof a === 'object' && AUTO_METRICS.includes(a.metric) && (a.op === '>=' || a.op === '<=') && Number.isFinite(a.value)
+  const auto: Quest['auto'] = a && typeof a === 'object' && Object.hasOwn(AUTO_METRIC_INFO, a.metric) && (a.op === '>=' || a.op === '<=') && Number.isFinite(a.value)
     ? { metric: a.metric, op: a.op, value: a.value } : null;
   return {
     id: r.id, date, title: r.title, stat: primaryStat(skills),
@@ -104,6 +104,45 @@ function calendarOf(raw: unknown, date: ISODate): GameState['today']['calendar']
     out.push({ title: String(c.title ?? ''), start: hhmm(s), end: hhmm(e) });
   }
   return out;
+}
+
+const fin = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+const MIN_MS = 60_000;
+type Workout = { type: string; start?: number; end?: number; minutes: number };
+/** Тренировка из пакета (граница доверия): тип-строка, минуты 0–сутки или из end − start; иначе null. */
+function workoutOf(x: unknown): Workout | null {
+  const o = x as Record<string, unknown> | null;
+  if (!o || typeof o !== 'object' || typeof o.type !== 'string') return null;
+  const start = fin(o.start) ? o.start : undefined, end = start !== undefined && fin(o.end) && o.end > start ? o.end : undefined;
+  const minutes = fin(o.minutes) ? o.minutes : end !== undefined ? (end - start!) / MIN_MS : NaN;
+  if (!(minutes >= 0 && minutes <= BALANCE.day.minutesPerDay)) return null;
+  return { type: o.type.slice(0, 60), start, end, minutes };
+}
+/** Минуты тренировок дня по видам; overlap — два интервала пересекаются. */
+function workoutStats(ws: Workout[]): { mins: Partial<Record<AutoMetric, number>>; overlap: boolean } {
+  const mins: Partial<Record<AutoMetric, number>> = {};
+  for (const w of ws) {
+    mins.workoutMin = (mins.workoutMin ?? 0) + w.minutes;
+    const k = workoutKind(w.type);
+    if (k !== 'other') mins[`${k}Min`] = (mins[`${k}Min`] ?? 0) + w.minutes;
+  }
+  const iv = ws.filter(w => w.end !== undefined).sort((a, b) => a.start! - b.start!);
+  let overlap = false, maxEnd = -Infinity;
+  for (const w of iv) { if (w.start! < maxEnd) overlap = true; maxEnd = Math.max(maxEnd, w.end!); }
+  return { mins, overlap };
+}
+const PLACES: readonly string[] = ['gym', 'work', 'home'], APPS = ['social', 'games'] as const;
+type SigBody = { kind: 'arrive'; place: string } | { kind: 'app'; app: string; state: 'open' | 'close' } | { kind: 'focus'; state: 'on' | 'off' } | { kind: 'wallet'; amount: number };
+type Sig = { at: number; ts: number; d: ISODate } & SigBody;
+/** Сигнал (граница доверия) без названия магазина; ключ дедупликации — с ним. */
+function signalOf(x: unknown): { s: SigBody; key: string } | null {
+  const o = x as Record<string, any> | null;
+  if (!o || typeof o !== 'object') return null;
+  const s: SigBody | null = o.kind === 'arrive' && PLACES.includes(o.place) ? { kind: 'arrive', place: o.place }
+    : o.kind === 'app' && (APPS as readonly string[]).includes(o.app) && (o.state === 'open' || o.state === 'close') ? { kind: 'app', app: o.app, state: o.state }
+    : o.kind === 'focus' && (o.state === 'on' || o.state === 'off') ? { kind: 'focus', state: o.state }
+    : o.kind === 'wallet' && fin(o.amount) ? { kind: 'wallet', amount: o.amount } : null;
+  return s && { s, key: JSON.stringify([s, s.kind === 'wallet' && typeof o.merchant === 'string' ? o.merchant : '']) };
 }
 
 /** Строка леджера без навыка (босс, недельное): 100% в характеристику, если она есть. */
@@ -184,8 +223,17 @@ export function replay(events: GameEvent[], now: number): GameState {
   const spends: Spend[] = [];
   const rerolledFrom = new Set<string>(); // исходные questId: повтор переброса игнорируется
   const customs = new Map<ISODate, DayQuest[]>();
+  // Авто-источники: здоровье по датам пакета; hi/lo — max/min незафлаженных значений по каждому пакету (засчёт монотонен).
+  type Acc = { steps?: number; sleep?: number; rhr?: number; weight?: number; mindful?: number; legacyW?: number;
+    w: Map<string, Workout>; hi: Partial<Record<AutoMetric, number>>; lo: Partial<Record<AutoMetric, number>> };
+  const health = new Map<ISODate, Acc>();
+  const sigs: Sig[] = [], sigKeys = new Set<string>();
+  const timers: { timer: 'focus' | 'reading'; start: number; end: number }[] = [];
+  const sync: GameState['sync'] = { last: null, bySource: {} };
+  const seen = (k: keyof GameState['sync']['bySource'], t: number) => { sync.bySource[k] = Math.max(sync.bySource[k] ?? -Infinity, t); };
 
   for (const e of evs) {
+    if (e.deviceId === 'shortcuts') sync.last = e.ts; // события по возрастанию ts
     switch (e.type) {
       case 'onboarding_completed': {
         if (!validProfile(e.profile)) break; // из сети
@@ -254,10 +302,40 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (ok(h.workoutMin)) m.workoutMin = Math.max(m.workoutMin ?? -Infinity, h.workoutMin);
         if (ok(h.sleepHours)) m.sleepHours = h.sleepHours;
         if (ok(h.weightKg)) m.weightKg = h.weightKg;
+        const a: Acc = health.get(e.date) ?? { w: new Map(), hi: {}, lo: {} };
+        health.set(e.date, a); seen('health', e.ts);
+        const up = (k: AutoMetric, v: number) => { a.hi[k] = Math.max(a.hi[k] ?? -Infinity, v); a.lo[k] = Math.min(a.lo[k] ?? Infinity, v); };
+        const P = BALANCE.plausible;
+        if (ok(h.steps)) { a.steps = Math.max(a.steps ?? -Infinity, h.steps); if (h.steps <= P.stepsMax) up('steps', h.steps); }
+        if (ok(h.sleepHours)) { a.sleep = h.sleepHours; if (h.sleepHours <= P.sleepMaxH) up('sleepHours', h.sleepHours); }
+        if (ok(h.weightKg)) { a.weight = h.weightKg; up('weightKg', h.weightKg); }
+        if (ok(h.restingHR)) a.rhr = h.restingHR;
+        if (ok(h.mindfulMin)) { a.mindful = Math.max(a.mindful ?? -Infinity, h.mindfulMin); up('mindfulMin', h.mindfulMin); }
+        if (ok(h.workoutMin)) { a.legacyW = Math.max(a.legacyW ?? -Infinity, h.workoutMin); up('workoutMin', h.workoutMin); }
+        if (Array.isArray(h.workouts) && h.workouts.length) {
+          // одна тренировка в нескольких пакетах — один раз (ключ start|end|type, без start — type|minutes)
+          for (const x of h.workouts) { const w = workoutOf(x); if (w) a.w.set(w.start !== undefined ? `${w.start}|${w.end}|${w.type}` : `${w.type}|${w.minutes}`, w); }
+          const ws = workoutStats([...a.w.values()]);
+          if (!ws.overlap) for (const [k, v] of Object.entries(ws.mins) as [AutoMetric, number][]) up(k, v);
+          if (ws.mins.workoutMin !== undefined) m.workoutMin = Math.max(m.workoutMin ?? -Infinity, ws.mins.workoutMin);
+        }
         metrics.set(e.date, m);
         lastHealth = { ts: e.ts, date: e.date,
           health: Object.fromEntries(Object.entries(typeof h === 'object' ? h : {}).filter(([, v]) => ok(v))) as HealthData };
         if (e.date === today) calendar = calendarOf(e.calendar, today);
+        break;
+      }
+      case 'signal_logged': {
+        const x = fin(e.at) ? signalOf(e.signal) : null, d = x ? gd(e.at) : '';
+        if (!x || !isDate(d) || sigKeys.has(`${e.at}|${x.key}`)) break; // повтор от «Команд» — один сигнал
+        sigKeys.add(`${e.at}|${x.key}`); sigs.push({ ...x.s, at: e.at, ts: e.ts, d }); seen(x.s.kind, e.at);
+        break;
+      }
+      case 'timer_logged': {
+        const T = BALANCE.timer;
+        if ((e.timer !== 'focus' && e.timer !== 'reading') || !fin(e.start) || !fin(e.end) || e.end <= e.start
+          || e.end - e.start > T.maxMin * MIN_MS || e.end > e.ts + T.skewMin * MIN_MS || !isDate(gd(e.start))) break;
+        timers.push({ timer: e.timer, start: e.start, end: e.end }); seen('timer', e.ts);
         break;
       }
       case 'busy_until': if (e.date === today && isHM(e.until)) busyUntil = e.until; break;
@@ -293,10 +371,54 @@ export function replay(events: GameEvent[], now: number): GameState {
     }
   }
 
-  // Проверка: авто — метрика выполнила цель (в том числе после ручной галочки и за прошлые дни), фото, иначе честное слово.
+  // Данные дня по игровым датам (после всех событий: типы дней и закрытия известны).
+  const data = new Map<ISODate, DayData>();
+  const dd = (d: ISODate) => { let x = data.get(d); if (!x) data.set(d, x = { flags: [] }); return x; };
+  const addTo = (d: ISODate, k: 'socialMin' | 'gamesMin' | 'focusMin' | 'readMin' | 'gymVisits' | 'spendAuto', v: number) => { const x = dd(d); x[k] = (x[k] ?? 0) + v; };
+  for (const [d, a] of health) {
+    const x = dd(d), ws = workoutStats([...a.w.values()]), P = BALANCE.plausible;
+    const vals = { steps: a.steps, sleepHours: a.sleep, restingHR: a.rhr, weightKg: a.weight, mindfulMin: a.mindful, ...ws.mins };
+    for (const [k, v] of Object.entries(vals)) if (v !== undefined) (x as unknown as Record<string, number>)[k] = v;
+    if (a.legacyW !== undefined) x.workoutMin = Math.max(x.workoutMin ?? 0, a.legacyW);
+    if (a.steps !== undefined && a.steps > P.stepsMax) x.flags.push({ metric: 'steps', reason: 'too_many_steps' });
+    if (a.sleep !== undefined && a.sleep > P.sleepMaxH) x.flags.push({ metric: 'sleepHours', reason: 'too_long_sleep' });
+    if (ws.overlap) x.flags.push({ metric: 'workouts', reason: 'overlap' });
+  }
+  const appSigs = (app: string, list: Sig[]) => list.flatMap(s => (s.kind === 'app' && s.app === app ? [{ at: s.at, state: s.state }] : []));
+  for (const app of APPS) for (const { start, min } of sessionMinutes(appSigs(app, sigs))) addTo(gd(start), `${app}Min`, min);
+  // Фокус: каждое on — до ближайшего следующего off (пересечения объединяются), плюс таймеры; интервал — к игровой дате начала.
+  const ivs = new Map<string, { start: number; end: number }[]>();
+  const pushIv = (k: 'focusMin' | 'readMin', start: number, end: number) => { const key = `${k}|${gd(start)}`; ivs.set(key, [...(ivs.get(key) ?? []), { start, end }]); };
+  const fs = sigs.flatMap(s => (s.kind === 'focus' ? [s] : [])).sort((a, b) => a.at - b.at || (a.state === b.state ? 0 : a.state === 'on' ? -1 : 1));
+  for (let i = fs.length - 1, off = NaN; i >= 0; i--) {
+    if (fs[i].state === 'off') off = fs[i].at; else if (fin(off)) pushIv('focusMin', fs[i].at, off);
+  }
+  for (const t of timers) pushIv(t.timer === 'focus' ? 'focusMin' : 'readMin', t.start, t.end);
+  for (const [key, iv] of ivs) { const [k, d] = key.split('|') as ['focusMin' | 'readMin', ISODate]; addTo(d, k, unionMinutes(iv, BALANCE.vitals.focus.intervalMaxMin)); }
+  for (const s of sigs) {
+    if (s.kind === 'arrive' && s.place === 'gym') addTo(s.d, 'gymVisits', 1);
+    if (s.kind === 'wallet') { addTo(s.d, 'spendAuto', s.amount); dd(s.d).spendAuto = Math.round(dd(s.d).spendAuto! * 100) / 100; } // копейки без хвоста float
+  }
+  /** «Без соцсетей/игр»: источник жив за autoLeSourceDays до даты; сигналы — только принятые до закрытия дня (позднее решение не меняют). */
+  const leOk = (d: ISODate, app: string, value: number) => {
+    const close = closesAtTs(d, closeOf(d)), from = addDays(d, 1 - BALANCE.autoLeSourceDays), next = addDays(d, 1);
+    const sg = appSigs(app, sigs.filter(s => s.ts < close && s.d >= from && s.d <= next));
+    if (!sigs.some(s => s.kind === 'app' && s.app === app && s.ts < close && s.d >= from && s.d <= d)) return false;
+    return sessionMinutes(sg).reduce((a, x) => a + (gd(x.start) === d ? x.min : 0), 0) <= value;
+  };
+  const autoOkOf = (q: DayQuest) => {
+    const a = q.auto;
+    if (!a) return false;
+    if (a.metric === 'socialMin' || a.metric === 'gamesMin') return a.op === '<=' && q.date < today && leOk(q.date, a.metric === 'socialMin' ? 'social' : 'games', a.value);
+    // здоровье — по каждому пакету (hi/lo); фокус, чтение, зал только растут — итог дня
+    const h = health.get(q.date)?.[a.op === '>=' ? 'hi' : 'lo'][a.metric];
+    const v = h ?? (a.metric === 'focusMin' || a.metric === 'readMin' || a.metric === 'gymVisits' ? data.get(q.date)?.[a.metric] : undefined);
+    return v !== undefined && (a.op === '>=' ? v >= a.value : v <= a.value);
+  };
+  // Проверка: авто — данные авто-источников выполнили цель (в том числе после ручной галочки и за прошлые дни), фото, иначе честное слово.
+  // Ручной metric_logged — честное слово (спека §4.1).
   for (const q of questById.values()) {
-    const v = q.auto ? metrics.get(q.date)?.[q.auto.metric] : undefined;
-    const autoOk = !!q.auto && v !== undefined && (q.auto.op === '>=' ? v >= q.auto.value : v <= q.auto.value);
+    const autoOk = autoOkOf(q);
     if (autoOk) q.done = true;
     if (q.done) q.verify = autoOk ? 'auto' : photoOk.has(q.id) ? 'photo' : 'honest';
   }
@@ -613,6 +735,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       spendable: Math.max(0, ledger.reduce((a, r) => a + (r.date < today ? r.gold : 0), 0) + achGoldBefore(today)
         - purchases.reduce((a, p) => a + (shop.get(p.rewardId)?.effect ? 0 : p.price), 0) - paidSum),
       freezesLeft: Math.max(0, BALANCE.shop.freezePerMonth - (freezeMonth.get(today.slice(0, 7)) ?? 0)), dayOff: dayOff.has(today),
+      data: data.get(today) ?? { flags: [] },
       dayStart: dayStartCaps ?? { level, skills: skillLevels() }, // сегодня не в цикле — сегодняшних строк нет
       rerollsUsed, nextRerollCost: rerollsUsed >= BALANCE.reroll.free ? BALANCE.reroll.cost : 0, customCount: customs.get(today)?.length ?? 0,
       quests: todayQuests, xp: todayQuests.reduce((s, q) => s + (q.done ? q.xpFinal ?? 0 : 0), 0),
@@ -620,7 +743,9 @@ export function replay(events: GameEvent[], now: number): GameState {
       aiNote: (tunings.get(today) ?? tunings.get(addDays(today, -1)))?.note || null,
     },
     character, interviewAnswers: interview?.answers ?? null,
-    lastHealth,
+    lastHealth, sync,
+    dataFlags: [...data].filter(([d]) => d > addDays(today, -30) && d <= today).sort(([a], [b]) => (a < b ? -1 : 1))
+      .flatMap(([date, x]) => x.flags.map(flag => ({ date, flag }))),
     skills, rewards, purchases,
     weekly: { weekStart: thisWeek, quests: weeklyNow },
     bosses: [...bossMap.values()].filter(b => !b.abandoned),

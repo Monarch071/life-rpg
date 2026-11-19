@@ -7,7 +7,14 @@ test('банк: каждый шаблон с валидными навыками
   const used = new Set(QUEST_TEMPLATES.flatMap(t => t.skills));
   expect(SKILL_CATALOG.filter(s => !used.has(s.id))).toEqual([]);
   expect(QUEST_TEMPLATES.find(t => t.id === 'sleep')!.auto!(1)).toEqual({ metric: 'sleepHours', op: '>=', value: 7.5 });
-  expect(QUEST_TEMPLATES.find(t => t.id === 'workout')!.auto!(30)).toEqual({ metric: 'workoutMin', op: '>=', value: 30 });
+  expect(QUEST_TEMPLATES.find(t => t.id === 'workout')!.auto!(30)).toEqual({ metric: 'strengthMin', op: '>=', value: 30 });
+});
+test('авто-метрики банка: зал, чтение, без соцсетей', () => {
+  const t = (id: string) => QUEST_TEMPLATES.find(x => x.id === id)!;
+  expect(t('gym').auto!(1)).toEqual({ metric: 'gymVisits', op: '>=', value: 1 });
+  expect(t('gym').skills).toEqual(['strength']);
+  expect(t('read').auto!(paramFor(t('read'), 'E', 1))).toEqual({ metric: 'readMin', op: '>=', value: 23 });
+  expect(t('no_social').auto!(1)).toEqual({ metric: 'socialMin', op: '<=', value: 5 });
 });
 test('легаси-карты покрывают все старые templateId', () => {
   for (const id of ['pushups','steps','read','words','plan','focus','compliments','expenses','save','meditate','no_games','no_custom','ai'])

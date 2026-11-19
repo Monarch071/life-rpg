@@ -23,12 +23,29 @@ export interface Quest {
   minutes: number;
   window: { start: HHMM; end: HHMM } | null;   // null — «в течение дня»
   xp: number;
-  auto: { metric: 'steps'|'sleepHours'|'weightKg'|'workoutMin'; op: '>='|'<='; value: number } | null;
+  auto: { metric: AutoMetric; op: '>='|'<='; value: number } | null;
   templateId: string;
   rank?: Rank; skills?: [SkillId] | [SkillId, SkillId]; kind?: QuestKind; why?: string;
 }
 export type Metric = 'steps'|'sleepHours'|'weightKg'|'screenMin'|'spend'|'mood'|'water'|'readPages'|'workoutMin';
-export interface HealthData { steps?: number; sleepHours?: number; workoutMin?: number; activeKcal?: number; restingHR?: number; weightKg?: number }
+export interface HealthData { steps?: number; sleepHours?: number; workoutMin?: number; activeKcal?: number; restingHR?: number; weightKg?: number;
+  mindfulMin?: number; workouts?: { type: string; start?: number; end?: number; minutes: number }[] }
+/** Метрики авто-засчёта (спека §4.4). */
+export type AutoMetric = 'steps' | 'sleepHours' | 'weightKg' | 'workoutMin' | 'strengthMin' | 'mobilityMin' | 'cardioMin' | 'sportsMin'
+  | 'mindfulMin' | 'focusMin' | 'readMin' | 'gymVisits' | 'socialMin' | 'gamesMin';
+export type DataFlag = { metric: 'steps' | 'sleepHours' | 'workouts'; reason: 'too_many_steps' | 'too_long_sleep' | 'overlap' };
+/** Данные авто-источников за игровую дату (без названий магазинов). */
+export interface DayData {
+  steps?: number; sleepHours?: number; restingHR?: number; mindfulMin?: number; weightKg?: number;
+  workoutMin?: number; strengthMin?: number; mobilityMin?: number; cardioMin?: number; sportsMin?: number;
+  focusMin?: number; readMin?: number; socialMin?: number; gamesMin?: number; gymVisits?: number; spendAuto?: number;
+  flags: DataFlag[];
+}
+export type Signal =
+  | { kind: 'arrive'; place: 'gym' | 'work' | 'home' }
+  | { kind: 'app'; app: 'social' | 'games'; state: 'open' | 'close' }
+  | { kind: 'focus'; state: 'on' | 'off' }
+  | { kind: 'wallet'; amount: number; merchant: string };
 export type Answers = Record<string, string | number | string[]>;
 export interface Analysis { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; stats: Record<Stat, number>; focus: string[]; questGuidance: string;
   scores?: Record<Stat, number>; startLevel?: number; levelWhy?: Partial<Record<Stat, string>>; skillLevels?: Partial<Record<SkillId, number>> }
@@ -59,6 +76,8 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'avatar_image'; tier: 1|2|3|4; blob: string }
   | { type: 'interview_completed'; answers: Answers; followups: { q: string; a: string }[]; analysis: Analysis | null }
   | { type: 'season_theme_set'; theme: ThemeId }
+  | { type: 'signal_logged'; at: number; signal: Signal }
+  | { type: 'timer_logged'; timer: 'focus' | 'reading'; start: number; end: number }
 );
 export type WeeklyKind = 'active_days' | 'stat_quests' | 'steps_total' | 'shadow_wins';
 export interface WeeklyQuest { id: string; weekStart: ISODate; kind: WeeklyKind; stat: Stat | null; target: number; title: string; xp: number }
@@ -98,10 +117,13 @@ export interface GameState {
            customCount: number;           // своих заданий сегодня
            spendable: number;             // золото для платных трат (переброс, покупки с эффектом)
            freezesLeft: number;           // заморозок можно купить в этом месяце
-           dayOff: boolean };             // сегодня — купленный «день без заданий»
+           dayOff: boolean;               // сегодня — купленный «день без заданий»
+           data: DayData };               // сегодняшние данные авто-источников
   character: { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; focus: string[]; questGuidance: string; date: ISODate; ai: boolean } | null;   // по последней валидной анкете
   interviewAnswers: Answers | null;   // последние ответы анкеты (для промпта заданий)
   lastHealth: { ts: number; date: ISODate; health: HealthData } | null;
+  sync: { last: number | null; bySource: Partial<Record<'health' | 'arrive' | 'app' | 'focus' | 'wallet' | 'timer', number>> };
+  dataFlags: { date: ISODate; flag: DataFlag }[];   // за 30 дней до сегодня включительно
   skills: Record<SkillId, SkillState>;
   rewards: { id: string; title: string; price: number; effect: RewardEffect | null }[];   // не удалённые, в порядке создания
   purchases: { rewardId: string; title: string; price: number; ts: number }[];

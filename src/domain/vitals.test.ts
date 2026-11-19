@@ -52,5 +52,11 @@ describe('vitals', () => {
     expect(fatigueNext(NaN, null, NaN)).toBe(0);
     expect(workoutKind(undefined as unknown as string)).toBe('other');
     expect(unionMinutes([{ start: NaN, end: 5 }], 10)).toBe(0);
+    // NaN — источника нет, вес делится между остальными
+    expect(hpScore({ sleepAvg: NaN, stepsAvg: 3000, stepsGoal: 6000, rhr: null, rhrMean: null, feel: null })).toEqual({ hp: 50, parts: { steps: 50 } });
+    expect(energyScore({ sleepLast: NaN, morning: NaN, weekMorning: null, hp: NaN })).toBeNull();
+    expect(focusScore({ focusMin: 45, socialMin: NaN })).toEqual({ focus: 50, parts: { focus: 50 } });
+    // open и close в одну миллисекунду: open раньше при любом порядке входа
+    expect(sessionMinutes([{ at: 5, state: 'close' }, { at: 0, state: 'open' }, { at: 0, state: 'close' }])).toEqual([{ start: 0, min: 0 }]);
   });
 });

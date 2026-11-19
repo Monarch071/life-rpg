@@ -110,8 +110,10 @@ test('вечерняя смена: все окна до 16:00; трениров�
 });
 
 test('предпросмотр XP: C честное без бонусов → 49', () => {
-  const qs = assembleDay(ctx({ stats: { ...fill(30), spi: 10 } }));
-  const c = qs.find(q => q.rank === 'C' && !q.auto && q.stat !== 'spi');
+  // выбор зависит от банка шаблонов — ищем подходящее задание за несколько дат
+  const days = Array.from({ length: 10 }, (_, i) => assembleDay(ctx({ date: `2026-11-${20 + i}`, stats: { ...fill(30), spi: 10 } })));
+  const qs = days[0];
+  const c = days.flat().find(q => q.rank === 'C' && !q.auto && q.stat !== 'spi');
   expect(c!.xp).toBe(49);
   for (const q of qs) expect(q.why && q.why.length > 0).toBe(true);
   for (const q of qs) expect(q.skills).toEqual(tpl(q.templateId).skills);
@@ -137,15 +139,17 @@ describe('переброс', () => {
   test('переброс не поднимает ранг выше потолка нового навыка (+1 только для вызова)', () => {
     const sk = { ...skills() };
     for (const id of Object.keys(sk) as SkillId[]) sk[id] = { level: id === 'reading' || id === 'strength' ? 3 : 1, lastDate: null };
-    const c = ctx({ energy: 80, skills: sk });
-    const today = assembleDay(c);
     let checked = 0;
-    for (const q of today) {
-      const r = rerollCandidate(c, q, today);
-      if (!r) continue;
-      const cap = RANKS.indexOf(rankCap(c.level, sk[r.skills![0]].level)) + (q.kind === 'challenge' ? 1 : 0);
-      expect(RANKS.indexOf(r.rank!)).toBeLessThanOrEqual(cap);
-      if (q.kind === 'daily' && RANKS.indexOf(q.rank!) >= RANKS.indexOf('C')) { checked++; expect(['reading', 'strength']).toContain(r.skills![0]); }
+    for (let i = 0; i < 10; i++) { // выбор зависит от банка шаблонов — несколько дат
+      const c = ctx({ date: `2026-11-${20 + i}`, energy: 80, skills: sk });
+      const today = assembleDay(c);
+      for (const q of today) {
+        const r = rerollCandidate(c, q, today);
+        if (!r) continue;
+        const cap = RANKS.indexOf(rankCap(c.level, sk[r.skills![0]].level)) + (q.kind === 'challenge' ? 1 : 0);
+        expect(RANKS.indexOf(r.rank!)).toBeLessThanOrEqual(cap);
+        if (q.kind === 'daily' && RANKS.indexOf(q.rank!) >= RANKS.indexOf('C')) { checked++; expect(['reading', 'strength']).toContain(r.skills![0]); }
+      }
     }
     expect(checked).toBeGreaterThan(0);
   });

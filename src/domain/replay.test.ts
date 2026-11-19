@@ -96,7 +96,7 @@ test('Основа растёт от XP характеристики, старт
 test('авто-проверка: метрика выполнена → ×1,0 даже после ручной галочки', () => {
   const auto = { metric: 'steps' as const, op: '>=' as const, value: 6000 };
   const s = replay([onboard, issue('2026-11-20', [nq('w', '2026-11-20', 'C', ['strength'], { auto })]), done('2026-11-20', 'w'),
-    ev({ type: 'metric_logged', date: '2026-11-20', metric: 'steps', value: 7000, mode: 'set', ts: at('2026-11-20', 21) })], at('2026-11-20', 22));
+    ev({ type: 'health_packet', date: '2026-11-20', kind: 'other', health: { steps: 7000 }, calendar: [], ts: at('2026-11-20', 21), deviceId: 'shortcuts' })], at('2026-11-20', 22));
   expect(s.ledger.at(-1)).toMatchObject({ k: 1, verified: true, xp: 70 });
   expect(s.today.quests[0]).toMatchObject({ done: true, verify: 'auto', xpFinal: 70 });
   expect(s.today.xp).toBe(70);
@@ -382,12 +382,13 @@ test('автозачёт: условие не выполнено → не done',
   expect(s.today.quests[0].done).toBe(false);
 });
 
-test('автозачёт работает и для ручного metric_logged', () => {
+test('ручной metric_logged не даёт авто-засчёт (честное слово) [спека §4.1]', () => {
   const s = replay([
     issue('2026-11-17', [qa('a', '2026-11-17', '>=', 8000)]),
     ev({ type: 'metric_logged', date: '2026-11-17', metric: 'steps', value: 8500, mode: 'set' }),
   ], NOW);
-  expect(s.today.quests[0].done).toBe(true);
+  expect(s.today.metrics.steps).toBe(8500);
+  expect(s.today.quests[0].done).toBe(false);
 });
 
 test('автозачёт <=: вес', () => {
@@ -1203,4 +1204,69 @@ test('смена типа на тип, чьё закрытие уже прошл
   const d = '2026-11-17', n = '2026-11-18';
   const evs = [onboard, startDay(d, { dayType: DT[2] }), ev({ type: 'day_changed', date: d, dayType: DT[0], at: '01:30', ts: at(n, 1, 30) })];
   expect(replay(evs, at(n, 1, 40)).today).toMatchObject({ date: d, changed: false });
+});
+
+// ---- Автоматика: данные дня, сигналы, таймеры, правдоподобие, авто-засчёт ----
+const hp = (date: string, health: object, h = 9, kind = 'other') => ev({ type: 'health_packet', date, kind, health, calendar: [], ts: at(date, h), deviceId: 'shortcuts' });
+const sig = (ts: number, signal: object) => ev({ type: 'signal_logged', at: ts, signal, ts, deviceId: 'shortcuts' });
+const D = '2026-12-02';
+test('одна тренировка в двух пакетах считается один раз; тип → strengthMin', () => {
+  const w = { type: 'Силовая', start: at(D, 18), end: at(D, 18, 50), minutes: 50 };
+  const s = replay([onboard, issue(D, [nq('g', D, 'C', ['strength'], { auto: { metric: 'strengthMin', op: '>=', value: 45 } })]),
+    hp(D, { workouts: [w] }, 13), hp(D, { workouts: [w], steps: 9000 }, 18)], at(D, 20));
+  expect(s.today.data).toMatchObject({ workoutMin: 50, strengthMin: 50, steps: 9000 });
+  expect(s.today.quests[0]).toMatchObject({ done: true, verify: 'auto' });
+});
+test('пересечение тренировок → флаг overlap, без авто', () => {
+  const a = { type: 'Бег', start: at(D, 18), end: at(D, 19), minutes: 60 }, b = { type: 'Велосипед', start: at(D, 18, 30), end: at(D, 19, 30), minutes: 60 };
+  const s = replay([onboard, issue(D, [nq('r', D, 'D', ['cardio'], { auto: { metric: 'cardioMin', op: '>=', value: 30 } })]), hp(D, { workouts: [a, b] })], at(D, 20));
+  expect(s.today.data.flags).toContainEqual({ metric: 'workouts', reason: 'overlap' });
+  expect(s.today.quests[0].done).toBe(false);
+});
+test('60 000 шагов и сон 15 ч — флаги, не авто [S§11]', () => {
+  const s = replay([onboard, issue(D, [nq('s', D, 'E', ['cardio'], { auto: { metric: 'steps', op: '>=', value: 6000 } }),
+    nq('z', D, 'E', ['sleep'], { auto: { metric: 'sleepHours', op: '>=', value: 7.5 } })]), hp(D, { steps: 60000, sleepHours: 15 })], at(D, 20));
+  expect(s.today.quests.map(x => x.done)).toEqual([false, false]);
+  expect(s.dataFlags.map(f => f.flag.reason).sort()).toEqual(['too_long_sleep', 'too_many_steps']);
+});
+test('засчёт монотонен: сон 8 → потом 6,5 — задание остаётся авто', () => {
+  const s = replay([onboard, issue(D, [nq('z', D, 'E', ['sleep'], { auto: { metric: 'sleepHours', op: '>=', value: 7.5 } })]),
+    hp(D, { sleepHours: 8 }, 9), hp(D, { sleepHours: 6.5 }, 10)], at(D, 20));
+  expect(s.today.quests[0]).toMatchObject({ done: true, verify: 'auto' });
+});
+test('«Без соцсетей»: без живого источника не авто; с источником — только после закрытия дня', () => {
+  const ns = nq('n', D, 'E', ['habits'], { auto: { metric: 'socialMin', op: '<=', value: 5 } });
+  expect(replay([onboard, issue(D, [ns])], at('2026-12-03', 12)).history.at(-1)!.completed).toBe(0);
+  const alive = sig(at('2026-12-01', 21), { kind: 'app', app: 'social', state: 'open' });
+  expect(replay([onboard, alive, issue(D, [ns])], at(D, 20)).today.quests[0].done).toBe(false);   // день не закрыт
+  expect(replay([onboard, alive, issue(D, [ns])], at('2026-12-03', 12)).history.at(-1)!.completed).toBe(1);
+});
+test('сигналы: игровая дата по закрытию дня; open без close = 15 мин; прибытие в зал', () => {
+  const ds = ev({ type: 'day_started', date: D, work: null, wakeAt: '11:00', dayType: DEFAULT_DAY_TYPES[1], ts: at(D, 11) }); // вечерняя: закрытие 04:00
+  const s = replay([onboard, ds, issue(D, [nq('gym', D, 'E', ['strength'], { auto: { metric: 'gymVisits', op: '>=', value: 1 } })]),
+    sig(at('2026-12-03', 2, 30), { kind: 'app', app: 'social', state: 'open' }),
+    sig(at(D, 12), { kind: 'arrive', place: 'gym' })], at('2026-12-03', 3));
+  expect(s.today.date).toBe(D);
+  expect(s.today.data).toMatchObject({ socialMin: 15, gymVisits: 1 });
+  expect(s.today.quests[0].verify).toBe('auto');
+});
+test('таймер: принимается в пределах, будущий end отброшен, пересечения объединены', () => {
+  const t = (start: number, end: number, ts = end) => ev({ type: 'timer_logged', timer: 'focus', start, end, ts });
+  const s = replay([onboard, t(at(D, 10), at(D, 10, 45)), t(at(D, 10, 30), at(D, 11)), t(at(D, 12), at(D, 13), at(D, 11)),
+    t(at(D, 14), at(D, 20))], at(D, 21));
+  expect(s.today.data.focusMin).toBe(60); // 10:00–11:00; 12–13 с ts раньше end — нет; 6 ч > 240 — нет
+});
+test('Wallet: сумма в spendAuto, магазин не в today.data', () => {
+  const s = replay([onboard, sig(at(D, 9), { kind: 'wallet', amount: 1250.5, merchant: 'Магазин 1' }), sig(at(D, 10), { kind: 'wallet', amount: -250.5, merchant: 'Магазин 1' })], at(D, 12));
+  expect(s.today.data.spendAuto).toBe(1000); expect(JSON.stringify(s.today.data)).not.toContain('Магазин');
+});
+test('битые новые события не бросают', () => {
+  expect(() => replay([onboard, ev({ type: 'signal_logged', at: 'x', signal: null }), ev({ type: 'timer_logged', timer: 'nap', start: 5, end: 1 }),
+    ev({ type: 'health_packet', date: D, health: { workouts: 'много' } }), sig(at(D), { kind: 'arrive', place: 'бар' })], at(D))).not.toThrow();
+});
+test('повтор сигнала не удваивает; источники синка', () => {
+  const g = { kind: 'arrive', place: 'gym' };
+  const s = replay([onboard, sig(at(D, 12), g), ev({ type: 'signal_logged', at: at(D, 12), signal: g, ts: at(D, 12, 1), deviceId: 'shortcuts' }), hp(D, { steps: 100 }, 10)], at(D, 20));
+  expect(s.today.data.gymVisits).toBe(1);
+  expect(s.sync).toEqual({ last: at(D, 12, 1), bySource: { arrive: at(D, 12), health: at(D, 10) } });
 });
