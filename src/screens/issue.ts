@@ -14,6 +14,7 @@ export function assembleCtx(state: GameState, dayType: DayType, wakeAt: HHMM, en
     bossStats: state.bosses.filter(b => !b.defeated).map(b => b.stat),
     recent: state.genInputs.recent, profile: state.profile, multipliers: state.multipliers, bestSteps7: state.genInputs.bestSteps7,
     busy: state.today.calendar.map(({ start, end }) => ({ start, end })),
+    fatigue: state.genInputs.fatigue, recovery: state.genInputs.recovery, afterRecovery: state.genInputs.afterRecovery,
   }
 }
 

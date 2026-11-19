@@ -78,6 +78,8 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'season_theme_set'; theme: ThemeId }
   | { type: 'signal_logged'; at: number; signal: Signal }
   | { type: 'timer_logged'; timer: 'focus' | 'reading'; start: number; end: number }
+  | { type: 'recovery_started'; date: ISODate; quests: 0 | 1 | 2 }
+  | { type: 'recovery_ended'; date: ISODate }
 );
 export type WeeklyKind = 'active_days' | 'stat_quests' | 'steps_total' | 'shadow_wins';
 export interface WeeklyQuest { id: string; weekStart: ISODate; kind: WeeklyKind; stat: Stat | null; target: number; title: string; xp: number }
@@ -124,7 +126,10 @@ export interface GameState {
            freezesLeft: number;           // заморозок можно купить в этом месяце
            dayOff: boolean;               // сегодня — купленный «день без заданий»
            data: DayData;                 // сегодняшние данные авто-источников
-           vitals: Vitals };
+           vitals: Vitals;
+           suggest: 'recovery_enter' | 'recovery_exit' | 'day_change_work' | null };   // баннер Главной (не больше одного)
+  /** Режим восстановления: frozenToday — сегодня день заморожен (в лимите отдыха месяца); afterLeft — дней «возвращения» осталось, включая сегодня. */
+  recovery: { active: boolean; since: ISODate | null; quests: 0 | 1 | 2; frozenToday: boolean; afterLeft: number };
   character: { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; focus: string[]; questGuidance: string; date: ISODate; ai: boolean } | null;   // по последней валидной анкете
   interviewAnswers: Answers | null;   // последние ответы анкеты (для промпта заданий)
   lastHealth: { ts: number; date: ISODate; health: HealthData } | null;
@@ -146,6 +151,7 @@ export interface GameState {
   statHistory: { date: ISODate; stats: Record<Stat, number> }[];   // Основа на конец каждого финализированного дня
   metricHistory: { date: ISODate; metrics: Partial<Record<Metric, number>> }[];   // даты ≤ сегодня с метриками, по возрастанию
   genInputs: { bestSteps7: number|null; lastSleepHours: number|null; recentTemplateIds: string[]; fatigue: number;
+    recovery: { quests: 0 | 1 | 2 } | null; afterRecovery: boolean;
     recent: { date: ISODate; stats: Stat[]; templateIds: string[] }[] };
     // для сборки дня: лучший 7‑дневный средний по шагам (из metric_logged steps), сон за последний день с данными,
     // templateId заданий за 2 прошлых дня; recent — те же 2 дня (только с выдачей): характеристики и шаблоны

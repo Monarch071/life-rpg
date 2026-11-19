@@ -17,6 +17,7 @@ export interface AssembleCtx {
   stats: Record<Stat, number>; statInfo: Record<Stat, Pick<StatInfo, 'form' | 'status' | 'lastRestore'>>;
   theme: ThemeId | null; bossStats: Stat[]; recent: { date: ISODate; stats: Stat[]; templateIds: string[] }[];
   profile: Profile; multipliers: Record<Stat, number>; bestSteps7: number | null; busy: Win[];
+  fatigue: number; recovery: { quests: 0 | 1 | 2 } | null; afterRecovery: boolean;
 }
 
 const STAT_KEYS = Object.keys(STATS) as Stat[];
@@ -106,9 +107,15 @@ function place(qs: Omit<Quest, 'window'>[], ctx: AssembleCtx): Quest[] {
 
 /** Сборка дня по правилам [S§6], спека §6.4. Детерминирована при тех же входах. */
 export function assembleDay(ctx: AssembleCtx): Quest[] {
-  const { base, challenge } = slotsFor(ctx.dayType, ctx.energy);
-  const total = base + challenge;
   const cands = candidates(ctx);
+  // режим восстановления [S§3]: quests лёгких заданий из навыков восстановления, ранг на 1 ниже потолка, без вызова
+  if (ctx.recovery) {
+    const rec = cands.filter(c => (B.recovery.skills as readonly SkillId[]).includes(c.skill)).slice(0, Math.min(B.recovery.maxQuests, ctx.recovery.quests));
+    return place(rec.map(c => build(c, minRank(rankShift(c.cap, -1), c.limit), 'daily', 'Режим восстановления', ctx)), ctx);
+  }
+  const slots = slotsFor(ctx.dayType, ctx.energy), base = slots.base;
+  const challenge = ctx.afterRecovery ? 0 : slots.challenge; // возвращение: без вызова
+  const total = base + challenge;
   const chosen: { c: Cand; restore: boolean; why: string | null }[] = [];
   const perStat = (s: Stat) => chosen.filter(x => x.c.stat === s).length;
   const can = (c: Cand) => chosen.length < total && perStat(c.stat) < A.maxPerStat && !chosen.some(x => x.c.t.id === c.t.id);
@@ -130,7 +137,10 @@ export function assembleDay(ctx: AssembleCtx): Quest[] {
     const c = cands.find(c => c.skill === r.id && can(c));
     if (c) { take(c, false, `Навык «${skillTitle(r.id)}» на грани ржавчины`); break; }
   }
-  if (low(ctx) && perStat('spi') === 0) take(cands.find(c => c.stat === 'spi' && can(c)), false, 'Сил мало — день для Духа');
+  // одно задание на Дух: Energy < 40 или Усталость > 50
+  const tired = ctx.fatigue > B.vitals.fatigue.spiritAbove;
+  if ((low(ctx) || tired) && perStat('spi') === 0)
+    take(cands.find(c => c.stat === 'spi' && can(c)), false, tired ? `Усталость ${ctx.fatigue} — день для Духа` : 'Сил мало — день для Духа');
 
   // 2. характеристики без заданий за statEveryDays − 1 прошлых дня — раньше остальных (каждая — хотя бы раз в 3 дня)
   const seen = new Set(ctx.recent.filter(r => r.date >= addDays(ctx.date, 1 - A.statEveryDays) && r.date < ctx.date).flatMap(r => r.stats));
@@ -146,7 +156,7 @@ export function assembleDay(ctx: AssembleCtx): Quest[] {
   const rankOf = new Map<typeof chosen[number], { rank: Rank; kind: QuestKind }>();
   for (const x of order) {
     if (x === ch) rankOf.set(x, { rank: rankShift(x.c.cap, 1), kind: 'challenge' });
-    else rankOf.set(x, { rank: minRank(own-- > 0 ? x.c.cap : rankShift(x.c.cap, -1), x.c.limit), kind: 'daily' });
+    else rankOf.set(x, { rank: rankShift(minRank(own-- > 0 ? x.c.cap : rankShift(x.c.cap, -1), x.c.limit), ctx.afterRecovery ? -1 : 0), kind: 'daily' });
   }
   const qs = chosen.map(x => {
     if (x.restore) return build(x.c, minRank(ri(x.c.cap) >= ri('D') ? 'D' : 'E', x.c.limit), 'restore', x.why!, ctx);

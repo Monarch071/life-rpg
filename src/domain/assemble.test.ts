@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import { assembleDay, priority, rankPlan, rerollCandidate, slotsFor, type AssembleCtx } from './assemble';
-import { RANKS } from './balance';
+import { BALANCE, RANKS } from './balance';
 import { toMin } from './day';
 import { DEFAULT_DAY_TYPES } from './dayType';
-import { rankCap } from './progression';
+import { rankCap, rankShift } from './progression';
 import { QUEST_TEMPLATES } from './questBank';
 import { primaryStat, SKILL_CATALOG, type SkillId } from './skillCatalog';
 import { STATS } from './stats';
@@ -21,7 +21,7 @@ const allRecent = (d1 = '2026-11-19', d2 = '2026-11-18') => [d2, d1].map(date =>
 const ctx = (over: Partial<AssembleCtx> = {}): AssembleCtx => ({
   date: '2026-11-20', dayType: DEFAULT_DAY_TYPES[0], wakeAt: '08:00', energy: 50, level: 25, skills: skills(), stats: fill(30),
   statInfo: fill<Info>({ form: 1, status: 'in_form', lastRestore: null }), theme: null, bossStats: [], recent: allRecent(),
-  profile, multipliers: fill(1), bestSteps7: null, busy: [], ...over,
+  profile, multipliers: fill(1), bestSteps7: null, busy: [], fatigue: 0, recovery: null, afterRecovery: false, ...over,
 });
 const twoDaysWithout = (s: Stat) => allRecent().map(r => ({ ...r, stats: r.stats.filter(x => x !== s) }));
 const withForm = (s: Stat, form: number, status: Info['status'] = 'sagging', lastRestore: string | null = null) =>
@@ -158,4 +158,34 @@ describe('переброс', () => {
     const today = assembleDay(c);
     expect(rerollCandidate(c, today.find(q => q.kind === 'restore')!, today)).toBeNull();
   });
+});
+
+// ---- Автоматика: Усталость, режим восстановления, возвращение [S§6] ----
+test('Усталость > 50 → обязательное задание на Дух; 50 — нет [S§6]', () => {
+  const base = ctx({ statInfo: withForm('spi', 1, 'in_form') });
+  const a = assembleDay({ ...base, energy: 60, fatigue: 51 });
+  expect(a.some(q => primaryStat(q.skills!) === 'spi' && q.why?.includes('Усталость'))).toBe(true);
+  expect(assembleDay({ ...base, energy: 60, fatigue: 50 }).some(q => q.why?.includes('Усталость'))).toBe(false);
+  // вместе с правилом Energy < 40 — одно задание на Дух
+  expect(assembleDay({ ...base, energy: 30, fatigue: 80 }).filter(q => q.why?.includes('Духа')).length).toBe(1);
+});
+test('режим восстановления: N лёгких заданий из навыков восстановления, ранг на 1 ниже, без вызова', () => {
+  for (const n of [0, 1, 2] as const) {
+    const qs = assembleDay({ ...ctx(), energy: 80, recovery: { quests: n } });
+    expect(qs).toHaveLength(n);
+    expect(qs.every(q => (BALANCE.recovery.skills as readonly string[]).includes(q.skills![0]) && q.kind !== 'challenge')).toBe(true);
+    for (const q of qs) expect(q.rank).toBe(rankShift(rankCap(25, 3), -1));
+  }
+});
+test('2 дня после возвращения — все ранги на 1 ниже, без вызова', () => {
+  const a = assembleDay({ ...ctx(), energy: 80 }), b = assembleDay({ ...ctx(), energy: 80, afterRecovery: true });
+  expect(b.some(q => q.kind === 'challenge')).toBe(false);
+  expect(b.length).toBe(a.length - 1);
+  const c = assembleDay(ctx()), e = assembleDay({ ...ctx(), afterRecovery: true });
+  expect(e.map(q => q.templateId)).toEqual(c.map(q => q.templateId));
+  expect(e.map(q => q.rank)).toEqual(c.map(q => rankShift(q.rank!, -1)));
+});
+test('Energy < 40 → −1 слот, без вызова; ≥ 70 → вызов (регрессия Ядра)', () => {
+  expect(slotsFor(DEFAULT_DAY_TYPES[0], 39)).toEqual({ base: 3, challenge: 0 });
+  expect(slotsFor(DEFAULT_DAY_TYPES[0], 70)).toEqual({ base: 4, challenge: 1 });
 });

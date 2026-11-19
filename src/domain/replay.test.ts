@@ -318,7 +318,7 @@ test('genInputs', () => {
   // 3 значения, но ни в одном 7‑дневном окне их нет трёх → null
   expect(replay([steps('2026-11-01', 9000), steps('2026-11-05', 9000), steps('2026-11-14', 9000)], NOW).genInputs.bestSteps7).toBeNull();
   const few = replay([steps('2026-11-01', 9000), steps('2026-11-02', 11000)], NOW);
-  expect(few.genInputs).toEqual({ bestSteps7: null, lastSleepHours: null, recentTemplateIds: [], recent: [], fatigue: 0 });
+  expect(few.genInputs).toEqual({ bestSteps7: null, lastSleepHours: null, recentTemplateIds: [], recent: [], fatigue: 0, recovery: null, afterRecovery: false });
 });
 
 test('7 идеальных дней по характеристике дают множитель ≈1.1', () => {
@@ -1354,4 +1354,99 @@ test('закрытый день окончателен: поздние сон и
   expect(row(a)).toMatchObject({ mult: 1.2 });
   expect(row(b)).toEqual(row(a));
   expect(b.history.at(-1)).toEqual(a.history.at(-1));
+});
+
+// ---- Автоматика: режим восстановления, подсказки; проверка входа чек-ина и пакетов ----
+const recStart = (date: string, quests: number = 1, h = 9) => ev({ type: 'recovery_started', date, quests, ts: at(date, h) });
+const recEnd = (date: string, h = 9) => ev({ type: 'recovery_ended', date, ts: at(date, h) });
+test('восстановление замораживает серию и делит лимит 14 с днями отдыха [S§3]', () => {
+  const two = doneDays('2026-11-29', 2, 'strength', 'C');
+  const rest = span('2026-12-01', 10).flatMap(d => [startDay(d, { dayType: DT[3] }), issue(d, [nq(`r${d}`, d, 'E', ['rest'])])]);
+  const rec = span('2026-12-11', 6).flatMap(d => [issue(d, [nq(`m${d}`, d, 'E', ['reading'])]), done(d, `m${d}`)]);
+  const evs = [onboard, ...two, ...rest, recStart('2026-12-11'), ...rec, recEnd('2026-12-17')];
+  const s = replay(evs, at('2026-12-17', 12));
+  const h = (d: string) => s.history.find(x => x.date === d)!;
+  const frozenDays = s.history.filter(x => x.date >= '2026-12-11' && x.rest).length;
+  expect(frozenDays).toBe(4);
+  expect(h('2026-12-14')).toMatchObject({ rest: true, streak: 2 });
+  expect(h('2026-12-16')).toMatchObject({ rest: false, streak: 4 }); // 5-й и 6-й — обычные, серия считается
+  expect(s.today.restDaysLeft).toBe(0);
+  expect(s.recovery).toMatchObject({ active: false, since: null, frozenToday: false, afterLeft: 2 });
+  // монотонно: решения о прошлых днях не меняются от поздних событий
+  const early = replay(evs.filter(e => e.ts < at('2026-12-13', 12)), at('2026-12-13', 12));
+  expect(early.recovery).toMatchObject({ active: true, since: '2026-12-11', quests: 1, frozenToday: true, afterLeft: 0 });
+  expect(early.genInputs).toMatchObject({ recovery: { quests: 1 }, afterRecovery: false });
+  expect(early.history.filter(x => x.date >= '2026-12-11')).toEqual(s.history.filter(x => x.date >= '2026-12-11' && x.date < '2026-12-13'));
+});
+test('сверх лимита режим остаётся включённым, день обычный; день без заданий не считается дважды', () => {
+  const rest = span('2026-12-01', 14).flatMap(d => [startDay(d, { dayType: DT[3] }), issue(d, [nq(`r${d}`, d, 'E', ['rest'])])]);
+  const s = replay([onboard, ...rest, recStart('2026-12-15', 2)], at('2026-12-15', 12));
+  expect(s.recovery).toMatchObject({ active: true, quests: 2, frozenToday: false });
+  expect(s.genInputs.recovery).toEqual({ quests: 2 });
+  const gold = [issue('2026-11-30', [q('g', '2026-11-30', 10000)]), done('2026-11-30', 'g'), dayoffR, buy('default:dayoff', at('2026-12-01', 8))];
+  const t = replay([...gold, recStart('2026-12-01')], at('2026-12-01', 12));
+  expect(t.today).toMatchObject({ dayOff: true, restDaysLeft: 13 });
+  expect(t.recovery.frozenToday).toBe(true);
+});
+test('замороженный день восстановления — отдых для Усталости (−15)', () => {
+  const [a, b, c] = span('2026-12-01', 3);
+  const evs = [onboard, ...[a, b, c].flatMap(d => [issue(d, [nq(`x${d}`, d, 'E', ['reading'])]), hp(d, { sleepHours: 4 })])];
+  expect(replay(evs, at(c, 12)).today.vitals.fatigue).toBe(30);
+  expect(replay([...evs, recStart(b)], at(c, 12)).today.vitals.fatigue).toBe(15);
+});
+test('старт и конец в одну дату — 0 дней режима; конец без старта игнорируется', () => {
+  const d = '2026-12-05';
+  const s = replay([onboard, recEnd('2026-12-04'), recStart(d, 2, 9), recEnd(d, 10)], at(d, 12));
+  expect(s.recovery).toMatchObject({ active: false, since: null, frozenToday: false, afterLeft: 0 });
+  expect(s.today.restDaysLeft).toBe(14);
+  expect(s.genInputs).toMatchObject({ recovery: null, afterRecovery: false });
+  // повторный старт меняет только quests; дата не сегодня и quests вне 0–2 — игнор
+  const a = replay([onboard, recStart(d, 2, 9), recStart(d, 0, 10), recStart('2026-12-06', 1, 11), recStart(d, 3, 11)], at(d, 12));
+  expect(a.recovery).toMatchObject({ active: true, since: d, quests: 0, frozenToday: true });
+  expect(a.today.restDaysLeft).toBe(13);
+  expect(replay([onboard, recStart('2026-12-06', 1, 11)], at(d, 12)).recovery.active).toBe(false);
+  expect(() => replay([onboard, ev({ type: 'recovery_started', date: 5 as unknown as string, quests: 'x', ts: at(d, 10) }), ev({ type: 'recovery_ended', date: null as unknown as string, ts: at(d, 11) })], at(d, 12))).not.toThrow();
+});
+test('подсказки: Усталость 70 → recovery_enter; HP 61 вчера и сегодня в режиме → recovery_exit', () => {
+  const days = span('2026-12-01', 7);
+  const tired = replay([onboard, ...days.flatMap(d => [issue(d, [nq(`x${d}`, d, 'E', ['reading'])]), hp(d, { sleepHours: 5 })])], at(days[6], 12));
+  expect(tired.today.vitals.fatigue).toBe(70);
+  expect(tired.today.suggest).toBe('recovery_enter');
+  expect(replay([onboard, ...days.slice(0, 6).flatMap(d => [issue(d, [nq(`x${d}`, d, 'E', ['reading'])]), hp(d, { sleepHours: 5 })])], at(days[5], 12)).today.suggest).toBeNull();
+  const [a, b, c, d] = span('2026-12-10', 4);
+  const good = [a, b, c, d].map(x => hp(x, { sleepHours: 8 }));
+  const s = replay([onboard, ...good, recStart(c)], at(d, 12));
+  expect(s.today.vitals.hp).toBeGreaterThan(60);
+  expect(s.today.suggest).toBe('recovery_exit');
+  expect(replay([onboard, ...good], at(d, 12)).today.suggest).toBeNull(); // не в режиме
+  // вчера HP ≤ 60 — ещё рано
+  const bad = [a, b, c].map(x => hp(x, { sleepHours: 4 }));
+  const t = replay([onboard, ...bad, hp(d, { sleepHours: 8 }), recStart(c)], at(d, 12));
+  expect(t.today.vitals.hp).toBeGreaterThan(60);
+  expect(t.today.suggest).toBeNull();
+});
+test('после возвращения 2 дня afterLeft 2 → 1 → 0', () => {
+  const evs = [onboard, recStart('2026-12-01'), recEnd('2026-12-03')];
+  expect(span('2026-12-03', 3).map(d => replay(evs, at(d, 12)).recovery.afterLeft)).toEqual([2, 1, 0]);
+  expect(span('2026-12-03', 3).map(d => replay(evs, at(d, 12)).genInputs.afterRecovery)).toEqual([true, true, false]);
+});
+test('прибытие на работу в выходной → day_change_work', () => {
+  const d = '2026-12-05', work = sig(at(d, 10), { kind: 'arrive', place: 'work' });
+  expect(replay([onboard, startDay(d, { dayType: DT[2] }), work], at(d, 12)).today.suggest).toBe('day_change_work');
+  expect(replay([onboard, startDay(d, { dayType: DT[0] }), work], at(d, 12)).today.suggest).toBeNull();
+  expect(replay([onboard, startDay(d, { dayType: DT[2] })], at(d, 12)).today.suggest).toBeNull();
+});
+test('чек-ин: энергия только целое 1–10; отрицательные данные здоровья — как отсутствие', () => {
+  const d = '2026-12-05', ci = (energy: number) => ev({ type: 'checkin', date: d, went: '', notWent: '', energy, ts: at(d, 10) });
+  expect(replay([onboard, ci(6)], at(d, 12)).today.vitals.parts.hp).toEqual({ feel: 60 });
+  for (const x of [6.5, 0, 11, -3]) expect(replay([onboard, ci(x)], at(d, 12)).today.vitals.hp).toBeNull();
+  const s = replay([onboard, hp(d, { sleepHours: -3, steps: -100, restingHR: -60, mindfulMin: -5 })], at(d, 12));
+  expect(s.today.vitals.hp).toBeNull();
+  expect(s.today.data).toEqual({ flags: [] });
+});
+test('штраф Усталости округлён: F 95 → 0,285', () => {
+  const ds = span('2026-12-01', 11);
+  const s = replay([onboard, ...doneDays('2026-12-01', 11, 'reading'), ...ds.slice(0, 10).map(d => hp(d, { sleepHours: 4 })), hp(ds[10], { sleepHours: 6.5 })], at(ds[10], 22));
+  expect(s.today.vitals.fatigue).toBe(95);
+  expect(s.ledger.find(r => r.questId === `reading${ds[10]}`)!.penalty).toBe(0.285);
 });

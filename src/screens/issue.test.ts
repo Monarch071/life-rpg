@@ -39,3 +39,13 @@ test('assembleCtx берёт состояние, недавние дни и бо
   const r = replay([onb, issued], t0).today.quests
   expect(r.map(q => [q.id, q.rank, q.kind, q.legacy, q.xp])).toEqual(qs.map(q => [q.id, q.rank, q.kind, false, q.xp]))
 })
+
+test('assembleCtx: Усталость, режим восстановления и возвращение из состояния', () => {
+  const d = '2026-11-20', t = new Date(2026, 10, 20, 9).getTime()
+  const rec = { id: 'r1', ts: t, deviceId: 'd', type: 'recovery_started', date: d, quests: 2 } as GameEvent
+  const c = assembleCtx(replay([onb, rec], t + 3600e3), OFF, '09:00', 50)
+  expect(c).toMatchObject({ fatigue: 0, recovery: { quests: 2 }, afterRecovery: false })
+  expect(buildQuests(replay([onb, rec], t + 3600e3), OFF, '09:00', 80)).toHaveLength(2)
+  const end = { id: 'r2', ts: new Date(2026, 10, 21, 9).getTime(), deviceId: 'd', type: 'recovery_ended', date: '2026-11-21' } as GameEvent
+  expect(assembleCtx(replay([onb, rec, end], new Date(2026, 10, 21, 12).getTime()), OFF, '09:00', 50)).toMatchObject({ recovery: null, afterRecovery: true })
+})

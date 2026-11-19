@@ -6,7 +6,7 @@ import { closeMinutes, closesAtTs, DEFAULT_DAY_TYPES, gameDateAt, isHM, legacyDa
 import { adjustMultipliers } from './difficulty';
 import { cleanAnswers, validAnalysis } from './interview';
 import { AUTO_METRIC_INFO, METRIC_INFO } from './metricInfo';
-import { baseFromXp, formNorm, formOf, formStatus, goldFor, questReward, rankCap, skillFromXp, streakBonus } from './progression';
+import { baseFromXp, fatiguePenalty, formNorm, formOf, formStatus, goldFor, questReward, rankCap, skillFromXp, streakBonus } from './progression';
 import { DEFAULT_SKILL_BY_STAT, LEGACY_SKILL_BY_TEMPLATE, legacyRank } from './questBank';
 import { isSkillId, primaryStat, SKILL_CATALOG, splitXp, type SkillId } from './skillCatalog';
 import { startProfile } from './startProfile';
@@ -238,6 +238,9 @@ export function replay(events: GameEvent[], now: number): GameState {
   let pendingOn: number[] = []; // on «Фокусирования», ещё не закрытые принятым off
   const sync: GameState['sync'] = { last: null, bySource: {} };
   const seen = (k: keyof GameState['sync']['bySource'], t: number) => { sync.bySource[k] = Math.max(sync.bySource[k] ?? -Infinity, t); };
+  // Режим восстановления: recOn — активный (с даты since), recSpans — завершённые [from, to) с хотя бы одним днём.
+  let recOn: { since: ISODate; quests: 0 | 1 | 2 } | null = null;
+  const recSpans: { from: ISODate; to: ISODate }[] = [];
 
   for (const e of evs) {
     if (e.deviceId === 'shortcuts') sync.last = e.ts; // события по возрастанию ts
@@ -304,7 +307,7 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (!isDate(e.date)) break;
         const h = (e.health ?? {}) as HealthData;
         const m = metrics.get(e.date) ?? {};
-        const ok = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+        const ok = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0; // отрицательное — как отсутствие
         if (ok(h.steps)) m.steps = Math.max(m.steps ?? -Infinity, h.steps);
         if (ok(h.workoutMin)) m.workoutMin = Math.max(m.workoutMin ?? -Infinity, h.workoutMin);
         if (ok(h.sleepHours)) m.sleepHours = h.sleepHours;
@@ -353,13 +356,27 @@ export function replay(events: GameEvent[], now: number): GameState {
         ivList.push({ k: e.timer === 'focus' ? 'focusMin' : 'readMin', start: e.start, end: e.end, ts: e.ts }); seen('timer', e.ts);
         break;
       }
+      case 'recovery_started': case 'recovery_ended': {
+        // только на игровую дату самого события: задним числом закрытые дни не меняются, будущее — игнор
+        if (!isDate(e.date) || e.date !== gd(e.ts) || e.date > today) break;
+        if (e.type === 'recovery_started') {
+          if (e.quests !== 0 && e.quests !== 1 && e.quests !== 2) break;
+          if (recOn) recOn.quests = e.quests; else recOn = { since: e.date, quests: e.quests }; // повторный старт меняет только quests
+        } else if (recOn) { // конец без начала — игнор; день выхода — обычный
+          if (e.date > recOn.since) recSpans.push({ from: recOn.since, to: e.date });
+          recOn = null;
+        }
+        break;
+      }
       case 'busy_until': if (e.date === today && isHM(e.until)) busyUntil = e.until; break;
-      case 'checkin':
+      case 'checkin': {
         if (!isDate(e.date)) break;
         if (e.date === today) checkedIn = true;
-        if (fin(e.energy)) checkins.set(e.date, [...(checkins.get(e.date) ?? []), { ts: e.ts, energy: e.energy }]);
-        if (e.date <= today) { if (typeof e.energy === 'number' && Number.isFinite(e.energy)) lastEnergy = e.energy; if (!checkinDates.has(e.date)) { checkinDates.add(e.date); bump(e.date, 'checkins'); } }
+        const en = Number.isInteger(e.energy) && e.energy >= 1 && e.energy <= 10; // как day_started
+        if (en) checkins.set(e.date, [...(checkins.get(e.date) ?? []), { ts: e.ts, energy: e.energy }]);
+        if (e.date <= today) { if (en) lastEnergy = e.energy; if (!checkinDates.has(e.date)) { checkinDates.add(e.date); bump(e.date, 'checkins'); } }
         break;
+      }
       case 'season_theme_set':
         if (typeof e.theme === 'string' && Object.hasOwn(THEMES, e.theme)) themeSets.push({ date: gd(e.ts), theme: e.theme });
         break;
@@ -610,6 +627,8 @@ export function replay(events: GameEvent[], now: number): GameState {
   const firstDay = [...issued.keys()].sort()[0] as ISODate | undefined;
   const dates = new Set([...issued.keys(), ...extra.keys(), ...weeklyAt.keys(), ...spendsOn.keys(), ...restTyped]);
   if (firstDay) for (let d = firstDay; d <= today; d = addDays(d, 1)) dates.add(d);
+  const recAll = [...recSpans, ...(recOn ? [{ from: recOn.since, to: addDays(today, 1) }] : [])];
+  for (const p of recAll) for (let d = p.from; d < p.to && d <= today; d = addDays(d, 1)) dates.add(d);
   for (const d of [...dates].sort()) {
     const qs = issued.get(d) ?? [];
     // платные траты дня: золото строк прошлых дней − обычные покупки раньше по ts − ранее принятые платные траты ≥ цена
@@ -664,6 +683,10 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (r.effect === 'streak_freeze') { freezes++; freezeMonth.set(m, nf + 1); } else { dayOff.add(d); restInMonth.set(m, nr + 1); }
       }
     }
+    // день восстановления — замороженный день отдыха, пока в месяце (по датам раньше d) меньше лимита; сверх — обычный; купленный день без заданий не считается дважды
+    if (d <= today && recAll.some(p => d >= p.from && d < p.to) && !restDays.has(d) && !dayOff.has(d) && (restInMonth.get(rm) ?? 0) < BALANCE.streak.restDaysPerMonth) {
+      restDays.add(d); restInMonth.set(rm, (restInMonth.get(rm) ?? 0) + 1);
+    }
     // «День изменился»: при меньшем числе слотов последние по выдаче невыполненные — dropped (вне знаменателя 60%); свои не трогаются.
     const ch = dayChange.get(d);
     if (ch && dayStart.has(d)) {
@@ -688,7 +711,7 @@ export function replay(events: GameEvent[], now: number): GameState {
           mult: (q.kind === 'restore' ? BALANCE.restore.mult : 1) * (q.stat === 'int' ? intFocusMult(vit?.focus ?? null) : 1),
           bonuses: [streakBonus(streak), themeBonusApplies(theme, q.stat, q.skills) ? BALANCE.bonus.theme : 0, q.stat === weak ? BALANCE.bonus.weakest : 0],
           penalties: [weakening ? BALANCE.penalty.weakening : 0, imbalance && q.stat === strong ? BALANCE.penalty.imbalance : 0,
-            BALANCE.penalty.fatiguePerPoint * (vit?.fatigue ?? 0)] }) }));
+            fatiguePenalty(vit?.fatigue ?? 0)] }) }));
       // свои ≤ dayShare XP дня: min(Σ своих, round(Σ остальных × share / (1 − share))); урезание пропорционально, остаток — последней строке
       const own = rows.filter(x => x.q.kind === 'custom'), ownXp = own.reduce((a, x) => a + x.r.xp, 0);
       const share = BALANCE.custom.dayShare;
@@ -790,6 +813,15 @@ export function replay(events: GameEvent[], now: number): GameState {
   })) as Record<Stat, StatInfo>;
   const st = dayStart.get(today);
   const vitals = todayVit ?? vitalsOn(today, 0);
+  const R = BALANCE.recovery;
+  let afterLeft = 0; // дни возвращения: с даты выхода, afterDays дней
+  const lastEnd = recOn ? undefined : recSpans.at(-1)?.to;
+  if (lastEnd) for (let i = 0; i < R.afterDays; i++) if (addDays(lastEnd, i) === today) afterLeft = R.afterDays - i;
+  const suggest: GameState['today']['suggest'] =
+    !recOn && (vitals.fatigue >= V.fatigue.suggestAt || (vitals.hp !== null && vitals.hp < R.enterHp)) ? 'recovery_enter'
+    : recOn && span(today, 1 - R.exitDays, 0).every(x => ((x === today ? vitals.hp : vitalsOn(x, 0).hp) ?? 0) > R.exitHp) ? 'recovery_exit'
+    : (types.get(today)?.kind === 'off' || types.get(today)?.kind === 'rest') && sigs.some(x => x.kind === 'arrive' && x.place === 'work' && x.d === today) ? 'day_change_work'
+    : null;
   const skills = Object.fromEntries(SKILL_IDS.map(id => [id,
     { ...skillFromXp(start.skills[id], skillXp[id]), xp: skillXp[id], start: start.skills[id], lastDate: skillLast[id] ?? null } satisfies SkillState])) as Record<SkillId, SkillState>;
   const rewards = [...shop.values()].filter(r => !r.deleted).map(({ id, title, price, effect }) => ({ id, title, price, effect }));
@@ -817,13 +849,15 @@ export function replay(events: GameEvent[], now: number): GameState {
       spendable: Math.max(0, ledger.reduce((a, r) => a + (r.date < today ? r.gold : 0), 0) + achGoldBefore(today)
         - purchases.reduce((a, p) => a + (shop.get(p.rewardId)?.effect ? 0 : p.price), 0) - paidSum),
       freezesLeft: Math.max(0, BALANCE.shop.freezePerMonth - (freezeMonth.get(today.slice(0, 7)) ?? 0)), dayOff: dayOff.has(today),
-      data: data.get(today) ?? { flags: [] }, vitals,
+      data: data.get(today) ?? { flags: [] }, vitals, suggest,
       dayStart: dayStartCaps ?? { level, skills: skillLevels() }, // сегодня не в цикле — сегодняшних строк нет
       rerollsUsed, nextRerollCost: rerollsUsed >= BALANCE.reroll.free ? BALANCE.reroll.cost : 0, customCount: customs.get(today)?.length ?? 0,
       quests: todayQuests, xp: todayQuests.reduce((s, q) => s + (q.done ? q.xpFinal ?? 0 : 0), 0),
       metrics: metrics.get(today) ?? {}, checkedIn, lastEnergy, busyUntil, calendar,
       aiNote: (tunings.get(today) ?? tunings.get(addDays(today, -1)))?.note || null,
     },
+    recovery: { active: !!recOn, since: recOn?.since ?? null, quests: recOn?.quests ?? 0,
+      frozenToday: !!recOn && (restDays.has(today) || dayOff.has(today)), afterLeft },
     character, interviewAnswers: interview?.answers ?? null,
     lastHealth, sync,
     dataFlags: [...data].filter(([d]) => d > addDays(today, -30) && d <= today).sort(([a], [b]) => (a < b ? -1 : 1))
@@ -839,6 +873,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     genInputs: {
       bestSteps7: best7(metrics, today, 'steps'),
       lastSleepHours: sleepDate ? metrics.get(sleepDate)!.sleepHours! : null, fatigue: vitals.fatigue,
+      recovery: recOn ? { quests: recOn.quests } : null, afterRecovery: afterLeft > 0,
       recentTemplateIds: [addDays(today, -2), addDays(today, -1)].flatMap(d => issued.get(d)?.map(q => q.templateId) ?? []),
       recent: Array.from({ length: BALANCE.assembly.statEveryDays - 1 }, (_, i) => addDays(today, i + 1 - BALANCE.assembly.statEveryDays)).filter(d => issued.get(d)?.length)
         .map(date => { const qs = issued.get(date)!; return { date, stats: [...new Set(qs.map(q => q.stat))], templateIds: qs.map(q => q.templateId) }; }),
