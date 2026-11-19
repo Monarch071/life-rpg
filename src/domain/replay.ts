@@ -80,9 +80,12 @@ function normalize(events: GameEvent[]): GameEvent[] {
     .filter(e => !seen.has(e.id) && !!seen.add(e.id));
 }
 
+/** Шаги дня выше plausible.stepsMax (Команды или вручную) — как отсутствие данных. */
+const plausibleSteps = (v: number | undefined) => (v !== undefined && v <= BALANCE.plausible.stepsMax ? v : undefined);
+
 /** Лучшее (максимум или минимум при lower) среднее по 7‑дневным окнам за 28 дней до сегодня; окно считается при ≥3 значениях, иначе null. */
 function best7(metrics: Map<ISODate, Partial<Record<Metric, number>>>, today: ISODate, metric: Metric, lower = false): number | null {
-  const vals = Array.from({ length: 28 }, (_, i) => metrics.get(addDays(today, i - 28))?.[metric]);
+  const vals = Array.from({ length: 28 }, (_, i) => { const v = metrics.get(addDays(today, i - 28))?.[metric]; return metric === 'steps' ? plausibleSteps(v) : v; });
   let best: number | null = null;
   for (let i = 0; i + 7 <= vals.length; i++) {
     const w = vals.slice(i, i + 7).filter((v): v is number => v !== undefined);
@@ -228,7 +231,9 @@ export function replay(events: GameEvent[], now: number): GameState {
     w: Map<string, Workout>; hi: Partial<Record<AutoMetric, number>>; lo: Partial<Record<AutoMetric, number>> };
   const health = new Map<ISODate, Acc>();
   const sigs: Sig[] = [], sigKeys = new Set<string>();
-  const timers: { timer: 'focus' | 'reading'; start: number; end: number }[] = [];
+  // Интервалы фокуса/чтения: ts — событие, которое интервал завершило (off или таймер). Только добавляются — минуты не убывают.
+  const ivList: { k: 'focusMin' | 'readMin'; start: number; end: number; ts: number }[] = [];
+  let pendingOn: number[] = []; // on «Фокусирования», ещё не закрытые принятым off
   const sync: GameState['sync'] = { last: null, bySource: {} };
   const seen = (k: keyof GameState['sync']['bySource'], t: number) => { sync.bySource[k] = Math.max(sync.bySource[k] ?? -Infinity, t); };
 
@@ -329,13 +334,19 @@ export function replay(events: GameEvent[], now: number): GameState {
         const x = fin(e.at) ? signalOf(e.signal) : null, d = x ? gd(e.at) : '';
         if (!x || !isDate(d) || sigKeys.has(`${e.at}|${x.key}`)) break; // повтор от «Команд» — один сигнал
         sigKeys.add(`${e.at}|${x.key}`); sigs.push({ ...x.s, at: e.at, ts: e.ts, d }); seen(x.s.kind, e.at);
+        // on закрывается первым пришедшим (по ts) off позже него; запоздавший off с ранним at уже закрытый интервал не укорачивает
+        if (x.s.kind === 'focus' && x.s.state === 'on') pendingOn.push(e.at);
+        else if (x.s.kind === 'focus') {
+          for (const on of pendingOn) if (on < e.at) ivList.push({ k: 'focusMin', start: on, end: e.at, ts: e.ts });
+          pendingOn = pendingOn.filter(on => on >= e.at);
+        }
         break;
       }
       case 'timer_logged': {
         const T = BALANCE.timer;
         if ((e.timer !== 'focus' && e.timer !== 'reading') || !fin(e.start) || !fin(e.end) || e.end <= e.start
           || e.end - e.start > T.maxMin * MIN_MS || e.end > e.ts + T.skewMin * MIN_MS || !isDate(gd(e.start))) break;
-        timers.push({ timer: e.timer, start: e.start, end: e.end }); seen('timer', e.ts);
+        ivList.push({ k: e.timer === 'focus' ? 'focusMin' : 'readMin', start: e.start, end: e.end, ts: e.ts }); seen('timer', e.ts);
         break;
       }
       case 'busy_until': if (e.date === today && isHM(e.until)) busyUntil = e.until; break;
@@ -386,17 +397,18 @@ export function replay(events: GameEvent[], now: number): GameState {
   }
   const appSigs = (app: string, list: Sig[]) => list.flatMap(s => (s.kind === 'app' && s.app === app ? [{ at: s.at, state: s.state }] : []));
   for (const app of APPS) for (const { start, min } of sessionMinutes(appSigs(app, sigs))) addTo(gd(start), `${app}Min`, min);
-  // Фокус: каждое on — до ближайшего следующего off (пересечения объединяются), плюс таймеры; интервал — к игровой дате начала.
+  // Закрытый день считает только события, принятые до его закрытия: позднее данные дня (и засчёт) не меняют.
+  const inTime = (d: ISODate, ts: number) => d >= today || ts < closesAtTs(d, closeOf(d));
+  // Фокус и чтение: объединение интервалов (режим + таймеры) по игровой дате начала.
   const ivs = new Map<string, { start: number; end: number }[]>();
-  const pushIv = (k: 'focusMin' | 'readMin', start: number, end: number) => { const key = `${k}|${gd(start)}`; ivs.set(key, [...(ivs.get(key) ?? []), { start, end }]); };
-  const fs = sigs.flatMap(s => (s.kind === 'focus' ? [s] : [])).sort((a, b) => a.at - b.at || (a.state === b.state ? 0 : a.state === 'on' ? -1 : 1));
-  for (let i = fs.length - 1, off = NaN; i >= 0; i--) {
-    if (fs[i].state === 'off') off = fs[i].at; else if (fin(off)) pushIv('focusMin', fs[i].at, off);
+  for (const iv of ivList) {
+    const d = gd(iv.start), key = `${iv.k}|${d}`;
+    if (!inTime(d, iv.ts)) continue;
+    const list = ivs.get(key); if (list) list.push(iv); else ivs.set(key, [iv]);
   }
-  for (const t of timers) pushIv(t.timer === 'focus' ? 'focusMin' : 'readMin', t.start, t.end);
   for (const [key, iv] of ivs) { const [k, d] = key.split('|') as ['focusMin' | 'readMin', ISODate]; addTo(d, k, unionMinutes(iv, BALANCE.vitals.focus.intervalMaxMin)); }
   for (const s of sigs) {
-    if (s.kind === 'arrive' && s.place === 'gym') addTo(s.d, 'gymVisits', 1);
+    if (s.kind === 'arrive' && s.place === 'gym' && inTime(s.d, s.ts)) addTo(s.d, 'gymVisits', 1);
     if (s.kind === 'wallet') { addTo(s.d, 'spendAuto', s.amount); dd(s.d).spendAuto = Math.round(dd(s.d).spendAuto! * 100) / 100; } // копейки без хвоста float
   }
   /** «Без соцсетей/игр»: источник жив за autoLeSourceDays до даты; сигналы — только принятые до закрытия дня (позднее решение не меняют). */
@@ -471,7 +483,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     for (let i = 0; i < 7; i++) {
       const d = addDays(w.weekStart, i), dq = doneOn(d);
       if (w.kind === 'stat_quests') n += dq.filter(q => q.stat === w.stat).length;
-      else if (w.kind === 'steps_total') n += metrics.get(d)?.steps ?? 0;
+      else if (w.kind === 'steps_total') n += plausibleSteps(metrics.get(d)?.steps) ?? 0;
       else if (w.kind === 'shadow_wins') n += outcomeOf(d).counted ? 1 : 0; // легаси — засчитанные в серию дни
       else n += dq.length ? 1 : 0; // active_days
     }

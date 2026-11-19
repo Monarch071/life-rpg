@@ -1270,3 +1270,25 @@ test('повтор сигнала не удваивает; источники с
   expect(s.today.data.gymVisits).toBe(1);
   expect(s.sync).toEqual({ last: at(D, 12, 1), bySource: { arrive: at(D, 12), health: at(D, 10) } });
 });
+test('фокус монотонен: запоздавший off не уменьшает минуты и не снимает авто [спека §4.4]', () => {
+  const f = (a: number, state: string, ts = a) => ev({ type: 'signal_logged', at: a, signal: { kind: 'focus', state }, ts, deviceId: 'shortcuts' });
+  const base = [onboard, issue(D, [nq('f', D, 'C', ['focus'], { auto: { metric: 'focusMin', op: '>=', value: 90 } })]), f(at(D, 10), 'on'), f(at(D, 12), 'off')];
+  const late = f(at(D, 10, 30), 'off', at(D, 12, 5));
+  for (const now of [at(D, 20), at('2026-12-04', 12)]) {
+    const a = replay(base, now), b = replay([...base, late], now);
+    expect(a.ledger.find(r => r.questId === 'f')).toMatchObject({ k: 1 });
+    expect(b.ledger.find(r => r.questId === 'f')).toEqual(a.ledger.find(r => r.questId === 'f'));
+  }
+  expect(replay([...base, late], at(D, 20)).today.data.focusMin).toBe(120);
+  // после закрытия дня поздний таймер этой даты не добавляет минут
+  const tm = ev({ type: 'timer_logged', timer: 'reading', start: at(D, 9), end: at(D, 9, 30), ts: at('2026-12-03', 10) });
+  expect(replay([onboard, issue(D, [nq('r', D, 'E', ['reading'], { auto: { metric: 'readMin', op: '>=', value: 10 } })]), tm], at('2026-12-03', 12)).history.at(-1)!.completed).toBe(0);
+});
+test('шаги выше stepsMax не идут в недельные шаги и bestSteps7 (Команды и вручную)', () => {
+  const W2 = '2026-11-30';
+  const wk = ev({ type: 'weekly_issued', weekStart: W2, ts: at(W2, 7), quests: [{ id: 'w1', weekStart: W2, kind: 'steps_total', stat: null, target: 70000, title: 'Шаги', xp: 150 }] });
+  const s = replay([wk, hp(W2, { steps: 60000 }), ev({ type: 'metric_logged', date: '2026-12-01', metric: 'steps', value: 60000, mode: 'set' }), hp(D, { steps: 8000 })], at(D, 20));
+  expect(s.weekly.quests[0].progress).toBe(8000);
+  const m = (date: string, value: number) => ev({ type: 'metric_logged', date, metric: 'steps', value, mode: 'set' });
+  expect(replay([m('2026-11-25', 9000), m('2026-11-26', 60000), hp('2026-11-27', { steps: 60000 }), m('2026-11-28', 11000), m('2026-11-29', 10000)], at(D, 12)).genInputs.bestSteps7).toBe(10000);
+});
