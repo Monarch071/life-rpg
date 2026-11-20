@@ -26,7 +26,11 @@ describe('finance', () => {
     const e = (date: string, kind: FinKind, amount: number, categoryId = 'food', dup = false) => ({ date, kind, amount, categoryId, dup });
     const t = periodTotals([e('2027-01-04', 'expense', 100.1), e('2027-01-04', 'expense', 0.2), e('2027-01-05', 'expense', 50, 'food', true),
       e('2027-01-06', 'expense', -500, 'fun'), e('2027-01-06', 'income', 1000), e('2027-01-07', 'saving', 300), e('2027-02-01', 'expense', 9)], '2027-01-04', '2027-01-10');
-    expect(t).toEqual({ income: 1000, expense: 100.3, saving: 300, loggedDays: 2, byCat: { food: 100.3, fun: 0 } });
+    expect(t).toEqual({ income: 1000, expense: 100.3, saving: 300, loggedDays: 3, byCat: { food: 100.3, fun: 0 } });
+  });
+  test('день учёта — любая запись: возврат, доход, отложено', () => {
+    const e = (date: string, kind: FinKind, amount: number) => ({ date, kind, amount, categoryId: 'x', dup: false });
+    expect(periodTotals([e('2027-01-04', 'expense', -5), e('2027-01-05', 'income', 5), e('2027-01-06', 'saving', 5)], '2027-01-04', '2027-01-10').loggedDays).toBe(3);
   });
   test('вердикт: учёт активен и все лимиты соблюдены; без лимитов — null', () => {
     expect(budgetVerdict({ food: 700, fun: 10 }, { food: 700, fun: null }, 3, 3)).toBe(true);

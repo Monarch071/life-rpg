@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { parseMoney, parseDate, parseCsv, detectDelimiter, guessColumns, toImportRows, rowKey, matchWallet } from './csvImport';
+import { BALANCE } from './balance';
+import { parseMoney, parseDate, parseCsv, parseCsvLines, detectDelimiter, guessColumns, toImportRows, rowKey, matchWallet, importChunks } from './csvImport';
 
 describe('csvImport', () => {
   test('деньги', () => {
@@ -37,5 +38,19 @@ describe('csvImport', () => {
     const w = [{ id: 'w1', date: '2027-01-13', amount: 100, ts: 2 }, { id: 'w2', date: '2027-01-12', amount: 100, ts: 1 }];
     expect([...matchWallet(imp, w, 1)].sort()).toEqual(['i1', 'i2']);
     expect(matchWallet([{ id: 'i', date: '2027-01-12', amount: -100.01 }], w, 1).size).toBe(0);
+  });
+  test('ревью: «зачисление» — кредит; ключ 64 бита; блоки ≤ importRowsMax; номера строк файла; кавычка внутри поля', () => {
+    expect(guessColumns(['Дата', 'Сумма списания', 'Сумма зачисления', 'Описание'])).toEqual({ date: 0, amount: null, debit: 1, credit: 2, text: 3 });
+    expect(rowKey('2027-01-12', -100, 'магазин 1', 0)).toMatch(/^[0-9a-f]{16}$/);
+    expect(rowKey('2027-01-12', -100, 'Магазин  1', 0)).toBe(rowKey('2027-01-12', -100, 'магазин 1', 0));
+    const keys = new Set(Array.from({ length: 20000 }, (_, i) => rowKey('2027-01-12', -i, 'x', 0)));
+    expect(keys.size).toBe(20000);
+    const rows = Array.from({ length: 2500 }, (_, i) => ({ key: `k${i}`, date: '2027-01-12', amount: -1, text: '' }));
+    expect(importChunks(rows).map(c => c.length)).toEqual([BALANCE.finance.importRowsMax, BALANCE.finance.importRowsMax, 500]);
+    const p = parseCsvLines('Дата;Сумма;Описание\n\n12.01.2027;-1;"a\nb"\r\nxx;-1;c\n');
+    expect(p.lines).toEqual([1, 3, 5]);
+    expect(toImportRows(p.rows, { date: 0, amount: 1, debit: null, credit: null, text: 2 }, true, p.lines).skipped).toEqual([{ line: 5, reason: 'date' }]);
+    expect(parseCsv('a;5"x;b\nc;d;e\n')).toEqual([['a', '5"x', 'b'], ['c', 'd', 'e']]);
+    expect(detectDelimiter('a;5";b;c,d')).toBe(';');
   });
 });

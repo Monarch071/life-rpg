@@ -8,46 +8,51 @@ export interface ColumnMap { date: number; amount: number | null; debit: number 
 /** Разделитель по числу вхождений вне кавычек; ничья — «;», затем таб, затем запятая. */
 export function detectDelimiter(line: string): Delim {
   const cnt = { ';': 0, '\t': 0, ',': 0 };
-  let q = false;
+  let q = false, start = true;
   for (const ch of String(line ?? '')) {
-    if (ch === '"') q = !q;
+    if (ch === '"' && (q || start)) q = !q;   // кавычка внутри поля без кавычек — буква
     else if (!q && ch in cnt) cnt[ch as Delim]++;
+    start = !q && ch in cnt;
   }
   let best: Delim = ',', n = 0;
   for (const k of [';', '\t', ','] as Delim[]) if (cnt[k] > n) { best = k; n = cnt[k]; }
   return best;
 }
 
-export function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] { return parseCsvLines(text).rows; }
+
+/** Строки CSV и номер строки файла (с 1), с которой каждая начинается. */
+export function parseCsvLines(text: string): { rows: string[][]; lines: number[] } {
   const max = BALANCE.finance.importLinesMax;
   const src = String(text ?? '').slice(0, BALANCE.finance.importFileMaxBytes).replace(/^﻿/, '');
   const first = src.split(/\r?\n/).find(l => l.trim() !== '') ?? '';
   const delim = detectDelimiter(first);
-  const out: string[][] = [];
-  let row: string[] = [], field = '', q = false;
+  const out: string[][] = [], lines: number[] = [];
+  let row: string[] = [], field = '', q = false, quoted = false, line = 1, rowLine = 1;
   const endRow = () => {
-    row.push(field); field = '';
-    if (row.some(c => c.trim() !== '')) out.push(row);
-    row = [];
+    row.push(field); field = ''; quoted = false;
+    if (row.some(c => c.trim() !== '')) { out.push(row); lines.push(rowLine); }
+    row = []; rowLine = line;
   };
   for (let i = 0; i < src.length && out.length < max; i++) {
     const ch = src[i];
     if (q) {
-      if (ch === '"') { if (src[i + 1] === '"') { field += '"'; i++; } else q = false; } else field += ch;
-    } else if (ch === '"') q = true;
-    else if (ch === delim) { row.push(field); field = ''; }
-    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && src[i + 1] === '\n') i++; endRow(); }
+      if (ch === '"') { if (src[i + 1] === '"') { field += '"'; i++; } else q = false; }
+      else { field += ch; if (ch === '\n' || (ch === '\r' && src[i + 1] !== '\n')) line++; }
+    } else if (ch === '"' && field === '' && !quoted) q = quoted = true;   // кавычка открывает только в начале поля, иначе — буква
+    else if (ch === delim) { row.push(field); field = ''; quoted = false; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && src[i + 1] === '\n') i++; line++; endRow(); }
     else field += ch;
   }
   if (out.length < max && (field !== '' || row.length)) endRow();
-  return out;
+  return { rows: out, lines };
 }
 
 export function guessColumns(header: string[]): Partial<ColumnMap> {
   const h = (header ?? []).map(x => normText(String(x ?? '')));
   const find = (re: RegExp, skip: number[] = []) => { const i = h.findIndex((x, k) => !skip.includes(k) && re.test(x)); return i < 0 ? null : i; };
   const debit = find(/списан|расход|debit|withdraw/);
-  const credit = find(/поступлен|приход|credit|deposit/);
+  const credit = find(/поступлен|зачисл|приход|credit|deposit/);
   const used = [debit, credit].filter((x): x is number => x !== null);
   const date = find(/дата|date/, used);
   const amount = find(/сумма|amount|\bsum\b/, used);
@@ -59,10 +64,10 @@ export function parseDate(s: string): ISODate | null {
   const t = String(s ?? '').trim();
   let y: number, m: number, d: number, x: RegExpMatchArray | null;
   if ((x = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T].*)?$/))) { y = +x[1]; m = +x[2]; d = +x[3]; }
-  else if ((x = t.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4}|\d{2})(?:[ T,].*)?$/))) { d = +x[1]; m = +x[2]; y = x[3].length === 2 ? 2000 + +x[3] : +x[3]; }
+  else if ((x = t.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4}|\d{2})(?:[ T,].*)?$/))) { d = +x[1]; m = +x[2]; y = x[3].length === 2 ? BALANCE.finance.century + +x[3] : +x[3]; }
   else return null;
   const dt = new Date(Date.UTC(y, m - 1, d));
-  if (y < 1970 || dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  if (y < BALANCE.finance.minYear || dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
   return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
@@ -85,22 +90,30 @@ export function parseMoney(s: string): number | null {
   return Number.isFinite(v) ? (neg ? -v : v) : null;
 }
 
+/** 64 бита: два прохода FNV-1a с разными основаниями (32 бита дают коллизию ~1% к 10 тыс. ключей). */
 export function rowKey(date: ISODate, amount: number, text: string, n: number): string {
   const s = `${date}|${amount}|${normText(text)}|${n}`;
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
-  return (h >>> 0).toString(16).padStart(8, '0');
+  const fnv = (h: number) => { for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(16).padStart(8, '0'); };
+  return fnv(0x811c9dc5) + fnv(0x050c5d1f);
+}
+
+/** Строки импорта блоками по importRowsMax — одно событие fin_imported на блок. */
+export function importChunks(rows: ImportRow[]): ImportRow[][] {
+  const n = BALANCE.finance.importRowsMax, out: ImportRow[][] = [];
+  for (let i = 0; i < rows.length; i += n) out.push(rows.slice(i, i + n));
+  return out;
 }
 
 function cleanText(s: string): string {
   return s.replace(/\s+/g, ' ').replace(/\p{Cc}/gu, '').trim().slice(0, BALANCE.finance.textMax).replace(/[\ud800-\udbff]$/, '');
 }
 
-export function toImportRows(rows: string[][], map: ColumnMap, hasHeader: boolean): { rows: ImportRow[]; skipped: { line: number; reason: 'date' | 'amount' }[] } {
+/** lines — номера строк файла из parseCsvLines; без них — порядковый номер строки. */
+export function toImportRows(rows: string[][], map: ColumnMap, hasHeader: boolean, lines?: number[]): { rows: ImportRow[]; skipped: { line: number; reason: 'date' | 'amount' }[] } {
   const out: ImportRow[] = [], skipped: { line: number; reason: 'date' | 'amount' }[] = [], seen = new Map<string, number>();
   const cell = (r: string[], i: number | null) => (i === null ? '' : String(r[i] ?? ''));
   (rows ?? []).slice(hasHeader ? 1 : 0).forEach((r, k) => {
-    const line = k + 1 + (hasHeader ? 1 : 0);
+    const line = lines?.[k + (hasHeader ? 1 : 0)] ?? k + 1 + (hasHeader ? 1 : 0);
     const date = parseDate(cell(r, map.date));
     if (!date) { skipped.push({ line, reason: 'date' }); return; }
     let raw: number | null;

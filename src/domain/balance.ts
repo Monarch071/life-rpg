@@ -94,7 +94,7 @@ export const BALANCE = {
   rival:   { ghostWeekXp: 50, recordXp: 100, championRecordXp: 100, growthBaseDayXp: 150, growthMinDays: 14,
              pagesDayMax: 500, focusDayMax: 960, cardDays: 7, decisionDate: '2027-01-31', decision: { openedShare: 25 / 31, completion: 0.6, baseGain: 3 } },
   finance: { amountMax: 1e8, textMax: 60, titleMax: 30, patternMin: 2, patternMax: 40, categoriesMax: 40, rulesMax: 300,
-             importRowsMax: 1000, importFileMaxBytes: 2_000_000, importLinesMax: 5000, dedupeDays: 1,
+             importRowsMax: 1000, importFileMaxBytes: 2_000_000, importLinesMax: 5000, dedupeDays: 1, century: 2000, minYear: 1970,
              weekMinDays: 3, monthMinDays: 15, saveShare: 0.1, warnShare: 0.8, autoShare: 0.5,
              monthRank: 'A', saveRank: 'C' },
   advanced: { level: 20, delayDays: 14, trialDays: 14, retryDays: 7, passDays: 10, passQuests: 8, switchDays: 7, passiveMult: 2,

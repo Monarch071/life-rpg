@@ -60,7 +60,8 @@ export function periodTotals(entries: { date: ISODate; kind: FinKind; amount: nu
     const c = cents(e.amount);
     if (e.kind === 'income') income += c;
     else if (e.kind === 'saving') saving += c;
-    else { cat[e.categoryId] = (cat[e.categoryId] ?? 0) + c; days.add(e.date); }
+    else cat[e.categoryId] = (cat[e.categoryId] ?? 0) + c;
+    days.add(e.date);   // день учёта — любая запись (решение контролёра)
   }
   const byCat: Record<string, number> = {};
   let expense = 0;
