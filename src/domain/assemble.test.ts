@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { assembleDay, priority, rankPlan, rerollCandidate, slotsFor, type AssembleCtx } from './assemble';
+import { assembleDay, priority, rankPlan, rerollCandidate, rerollCandidates, slotsFor, type AssembleCtx } from './assemble';
 import { BALANCE, RANKS } from './balance';
 import { toMin } from './day';
 import { DEFAULT_DAY_TYPES } from './dayType';
@@ -159,6 +159,15 @@ describe('переброс', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+  test('«Прозрение»: до 3 разных шаблонов, первый — как у переброса', () => {
+    const c = ctx({ energy: 80 }), today = assembleDay(c), q = today.find(x => x.kind === 'daily')!;
+    const rs = rerollCandidates(c, q, today, 3);
+    expect(rs).toHaveLength(3);
+    expect(new Set(rs.map(r => r.templateId)).size).toBe(3);
+    expect(rs.every(r => r.rank === q.rank && !today.some(t => t.templateId === r.templateId))).toBe(true);
+    expect(rs[0]).toEqual(rerollCandidate(c, q, today));
+    expect(rerollCandidates(c, today.find(x => x.kind === 'daily')!, today, 0)).toEqual([]);
   });
   test('restore не перебрасывается', () => {
     const c = ctx({ statInfo: withForm('str', 0.2, 'abandoned') });

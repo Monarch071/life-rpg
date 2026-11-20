@@ -81,6 +81,7 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'timer_logged'; timer: 'focus' | 'reading'; start: number; end: number }
   | { type: 'recovery_started'; date: ISODate; quests: 0 | 1 | 2 }
   | { type: 'recovery_ended'; date: ISODate }
+  | { type: 'ability_used'; date: ISODate; ability: AbilityId; questId?: string; stat?: Stat; replacement?: Quest; quests?: WeeklyQuest[] }
   | { type: 'ladder_created'; ladderId: string; title: string; kind: LadderKind; skill: SkillId; steps: LadderStep[]; suitable?: 'all' | 'workdays'; facetId?: string }
   | { type: 'ladder_updated'; ladderId: string; title?: string; steps?: LadderStep[] }
   | { type: 'ladder_removed'; ladderId: string }
@@ -141,6 +142,7 @@ export interface GameState {
            restDaysLeft: number;          // дней отдыха в этом календарном месяце осталось
            dayStart: { level: number; skills: Record<SkillId, number> };   // уровень и навыки на начало дня — потолки рангов для переброса и своих
            rerollsUsed: number; nextRerollCost: number;   // принятые перебросы сегодня; цена следующего (0 | 50)
+           ability: { rush: string | null; shield: boolean; inspire: boolean; march: boolean; freeRerolls: number };   // способности, принятые сегодня; freeRerolls — доп. бесплатные перебросы «Сделки»
            customCount: number;           // своих заданий сегодня
            spendable: number;             // золото для платных трат (переброс, покупки с эффектом)
            freezesLeft: number;           // заморозок можно купить в этом месяце

@@ -178,14 +178,16 @@ export function assembleDay(ctx: AssembleCtx): Quest[] {
   return place([...built.slice(0, mandatory), ...steps, ...built.slice(mandatory)], ctx);
 }
 
-/** Замена для переброса: тот же ранг, другой шаблон (не из сегодняшних), лучше — другой навык. restore/custom/boss/chain — null. */
-export function rerollCandidate(ctx: AssembleCtx, q: Quest, today: Quest[]): Quest | null {
-  if (!q.rank || (q.kind !== 'daily' && q.kind !== 'challenge')) return null;
+/** До n замен (разные шаблоны, не из сегодняшних): тот же ранг, сначала другой навык. restore/custom/boss/chain — []. «Прозрение» — n = 3. */
+export function rerollCandidates(ctx: AssembleCtx, q: Quest, today: Quest[], n: number): Quest[] {
+  if (!q.rank || (q.kind !== 'daily' && q.kind !== 'challenge')) return [];
   const used = new Set(today.map(x => x.templateId));
   // тот же ранг, но не выше потолка нового навыка (+1, только если заменяется вызов)
   const pool = candidates(ctx).filter(c => !used.has(c.t.id) && ri(c.limit) >= ri(q.rank!) && ri(c.cap) + (q.kind === 'challenge' ? 1 : 0) >= ri(q.rank!));
-  const c = pool.find(c => c.skill !== q.skills?.[0]) ?? pool[0];
-  if (!c) return null;
-  const x = build(c, q.rank, q.kind, ruleWhy(c, ctx), ctx, `${q.id}>${c.t.id}`);
-  return placeQuests([x], q.window ? [q.window] : [], ctx.profile.energy, ctx.wakeAt)[0];
+  const other = (c: Cand) => c.skill !== q.skills?.[0];
+  return [...pool.filter(other), ...pool.filter(c => !other(c))].slice(0, Math.max(0, n)).map(c =>
+    placeQuests([build(c, q.rank!, q.kind!, ruleWhy(c, ctx), ctx, `${q.id}>${c.t.id}`)], q.window ? [q.window] : [], ctx.profile.energy, ctx.wakeAt)[0]);
 }
+
+/** Замена для переброса — первая из rerollCandidates; нет — null. */
+export const rerollCandidate = (ctx: AssembleCtx, q: Quest, today: Quest[]): Quest | null => rerollCandidates(ctx, q, today, 1)[0] ?? null;

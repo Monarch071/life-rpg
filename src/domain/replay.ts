@@ -14,7 +14,7 @@ import { bossOptionsByRules, partHp, partWindows, validBossDraft, validChainStep
 import { banished, battleOutcome, facetDay, isSerious, lastSunday, masterPlan } from './shadow';
 import { startProfile } from './startProfile';
 import { dayOutcome, nextStreak } from './streak';
-import { CLASSES, classWeights, passivePower, pickClass, questBonuses } from './classes';
+import { CLASSES, classWeights, passivePower, pickClass, questBonuses, TRAINING } from './classes';
 import { flatPerks, isRusty, mainSkillPerks, PERKS, perkPower, skillForm } from './perks';
 import { isStat, STATS, tierFor } from './stats';
 import { cleanText } from './text';
@@ -26,6 +26,7 @@ import { levelFromXp } from './xp';
 export const DEFAULT_AVATAR: AvatarParams = { hair: 'short', hairColor: '#2b1d14', outfitColor: '#4f46e5', eyes: 'round' };
 
 const STAT_KEYS = Object.keys(STATS) as Stat[];
+const ABILITY_IDS: readonly string[] = Object.values(CLASSES).map(c => c.ability);
 const fill = (n: number) => Object.fromEntries(STAT_KEYS.map(s => [s, n])) as Record<Stat, number>;
 const WEEKLY_KINDS = ['active_days', 'stat_quests', 'steps_total', 'shadow_wins'];
 const validWeekly = (w: any): w is WeeklyQuest => !!w && typeof w.id === 'string' && typeof w.title === 'string' && w.title.length >= 1 && w.title.length <= 120 && WEEKLY_KINDS.includes(w.kind)
@@ -239,9 +240,19 @@ export function replay(events: GameEvent[], now: number): GameState {
   const checkins = new Map<ISODate, { ts: number; energy: number }[]>(); // вечерняя энергия — самочувствие HP и Усталость
   // Платные траты (переброс, покупка с эффектом) принимаются в цикле дней по золоту прошлых дней.
   type ShopItem = { id: string; title: string; price: number; effect: RewardEffect | null; deleted: boolean };
-  type Spend = { id: string; ts: number; date: ISODate } & ({ orig: string; repl: DayQuest } | { reward: ShopItem });
+  // способности (кроме «Прозрения») — в той же очереди по ts: «Сделка» освобождает следующие перебросы, «Рывок» видит замену
+  type Spend = { id: string; ts: number; date: ISODate } & ({ orig: string; repl: DayQuest; insight?: boolean } | { reward: ShopItem }
+    | { ab: Extract<GameEvent, { type: 'ability_used' }> });
   const spends: Spend[] = [];
   const rerolledFrom = new Set<string>(); // исходные questId: повтор переброса игнорируется
+  /** Замена задания (переброс, «Прозрение»): только невыполненное daily/challenge этой даты; тот же ранг, другой шаблон. Принятие — в цикле дней. */
+  const swapOf = (questId: unknown, raw: unknown, date: ISODate): { orig: string; repl: DayQuest } | null => {
+    const q0 = typeof questId === 'string' ? questById.get(questId) : undefined, r = normQuest(raw, date);
+    if (!q0 || !r || r.legacy || q0.date !== date || q0.done || rerolledFrom.has(q0.id) || questById.has(r.id) || r.rank !== q0.rank
+      || r.templateId === q0.templateId || [q0.kind, r.kind].some(k => k !== 'daily' && k !== 'challenge')) return null;
+    rerolledFrom.add(q0.id); questById.set(r.id, r);
+    return { orig: q0.id, repl: r };
+  };
   const customs = new Map<ISODate, DayQuest[]>();
   // Авто-источники: здоровье по датам пакета; hi/lo — max/min незафлаженных значений по каждому пакету (засчёт монотонен).
   type Acc = { steps?: number; sleep?: number; rhr?: number; weight?: number; mindful?: number; legacyW?: number;
@@ -313,12 +324,17 @@ export function replay(events: GameEvent[], now: number): GameState {
         break;
       }
       case 'quest_rerolled': {
-        // только сегодняшнее невыполненное, не restore/custom; замена — тот же ранг, другой шаблон; принятие (золото) — в цикле дней
-        const q0 = questById.get(e.questId), r = isDate(e.date) && e.date === gd(e.ts) ? normQuest(e.replacement, e.date) : null;
-        if (!q0 || !r || r.legacy || q0.date !== e.date || q0.done || rerolledFrom.has(q0.id) || questById.has(r.id) || r.rank !== q0.rank
-          || r.templateId === q0.templateId || [q0.kind, r.kind].some(k => k !== 'daily' && k !== 'challenge')) break;
-        rerolledFrom.add(q0.id); questById.set(r.id, r);
-        spends.push({ id: e.id, ts: e.ts, date: e.date, orig: q0.id, repl: r });
+        const sw = isDate(e.date) && e.date === gd(e.ts) ? swapOf(e.questId, e.replacement, e.date) : null;
+        if (sw) spends.push({ id: e.id, ts: e.ts, date: e.date, ...sw });
+        break;
+      }
+      case 'ability_used': {
+        // граница доверия: дата — игровая дата ts, не раньше выхода «Глубины»; класс, неделя и цель — в цикле дней (класс по датам)
+        if (!isDate(e.date) || e.date !== gd(e.ts) || e.date < BALANCE.depthSince || e.date > today || !ABILITY_IDS.includes(e.ability)) break;
+        if (e.ability !== 'insight') { spends.push({ id: e.id, ts: e.ts, date: e.date, ab: e }); break; }
+        // «Прозрение» — переброс без цены и вне счёта перебросов дня
+        const sw = swapOf(e.questId, e.replacement, e.date);
+        if (sw) spends.push({ id: e.id, ts: e.ts, date: e.date, ...sw, insight: true });
         break;
       }
       case 'custom_quest_added': {
@@ -641,10 +657,11 @@ export function replay(events: GameEvent[], now: number): GameState {
 
   // Недельные: прогресс за 7 дней недели; XP — один раз за выполненное, в том числе за прошлые недели.
   const doneOn = (d: ISODate) => issued.get(d)?.filter(q => q.done && q.kind !== 'custom') ?? []; // свои дают только свой XP
-  const weekProgress = (w: WeeklyQuest) => {
+  const weekProgress = (w: WeeklyQuest, upTo?: ISODate) => {
     let n = 0;
     for (let i = 0; i < 7; i++) {
       const d = addDays(w.weekStart, i), dq = doneOn(d);
+      if (upTo && d > upTo) break;
       if (w.kind === 'stat_quests') n += dq.filter(q => q.stat === w.stat).length;
       else if (w.kind === 'steps_total') n += plausibleSteps(metrics.get(d)?.steps) ?? 0;
       else if (w.kind === 'shadow_wins') n += outcomeOf(d).counted ? 1 : 0; // легаси — засчитанные в серию дни
@@ -931,6 +948,10 @@ export function replay(events: GameEvent[], now: number): GameState {
   type Snap = { forms: Record<Stat, number | null>; skills: Record<SkillId, { level: number; rusty: boolean }>; power: 0 | 0.5 | 1;
     flat: ReturnType<typeof flatPerks> };
   let snap: Snap | null = null;
+  // Способности (спека §4.4): одна на класс-способность за игровую неделю; первая валидная по ts побеждает, невалидная не тратит неделю.
+  const CL = BALANCE.classes;
+  const abUsed = new Map<string, ISODate>();   // `${weekStart}|${ability}` → дата принятия
+  let abToday: GameState['today']['ability'] = { rush: null, shield: false, inspire: false, march: false, freeRerolls: 0 };
   for (const p of recAll) for (let d = p.from; d < p.to && d <= today; d = addDays(d, 1)) dates.add(d);
   for (const d of [...dates].sort()) {
     const qs = issued.get(d) ?? [];
@@ -983,17 +1004,49 @@ export function replay(events: GameEvent[], now: number): GameState {
     const capOf = (q: DayQuest) => RANKS.indexOf(rankCap(lvl, skillFromXp(start.skills[q.skills[0]], skillXp[q.skills[0]]).level));
     // золото достижений дат < d: их счётчики к этому моменту окончательны; first_purchase — нет (покупки решаются после цикла)
     const achGold = spendsOn.has(d) ? achGoldBefore(d) : 0;
+    const ab: GameState['today']['ability'] = { rush: null, shield: false, inspire: false, march: false, freeRerolls: 0 };
+    if (d === today) abToday = ab;
+    const wkKey = (a: string) => `${weekStart(d)}|${a}`;
+    const canUse = (a: string) => !!cls && CLASSES[cls.id].ability === a && !abUsed.has(wkKey(a));
+    /** «План»: невыполненные (на дату d) недельные этой недели заменяются присланными валидными, не больше заменённых. */
+    const planWeek = (raw: unknown): boolean => {
+      const ws = weekStart(d), wk = weeklyIssued.get(ws);
+      if (!wk || !Array.isArray(raw)) return false;
+      const keep = wk.qs.filter(w => weekProgress({ ...w, weekStart: ws }, d) >= w.target), ids = new Set(keep.map(w => w.id));
+      const fresh = raw.filter(w => validWeekly(w) && !ids.has(w.id) && !!ids.add(w.id)).slice(0, wk.qs.length - keep.length)
+        .map(w => ({ ...w, weekStart: ws, xp: Math.min(BALANCE.legacy.weeklyXpMax, Math.max(0, Math.round(w.xp))) }));
+      if (!fresh.length) return false;
+      wk.qs = [...keep, ...fresh];
+      const wd = ws === thisWeek ? today : addDays(ws, 6);   // строки недели — на wd ≥ d
+      weeklyAt.set(wd, [...(weeklyAt.get(wd) ?? []).filter(x => x.ws !== ws), ...wk.qs.map(w => ({ ws, ts: wk.ts, w }))]);
+      return true;
+    };
+    const useAbility = (e: Extract<GameEvent, { type: 'ability_used' }>) => {
+      if (!canUse(e.ability)) return;
+      const q = typeof e.questId === 'string' ? qs.find(x => x.id === e.questId) : undefined;
+      const target = !!q && !q.legacy && q.kind !== 'custom' && q.kind !== 'boss' && q.kind !== 'chain';
+      if (e.ability === 'rush') { if (!target || !TRAINING.includes(q.skills[0])) return; ab.rush = q.id; }
+      else if (e.ability === 'universal') { if (!target || !isStat(e.stat) || e.stat === q.stat) return; q.skills = [DEFAULT_SKILL_BY_STAT[e.stat]]; q.stat = e.stat; }
+      else if (e.ability === 'plan') { if (!planWeek(e.quests)) return; }
+      else if (e.ability === 'deal') ab.freeRerolls = CL.dealRerolls;
+      else if (e.ability === 'shield' || e.ability === 'inspire' || e.ability === 'march') ab[e.ability] = true;
+      else return;
+      abUsed.set(wkKey(e.ability), d);
+    };
     for (const s of spendsOn.get(d) ?? []) {
+      if ('ab' in s) { useAbility(s.ab); continue; }
       // shortcut: обычные покупки — все кандидаты (принятие решается после цикла); расходится со spendable только после отклонённой
       // обычной покупки, т. е. когда золота и так не хватало
       const avail = goldSoFar + achGold - ordinaryBuys.reduce((a, b) => a + (b.ts < s.ts ? b.r.price : 0), 0) - paidSum;
       if ('orig' in s) {
         const i = qs.findIndex(q => q.id === s.orig), used = rerollsOn.get(d) ?? 0;
-        const price = used >= BALANCE.reroll.free ? BALANCE.reroll.cost : 0;
+        const price = s.insight || used < BALANCE.reroll.free + ab.freeRerolls ? 0 : BALANCE.reroll.cost;
         // замена не выше потолка своего навыка (+1, только если заменяется вызов) — журнал недоверенный
         // замена не дублирует шаблон, уже стоящий в этом дне (два устройства / недоверенный журнал)
-        if (i < 0 || qs.some(q => q.templateId === s.repl.templateId) || (price > 0 && avail < price) || RANKS.indexOf(s.repl.rank) > capOf(s.repl) + (qs[i].kind === 'challenge' ? 1 : 0)) continue;
-        qs[i] = s.repl; rerollsOn.set(d, used + 1);
+        if (i < 0 || qs.some(q => q.templateId === s.repl.templateId) || (price > 0 && avail < price) || RANKS.indexOf(s.repl.rank) > capOf(s.repl) + (qs[i].kind === 'challenge' ? 1 : 0)
+          || (s.insight && !canUse('insight'))) continue;
+        qs[i] = s.repl;
+        if (s.insight) abUsed.set(wkKey('insight'), d); else rerollsOn.set(d, used + 1);
         if (price) { rerollPaid.push({ ts: s.ts, price }); paidSum += price; }
       } else {
         const r = s.reward, m = d.slice(0, 7), nf = freezeMonth.get(m) ?? 0;
@@ -1006,6 +1059,9 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (r.effect === 'streak_freeze') { freezes++; freezeMonth.set(m, nf + 1); } else { dayOff.add(d); freezeDay(d); restInMonth.set(m, nr + 1); }
       }
     }
+    // «Марш»: цели шагов авто-заданий дня × march, награда прежняя
+    if (ab.march) for (const q of qs) if (q.verify !== 'auto' && q.auto?.metric === 'steps' && q.auto.op === '>='
+      && autoOk({ ...q.auto, value: Math.round(q.auto.value * CL.march * 1e9) / 1e9 }, d)) { q.done = true; q.verify = 'auto'; }
     // «День изменился»: при меньшем числе слотов последние по выдаче невыполненные — dropped (вне знаменателя 60%); свои не трогаются.
     const ch = dayChange.get(d);
     if (ch && dayStart.has(d)) {
@@ -1036,10 +1092,10 @@ export function replay(events: GameEvent[], now: number): GameState {
         const themeOk = themeBonusApplies(theme, q.stat, q.skills), main = q.skills[0];
         const b = snap ? questBonuses({ skills: q.skills, stat: q.stat, verify: q.verify!, streak, theme: themeOk, weakest: q.stat === weak,
           cls: cls && { id: cls.id, power: snap.power },
-          perk: mainSkillPerks(main, snap.skills[main].level, skillForm(main, snap.forms), snap.skills[main].rusty), rust: rustFirst.has(q.id), inspire: false })
+          perk: mainSkillPerks(main, snap.skills[main].level, skillForm(main, snap.forms), snap.skills[main].rusty), rust: rustFirst.has(q.id), inspire: ab.inspire })
           : { bonuses: [streakBonus(streak), themeOk ? BALANCE.bonus.theme : 0, q.stat === weak ? BALANCE.bonus.weakest : 0], goldBonus: 0 };   // до depthSince — прежний набор
         return { q, gb: b.goldBonus, r: questReward({ rank: q.rank, verify: q.verify!, bonuses: b.bonuses, goldBonus: b.goldBonus,
-          mult: (q.kind === 'restore' ? BALANCE.restore.mult : 1) * (q.stat === 'int' && d >= BALANCE.automationSince ? intFocusMult(vit?.focus ?? null) : 1),
+          mult: (q.kind === 'restore' ? BALANCE.restore.mult : 1) * (ab.rush === q.id ? CL.rushMult : 1) * (q.stat === 'int' && d >= BALANCE.automationSince ? intFocusMult(vit?.focus ?? null) : 1),
           penalties: [weakening ? BALANCE.penalty.weakening : 0, imbalance && q.stat === strong ? BALANCE.penalty.imbalance : 0,
             fatiguePenalty(vit?.fatigue ?? 0)] }) };
       });
@@ -1070,9 +1126,10 @@ export function replay(events: GameEvent[], now: number): GameState {
     // закрытие дня: серия (заморозка гасит ближайший пропуск), идеальный день; история — для дней с выдачей
     const o = outcomeOf(d), rest = restDays.has(d) || dayOff.has(d), dq = qs.filter(q => q.done);
     const real = qs.filter(q => q.kind !== 'custom'), realDone = real.filter(q => q.done).length;
-    const freeze = !o.neutral && !o.counted && freezes > 0 && streak > 0; // при нулевой серии заморозка не тратится
+    // «Щит» — как заморозка, без траты заморозки; при нулевой серии заморозка не тратится
+    const freeze = !ab.shield && !o.neutral && !o.counted && freezes > 0 && streak > 0;
     if (freeze) freezes--;
-    streak = nextStreak(streak, o, freeze, snap?.flat.streakMiss);
+    streak = nextStreak(streak, o, freeze || ab.shield, snap?.flat.streakMiss);
     if (o.perfect) add(flatRow(`perfect:${d}`, closesAtTs(d, closeOf(d)), d, 'perfect_day', BALANCE.streak.perfectXp, null));
     closed.push({ date: d, done: dq.length, rest }); if (!rest) workDays.push(d);
     if (!rest) idleRun = realDone || (ritualsOn.get(d)?.done ?? 0) > 0 ? 0 : idleRun + 1; // ритуал — тоже активность
@@ -1177,7 +1234,8 @@ export function replay(events: GameEvent[], now: number): GameState {
   const c0 = cls ?? pickClass(classWeights(stats, forms), null), cdef = CLASSES[c0.id], last = clsHist.at(-1), prevCls = clsHist.at(-2);
   const clsState: ClassState = { id: c0.id, name: cdef.name, pair: c0.pair, since: last?.date ?? null, weights: classWeights(stats, forms),
     passive: { text: cdef.passive, power: passivePower(c0, forms) },
-    ability: { id: cdef.ability, name: cdef.abilityName, desc: cdef.abilityDesc, target: cdef.target, usedOn: null, available: today >= BALANCE.depthSince },
+    ability: { id: cdef.ability, name: cdef.abilityName, desc: cdef.abilityDesc, target: cdef.target, usedOn: abUsed.get(`${thisWeek}|${cdef.ability}`) ?? null,
+      available: today >= BALANCE.depthSince && !abUsed.has(`${thisWeek}|${cdef.ability}`) },
     nextRecalc: `${addDays(`${today.slice(0, 7)}-28`, 4).slice(0, 7)}-01`, changedFrom: prevCls && last ? { id: prevCls.id, date: last.date } : null };
   const className = clsState.name;
   const a = interview?.analysis;
@@ -1201,7 +1259,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       freezesLeft: Math.max(0, BALANCE.shop.freezePerMonth - (freezeMonth.get(today.slice(0, 7)) ?? 0)), dayOff: dayOff.has(today),
       data: data.get(today) ?? { flags: [] }, vitals, suggest,
       dayStart: dayStartCaps ?? { level, skills: skillLevels() }, // сегодня не в цикле — сегодняшних строк нет
-      rerollsUsed, nextRerollCost: rerollsUsed >= BALANCE.reroll.free ? BALANCE.reroll.cost : 0, customCount: customs.get(today)?.length ?? 0,
+      rerollsUsed, nextRerollCost: rerollsUsed >= BALANCE.reroll.free + abToday.freeRerolls ? BALANCE.reroll.cost : 0, ability: abToday, customCount: customs.get(today)?.length ?? 0,
       quests: todayQuests, xp: todayQuests.reduce((s, q) => s + (q.done ? q.xpFinal ?? 0 : 0), 0),
       metrics: metrics.get(today) ?? {}, checkedIn, lastEnergy, busyUntil, calendar,
       aiNote: (tunings.get(today) ?? tunings.get(addDays(today, -1)))?.note || null,
