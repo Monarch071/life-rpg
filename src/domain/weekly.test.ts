@@ -34,3 +34,9 @@ test('stat_quests — слабейшая характеристика, ничь�
   expect(w[2].stat).toBe('fin');
   expect(generateWeeklyQuests(c)).toEqual(w);
 });
+
+test('после ранга D недельные облегчены', () => {
+  const c = ctx({ prevActiveDays: 5, prevStatQuests: 10, bestSteps7: 8000 });
+  const [d, s, st] = generateWeeklyQuests({ ...c, easy: true });
+  expect(d.target).toBe(5); expect(s.target).toBe(9); expect(st.target).toBe(48000);   // 6−1; round(11×0,8); ceil(8000×7×1,05×0,8/1000)×1000
+});

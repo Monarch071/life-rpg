@@ -96,7 +96,7 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
 export type WeeklyKind = 'active_days' | 'stat_quests' | 'steps_total' | 'shadow_wins';
 export interface WeeklyQuest { id: string; weekStart: ISODate; kind: WeeklyKind; stat: Stat | null; target: number; title: string; xp: number }
 export interface Boss { id: string; title: string; stat: Stat; stages: string[]; done: number; defeated: boolean; abandoned: boolean }
-export interface WeeklyCtx { weekStart: ISODate; stats: Record<Stat, number>; multipliers: Record<Stat, number>; prevActiveDays: number; prevStatQuests: number; bestSteps7: number | null; themeStat: Stat | null }
+export interface WeeklyCtx { weekStart: ISODate; stats: Record<Stat, number>; multipliers: Record<Stat, number>; prevActiveDays: number; prevStatQuests: number; bestSteps7: number | null; themeStat: Stat | null; easy?: boolean }
 export interface AvatarParams { hair: string; hairColor: string; outfitColor: string; eyes: string }
 /** HP, Energy, Фокус, Усталость дня (спека §5, §14). */
 export interface Vitals { hp: number | null; energy: number | null; focus: number | null; fatigue: number;
