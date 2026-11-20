@@ -28,4 +28,5 @@ export const AUTO_METRIC_INFO: Record<AutoMetric, { label: string; unit: string 
   gymVisits: { label: 'зал', unit: 'раз' },
   socialMin: { label: 'соцсети', unit: 'мин' },
   gamesMin: { label: 'игры', unit: 'мин' },
+  finEntries: { label: 'записи трат', unit: 'шт' },
 }

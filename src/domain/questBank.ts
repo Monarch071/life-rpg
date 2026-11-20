@@ -92,7 +92,7 @@ export const QUEST_TEMPLATES: QuestTemplate[] = [
   O('delegate', 'cha', 'Расписать задачу для другого и проверить результат', 15, { skills: ['delegation'] }),
   O('help', 'cha', 'Помочь коллеге в завал', 20, { skills: ['teamwork'] }),
   // Финансы
-  T('expenses', 'fin', 5, ['трату', 'траты', 'трат'], 'Записать', 1),
+  T('expenses', 'fin', 5, ['трату', 'траты', 'трат'], 'Записать', 1, ge('finEntries')),
   O('nobuy', 'fin', 'День без импульсных покупок', 0, { allDay: true }),
   O('budget', 'fin', 'Свериться с бюджетом на месяц', 10),
   T('save', 'fin', 300, '₽', 'Отложить', 0, { skills: ['savings'] }),

@@ -23,6 +23,7 @@ export function generateWeeklyQuests(c: WeeklyCtx): WeeklyQuest[] {
   return [
     mk('active_days', null, days, `Будь активен ${days} дней из 7`),
     mk('stat_quests', weak, n, `Выполни ${n} заданий: ${STATS[weak].name}`),
-    steps === null ? mk('stat_quests', other, 3, `Выполни 3 задания: ${STATS[other].name}`, 'stat_quests_2') : mk('steps_total', null, steps, `Пройди ${steps} шагов за неделю`),
+    c.budget ? mk('budget_week', 'fin', 1, 'Уложись в лимиты трат недели')
+      : steps === null ? mk('stat_quests', other, 3, `Выполни 3 задания: ${STATS[other].name}`, 'stat_quests_2') : mk('steps_total', null, steps, `Пройди ${steps} шагов за неделю`),
   ];
 }

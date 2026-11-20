@@ -35,13 +35,14 @@ export interface HealthData { steps?: number; sleepHours?: number; workoutMin?: 
   mindfulMin?: number; workouts?: { type: string; start?: number; end?: number; minutes: number }[] }
 /** Метрики авто-засчёта (спека §4.4). */
 export type AutoMetric = 'steps' | 'sleepHours' | 'weightKg' | 'workoutMin' | 'strengthMin' | 'mobilityMin' | 'cardioMin' | 'sportsMin'
-  | 'mindfulMin' | 'focusMin' | 'readMin' | 'gymVisits' | 'socialMin' | 'gamesMin';
+  | 'mindfulMin' | 'focusMin' | 'readMin' | 'gymVisits' | 'socialMin' | 'gamesMin' | 'finEntries';
 export type DataFlag = { metric: 'steps' | 'sleepHours' | 'workouts'; reason: 'too_many_steps' | 'too_long_sleep' | 'overlap' };
 /** Данные авто-источников за игровую дату (без названий магазинов). */
 export interface DayData {
   steps?: number; sleepHours?: number; restingHR?: number; mindfulMin?: number; weightKg?: number;
   workoutMin?: number; strengthMin?: number; mobilityMin?: number; cardioMin?: number; sportsMin?: number;
   focusMin?: number; readMin?: number; socialMin?: number; gamesMin?: number; gymVisits?: number; spendAuto?: number;
+  finEntries?: number;   // записей расходов дня, принятых до его закрытия
   flags: DataFlag[];
 }
 export type Signal =
@@ -109,10 +110,10 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'chain_started'; chainId: string; title: string; skill: SkillId; steps: string[] }
   | { type: 'chain_abandoned'; chainId: string }
 );
-export type WeeklyKind = 'active_days' | 'stat_quests' | 'steps_total' | 'shadow_wins';
+export type WeeklyKind = 'active_days' | 'stat_quests' | 'steps_total' | 'shadow_wins' | 'budget_week';
 export interface WeeklyQuest { id: string; weekStart: ISODate; kind: WeeklyKind; stat: Stat | null; target: number; title: string; xp: number }
 export interface Boss { id: string; title: string; stat: Stat; stages: string[]; done: number; defeated: boolean; abandoned: boolean }
-export interface WeeklyCtx { weekStart: ISODate; stats: Record<Stat, number>; multipliers: Record<Stat, number>; prevActiveDays: number; prevStatQuests: number; bestSteps7: number | null; themeStat: Stat | null; easy?: boolean }
+export interface WeeklyCtx { weekStart: ISODate; stats: Record<Stat, number>; multipliers: Record<Stat, number>; prevActiveDays: number; prevStatQuests: number; bestSteps7: number | null; themeStat: Stat | null; easy?: boolean; budget?: boolean }
 export interface AvatarParams { hair: string; hairColor: string; outfitColor: string; eyes: string }
 /** HP, Energy, Фокус, Усталость дня (спека §5, §14). */
 export interface Vitals { hp: number | null; energy: number | null; focus: number | null; fatigue: number;
@@ -129,7 +130,7 @@ export interface ClassState { id: ClassId; name: string; pair: [Stat, Stat] | nu
   passive: { text: string; power: 0 | 0.5 | 1 };
   ability: { id: AbilityId; name: string; desc: string; target: 'quest' | 'day' | 'week'; usedOn: ISODate | null; available: boolean };
   nextRecalc: ISODate; changedFrom: { id: ClassId; date: ISODate } | null }
-export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss' | 'ritual' | 'ladder' | 'shadow' | 'chain' | 'week_rank' | 'season_step';
+export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss' | 'ritual' | 'ladder' | 'shadow' | 'chain' | 'week_rank' | 'season_step' | 'budget';
   questId?: string; base: number; k: number; bonus: number; penalty: number; mult: number; xp: number; gold: number;
   skills: [SkillId, number][]; stats: Partial<Record<Stat, number>>; verified: boolean }
 /** legacy — задание без ранга (старый журнал): XP как сохранено, без проверки и бонусов. */
@@ -178,7 +179,7 @@ export interface GameState {
   weekly: { weekStart: ISODate; quests: (WeeklyQuest & { progress: number; done: boolean })[] };   // неделя сегодняшней игровой даты; без выдачи — []
   bosses: Boss[];         // кроме брошенных
   reports: { weekStart: ISODate; text: string; final?: true }[];   // недельные отчёты ИИ, по убыванию недели
-  genWeekly: WeeklyCtx & { easy: boolean };   // easy — прошлая неделя закрыта рангом D   // контекст для generateWeeklyQuests текущей недели
+  genWeekly: WeeklyCtx & { easy: boolean; budget: boolean };   // easy — прошлая неделя закрыта рангом D; budget — на понедельник есть лимит   // контекст для generateWeeklyQuests текущей недели
   season: { id: string; kind: 'prologue' | 'winter' | 'spring' | 'summer' | 'autumn'; name: string; start: ISODate; end: ISODate; theme: ThemeId | null; xp: number; step: number;
     stepXp: number; joined: ISODate | null; rewards: { step: number; gold: number; items: string[]; date: ISODate }[]; title: string | null };   // путь сезона: цена ступени, первая игровая дата, полученные ступени
   /** Ранг недели (спека §5): preview — «если сегодня закроется так»; results — закрытые недели ≥ depthSince, по убыванию, до 12. */

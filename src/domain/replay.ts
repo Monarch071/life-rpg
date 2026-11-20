@@ -20,8 +20,10 @@ import { avgPrev, chestPick, leagueAfter, leagueTier, softReset, weekRank } from
 import { stepRewards, stepXpFor } from './seasonPath';
 import { cosmeticById, trophyItemId } from './cosmetics';
 import { isStat, STATS, tierFor } from './stats';
+import { budgetVerdict, DEFAULT_CATEGORIES, limitFor, matchRule, normText, otherOf, periodTotals, validAmount, weekLimit } from './finance';
+import { matchWallet } from './csvImport';
 import { cleanText } from './text';
-import type { Analysis, Answers, BossDraft, AutoMetric, ClassId, ClassState, PerkView, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, FinPeriod, WeeklyQuest, WeekResult, WeekScore } from './types';
+import type { Analysis, Answers, BossDraft, AutoMetric, ClassId, ClassState, PerkView, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, FinKind, FinPeriod, ImportRow, WeeklyQuest, WeekResult, WeekScore } from './types';
 import { weakestStat } from './weekly';
 import { energyScore, fatigueNext, focusScore, hpScore, intFocusMult, sessionMinutes, unionMinutes, workoutKind } from './vitals';
 import { levelFromXp } from './xp';
@@ -32,7 +34,7 @@ const STAT_KEYS = Object.keys(STATS) as Stat[];
 const ABILITY_IDS: readonly string[] = Object.values(CLASSES).map(c => c.ability);
 const SLOTS: readonly string[] = ['head', 'neck', 'cloak', 'emblem', 'background', 'frame', 'look'];
 const fill = (n: number) => Object.fromEntries(STAT_KEYS.map(s => [s, n])) as Record<Stat, number>;
-const WEEKLY_KINDS = ['active_days', 'stat_quests', 'steps_total', 'shadow_wins'];
+const WEEKLY_KINDS = ['active_days', 'stat_quests', 'steps_total', 'shadow_wins', 'budget_week'];
 const validWeekly = (w: any): w is WeeklyQuest => !!w && typeof w.id === 'string' && typeof w.title === 'string' && w.title.length >= 1 && w.title.length <= 120 && WEEKLY_KINDS.includes(w.kind)
   && Number.isFinite(w.target) && w.target > 0 && w.target <= 10_000_000 && Number.isFinite(w.xp) && (w.stat === null || isStat(w.stat));
 const validStages = (st: unknown): st is string[] => Array.isArray(st) && st.length >= 2 && st.length <= 8
@@ -56,6 +58,14 @@ function linkOf(a: any, kind: unknown): Quest['link'] | null {
   return ID(a.chainId) ? { kind: 'chain', chainId: a.chainId, step: a.step } : null;
 }
 const FACET_KINDS: readonly string[] = ['games', 'social', 'late', 'junk', 'smoke', 'procr', 'alcohol', 'custom'];
+const FB = BALANCE.finance, FIN_KINDS: readonly string[] = ['expense', 'income', 'saving'];
+const FIN_PREFIX = /^(wallet|import|legacy):/;   // id ручной записи не совпадает с id Wallet/импорта/старых трат
+/** Запись финансов до правок; cat null — категория по правилам магазинов. */
+type FinRaw = { id: string; ts: number; date: ISODate; kind: FinKind; amount: number; cat: string | null; text: string;
+  source: GameState['finance']['entries'][number]['source']; keyDup?: boolean };
+type FinEntry = GameState['finance']['entries'][number] & { ts: number };
+type FinCat = GameState['finance']['categories'][number];
+const lastDayOf = (m: string): ISODate => addDays(`${addDays(`${m}-28`, 4).slice(0, 7)}-01`, -1);
 const clampXp = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(BALANCE.legacy.questXpMax, Math.max(0, v))) : 0);
 
 /** Задание из журнала → задание дня. Граница доверия: без rank — легаси (ранг/навык по картам), с rank — 1–2 различных навыка, иначе null. */
@@ -159,14 +169,15 @@ const PLACES: readonly string[] = ['gym', 'work', 'home'], APPS = ['social', 'ga
 type SigBody = { kind: 'arrive'; place: string } | { kind: 'app'; app: string; state: 'open' | 'close' } | { kind: 'focus'; state: 'on' | 'off' } | { kind: 'wallet'; amount: number };
 type Sig = { at: number; ts: number; d: ISODate } & SigBody;
 /** Сигнал (граница доверия) без названия магазина; ключ дедупликации — с ним. */
-function signalOf(x: unknown): { s: SigBody; key: string } | null {
+function signalOf(x: unknown): { s: SigBody; key: string; merchant: string } | null {
   const o = x as Record<string, any> | null;
   if (!o || typeof o !== 'object') return null;
   const s: SigBody | null = o.kind === 'arrive' && PLACES.includes(o.place) ? { kind: 'arrive', place: o.place }
     : o.kind === 'app' && (APPS as readonly string[]).includes(o.app) && (o.state === 'open' || o.state === 'close') ? { kind: 'app', app: o.app, state: o.state }
     : o.kind === 'focus' && (o.state === 'on' || o.state === 'off') ? { kind: 'focus', state: o.state }
     : o.kind === 'wallet' && fin(o.amount) ? { kind: 'wallet', amount: o.amount } : null;
-  return s && { s, key: JSON.stringify([s, s.kind === 'wallet' && typeof o.merchant === 'string' ? o.merchant : '']) };
+  const merchant = s?.kind === 'wallet' && typeof o.merchant === 'string' ? o.merchant : '';   // только во внутренний финансовый вход, не в DayData
+  return s && { s, key: JSON.stringify([s, merchant]), merchant };
 }
 
 /** Строка леджера без навыка (босс, недельное): 100% в характеристику, если она есть. */
@@ -289,6 +300,11 @@ export function replay(events: GameEvent[], now: number): GameState {
   type GameOp = { ts: number } & ({ k: 'boss'; seasonId: string; draft: BossDraft } | { k: 'boss_off'; seasonId: string }
     | { k: 'chain'; id: string; title: string; skill: SkillId; steps: string[] } | { k: 'chain_off'; id: string });
   const gameOps = new Map<ISODate, GameOp[]>();
+  // Финансы (спека §7): события по ts; записи, правки, правила и лимиты — срезом по ts в отдельном проходе.
+  const finRaw: FinRaw[] = [], finIds = new Set<string>(), finCatIds = new Set<string>(), finRuleIds = new Set<string>();
+  const finCats: (FinCat & { ts: number; month: string })[] = [], finRules: { ts: number; id: string; pattern: string; categoryId: string | null }[] = [];
+  const finEdits: { ts: number; id: string; cat?: string; amount?: number; date?: ISODate; removed?: boolean }[] = [];
+  const finImports = new Map<string, { ts: number; rows: ImportRow[] }>(), finRemoved = new Map<string, number>();
   const gameOp = (ts: number, op: GameOp) => { const d = gd(ts); if (d >= MIN_ISSUE_DATE) gameOps.set(d, [...(gameOps.get(d) ?? []), op]); };
 
   for (const e of evs) {
@@ -355,6 +371,8 @@ export function replay(events: GameEvent[], now: number): GameState {
         const lim = BALANCE.metricAbsMax;
         m[e.metric] = e.mode === 'add' ? Math.min(lim, Math.max(-lim, (m[e.metric] ?? 0) + e.value)) : e.value;
         metrics.set(e.date, m);
+        const amount = e.metric === 'spend' && e.mode === 'add' ? validAmount(e.value) : null;   // старые траты — записи «Прочее»
+        if (amount !== null) finRaw.push({ id: `legacy:${e.id}`, ts: e.ts, date: e.date, kind: 'expense', amount, cat: 'default:other', text: '', source: 'legacy' });
         break;
       }
       case 'health_packet': {
@@ -399,6 +417,8 @@ export function replay(events: GameEvent[], now: number): GameState {
         const x = fin(e.at) ? signalOf(e.signal) : null, d = x ? gd(e.at) : '';
         if (!x || !isDate(d) || sigKeys.has(`${e.at}|${x.key}`)) break; // повтор от «Команд» — один сигнал
         sigKeys.add(`${e.at}|${x.key}`); sigs.push({ ...x.s, at: e.at, ts: e.ts, d }); seen(x.s.kind, e.at);
+        const wa = x.s.kind === 'wallet' ? validAmount(x.s.amount) : null;   // > 0 — трата, < 0 — возврат
+        if (wa !== null) finRaw.push({ id: `wallet:${e.id}`, ts: e.ts, date: d, kind: 'expense', amount: wa, cat: null, text: cleanText(x.merchant, FB.textMax) ?? '', source: 'wallet' });
         // ждёт только последний on (потерянный off не раздувает минуты); его закрывает первый пришедший (по ts) off позже него;
         // запоздавший off с ранним at уже закрытый интервал не укорачивает
         if (x.s.kind === 'focus' && x.s.state === 'on') pendingOn = Math.max(pendingOn ?? -Infinity, e.at);
@@ -513,6 +533,48 @@ export function replay(events: GameEvent[], now: number): GameState {
         reports.set(e.weekStart, { text: e.text.slice(0, 4000), final }); // иначе последний по ts
         break;
       }
+      case 'fin_category_set': {
+        const def = DEFAULT_CATEGORIES.find(c => c.id === e.categoryId), title = cleanText(e.title, FB.titleMax), limit = e.limit === null ? null : validAmount(e.limit);
+        if (!ID(e.categoryId) || !title || !FIN_KINDS.includes(e.kind) || (def ? def.kind !== e.kind : e.categoryId.startsWith('default:'))
+          || (e.limit !== null && (limit === null || limit < 0))) break;
+        if (!def && !finCatIds.has(e.categoryId)) { if (finCatIds.size >= FB.categoriesMax) break; finCatIds.add(e.categoryId); }
+        finCats.push({ ts: e.ts, month: gd(e.ts).slice(0, 7), id: e.categoryId, title, kind: e.kind, limit: e.kind === 'expense' ? limit : null, archived: e.archived === true });
+        break;
+      }
+      case 'fin_rule_set': {
+        if (!ID(e.ruleId)) break;
+        if (e.categoryId === null) { finRuleIds.delete(e.ruleId); finRules.push({ ts: e.ts, id: e.ruleId, pattern: '', categoryId: null }); break; }
+        const pattern = normText(typeof e.pattern === 'string' ? e.pattern : '');
+        if (!ID(e.categoryId) || pattern.length < FB.patternMin || pattern.length > FB.patternMax || (!finRuleIds.has(e.ruleId) && finRuleIds.size >= FB.rulesMax)) break;
+        finRuleIds.add(e.ruleId); finRules.push({ ts: e.ts, id: e.ruleId, pattern, categoryId: e.categoryId });
+        break;
+      }
+      case 'fin_entry_added': {
+        const amount = validAmount(e.amount);
+        if (!ID(e.entryId) || FIN_PREFIX.test(e.entryId) || finIds.has(e.entryId) || !isDate(e.date) || !FIN_KINDS.includes(e.kind) || amount === null) break;
+        finIds.add(e.entryId);   // первая побеждает
+        finRaw.push({ id: e.entryId, ts: e.ts, date: e.date, kind: e.kind, amount, cat: typeof e.categoryId === 'string' ? e.categoryId : '', text: cleanText(e.note, FB.textMax) ?? '', source: 'manual' });
+        break;
+      }
+      case 'fin_entry_edited': {
+        if (!ID(e.entryId)) break;
+        const amount = validAmount(e.amount);
+        finEdits.push({ ts: e.ts, id: e.entryId, ...(ID(e.categoryId) ? { cat: e.categoryId } : {}), ...(amount !== null ? { amount } : {}),
+          ...(isDate(e.date) ? { date: e.date } : {}), ...(typeof e.removed === 'boolean' ? { removed: e.removed } : {}) });
+        break;
+      }
+      case 'fin_imported': {
+        if (!ID(e.importId) || finImports.has(e.importId) || !Array.isArray(e.rows)) break;
+        const keys = new Set<string>(), rows: ImportRow[] = [];
+        for (const r of e.rows.slice(0, FB.importRowsMax) as Partial<ImportRow>[]) {   // граница доверия: ≤ importRowsMax строк на событие
+          const amount = validAmount(r?.amount);
+          if (!r || !ID(r.key) || keys.has(r.key) || !isDate(r.date) || amount === null) continue;
+          keys.add(r.key); rows.push({ key: r.key, date: r.date, amount, text: cleanText(r.text, FB.textMax) ?? '' });
+        }
+        finImports.set(e.importId, { ts: e.ts, rows });
+        break;
+      }
+      case 'fin_import_removed': if (finImports.has(e.importId) && !finRemoved.has(e.importId)) finRemoved.set(e.importId, e.ts); break;
       case 'boss_created': case 'boss_stage_done': case 'boss_abandoned': bossEvents.push(e); break;
       case 'reward_created': case 'reward_deleted': case 'reward_purchased': case 'cosmetic_bought': shopEvents.push(e); break;
       case 'cosmetic_equipped': equips.push(e); break;
@@ -523,7 +585,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   // Данные дня по игровым датам (после всех событий: типы дней и закрытия известны).
   const data = new Map<ISODate, DayData>();
   const dd = (d: ISODate) => { let x = data.get(d); if (!x) data.set(d, x = { flags: [] }); return x; };
-  const addTo = (d: ISODate, k: 'socialMin' | 'gamesMin' | 'focusMin' | 'readMin' | 'gymVisits' | 'spendAuto', v: number) => { const x = dd(d); x[k] = (x[k] ?? 0) + v; };
+  const addTo = (d: ISODate, k: 'socialMin' | 'gamesMin' | 'focusMin' | 'readMin' | 'gymVisits' | 'spendAuto' | 'finEntries', v: number) => { const x = dd(d); x[k] = (x[k] ?? 0) + v; };
   for (const [d, a] of health) {
     const x = dd(d), ws = workoutStats([...a.w.values()]), P = BALANCE.plausible;
     const vals = { steps: a.steps, sleepHours: a.sleep, restingHR: a.rhr, weightKg: a.weight, mindfulMin: a.mindful, ...ws.mins };
@@ -543,6 +605,14 @@ export function replay(events: GameEvent[], now: number): GameState {
     const d = gd(iv.start), key = `${iv.k}|${d}`;
     if (!inTime(d, iv.ts)) continue;
     const list = ivs.get(key); if (list) list.push(iv); else ivs.set(key, [iv]);
+  }
+  // «Записать траты»: записи расходов, принятые до закрытия своего дня; правки и удаления засчёт не отнимают (монотонно).
+  // shortcut: строка импорта, совпавшая с Wallet того же дня, считается дважды — импорт обычно приходит после закрытия дня
+  const finKeys = new Set<string>();
+  for (const r of finRaw) if (r.kind === 'expense' && inTime(r.date, r.ts)) addTo(r.date, 'finEntries', 1);
+  for (const im of finImports.values()) {
+    for (const r of im.rows) if (r.amount < 0 && !finKeys.has(r.key) && inTime(r.date, im.ts)) addTo(r.date, 'finEntries', 1);
+    for (const r of im.rows) finKeys.add(r.key);
   }
   for (const [key, iv] of ivs) { const [k, d] = key.split('|') as ['focusMin' | 'readMin', ISODate]; addTo(d, k, unionMinutes(iv, BALANCE.vitals.focus.intervalMaxMin)); }
   for (const s of sigs) {
@@ -607,7 +677,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     if (a.metric === 'socialMin' || a.metric === 'gamesMin') return a.op === '<=' && date < today && leOk(date, a.metric === 'socialMin' ? 'social' : 'games', a.value);
     // здоровье — по каждому пакету (hi/lo); фокус, чтение, зал только растут — итог дня
     const hs = health.get(date), h = (timely ? hs?.t : hs)?.[a.op === '>=' ? 'hi' : 'lo'][a.metric];
-    const v = h ?? (a.metric === 'focusMin' || a.metric === 'readMin' || a.metric === 'gymVisits' ? data.get(date)?.[a.metric] : undefined);
+    const v = h ?? (a.metric === 'focusMin' || a.metric === 'readMin' || a.metric === 'gymVisits' || a.metric === 'finEntries' ? data.get(date)?.[a.metric] : undefined);
     return v !== undefined && (a.op === '>=' ? v >= a.value : v <= a.value);
   };
   const autoOkOf = (q: DayQuest) => autoOk(q.auto, q.date);
@@ -662,6 +732,87 @@ export function replay(events: GameEvent[], now: number): GameState {
     }
   }
 
+  // Финансы — отдельный проход: вид на момент cut (события ts < cut). Вердикты недели/месяца — срезом на закрытие их последнего дня (монотонно).
+  const finMemo = new Map<number, { entries: FinEntry[]; cats: Map<string, FinCat> }>();
+  const finAt = (cut: number) => {
+    const hit = finMemo.get(cut);
+    if (hit) return hit;
+    const cats = new Map<string, FinCat>(DEFAULT_CATEGORIES.map(c => [c.id, { ...c, limit: null, archived: false }]));
+    for (const c of finCats) if (c.ts < cut) cats.set(c.id, { id: c.id, title: c.title, kind: c.kind, limit: c.limit, archived: c.archived });
+    const rm = new Map<string, { pattern: string; categoryId: string; ts: number }>();
+    for (const r of finRules) if (r.ts < cut) { if (r.categoryId === null) rm.delete(r.id); else rm.set(r.id, { pattern: r.pattern, categoryId: r.categoryId, ts: r.ts }); }
+    const rules = [...rm.values()], ed = new Map<string, (typeof finEdits)[number]>();
+    for (const x of finEdits) if (x.ts < cut) ed.set(x.id, { ...ed.get(x.id), ...x });   // последнее по ts побеждает (по полю)
+    const raws: FinRaw[] = finRaw.filter(r => r.ts < cut), keys = new Set<string>();
+    for (const [iid, im] of finImports) {
+      if (im.ts >= cut || (finRemoved.get(iid) ?? Infinity) < cut) continue;
+      // строка с ключом из более раннего импорта — дубль; поступление → «Прочий доход», списание → по правилам
+      for (const r of im.rows) raws.push({ id: `import:${iid}:${r.key}`, ts: im.ts, date: r.date, kind: r.amount < 0 ? 'expense' : 'income', amount: Math.abs(r.amount),
+        cat: r.amount < 0 ? null : 'default:income_other', text: r.text, source: 'import', keyDup: keys.has(r.key) });
+      for (const r of im.rows) keys.add(r.key);
+    }
+    const entries: FinEntry[] = [], debits: { id: string; date: ISODate; amount: number }[] = [], wallets: { id: string; date: ISODate; amount: number; ts: number }[] = [];
+    for (const r of raws) {
+      const x = ed.get(r.id);
+      if (x?.removed) continue;
+      // категория: правка → правило → «Без категории»; правка в категорию другого вида меняет вид (перенос в «Отложено»)
+      let kind = r.kind, cid = x?.cat ?? r.cat, uncategorized = false;
+      if (x?.cat && cats.has(x.cat)) kind = cats.get(x.cat)!.kind;
+      else if (cid === null) {
+        const m = matchRule(r.text, rules);
+        if (m && cats.has(m)) { cid = m; kind = cats.get(m)!.kind; } else uncategorized = true;
+      }
+      const e: FinEntry = { id: r.id, ts: r.ts, date: x?.date ?? r.date, kind, amount: x?.amount ?? r.amount, categoryId: cats.get(cid ?? '')?.kind === kind ? cid! : otherOf(kind),
+        text: r.text, source: r.source, dup: !!r.keyDup, uncategorized };
+      entries.push(e);
+      if (r.source === 'wallet') wallets.push({ id: e.id, date: e.date, amount: e.amount, ts: e.ts });
+      else if (r.source === 'import' && r.cat === null && !e.dup) debits.push({ id: e.id, date: e.date, amount: -e.amount });
+    }
+    const dup = matchWallet(debits, wallets, FB.dedupeDays);
+    for (const e of entries) if (dup.has(e.id)) e.dup = true;
+    entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.ts - a.ts || (a.id < b.id ? 1 : -1)));
+    const v = { entries, cats };
+    finMemo.set(cut, v);
+    return v;
+  };
+  const limSets = (cut: number, id: string) => finCats.filter(c => c.ts < cut && c.id === id).map(c => ({ month: c.month, limit: c.limit }));
+  /** Лимиты активных категорий расходов на срезе cut: lim — от истории значений категории. */
+  const limitsAt = (cut: number, cats: Map<string, FinCat>, lim: (sets: { month: string; limit: number | null }[]) => number | null) =>
+    Object.fromEntries([...cats.values()].filter(c => c.kind === 'expense' && !c.archived).map(c => [c.id, lim(limSets(cut, c.id))]));
+  const weekLim = (ws: ISODate) => (s: { month: string; limit: number | null }[]) => weekLimit(m => limitFor(s, m), ws);
+  const budgetWeeks = new Map<ISODate, boolean>();
+  /** «Неделя в лимите»: только закрытое воскресенье ≥ rivalSince. */
+  const budgetWeekOk = (ws: ISODate) => {
+    const sun = addDays(ws, 6);
+    if (sun < BALANCE.rivalSince || sun >= today) return false;
+    let r = budgetWeeks.get(ws);
+    if (r === undefined) {
+      const cut = closesAtTs(sun, closeOf(sun)), v = finAt(cut), t = periodTotals(v.entries, ws, sun);
+      budgetWeeks.set(ws, r = budgetVerdict(t.byCat, limitsAt(cut, v.cats, weekLim(ws)), t.loggedDays, FB.weekMinDays) === true);
+    }
+    return r;
+  };
+  const budgetMonths = new Map<string, { inLimit: boolean | null; t: ReturnType<typeof periodTotals>; verify: 'auto' | 'honest' }>();
+  const budgetMonth = (m: string) => {
+    let r = budgetMonths.get(m);
+    if (r) return r;
+    const end = lastDayOf(m), cut = closesAtTs(end, closeOf(end)), v = finAt(cut), t = periodTotals(v.entries, `${m}-01`, end);
+    let all = 0, auto = 0;   // доля расходов месяца из Wallet/импорта → проверка auto
+    for (const e of v.entries) if (!e.dup && e.kind === 'expense' && e.date.startsWith(m)) {
+      const c = Math.round(e.amount * 100);
+      all += c; if (e.source === 'wallet' || e.source === 'import') auto += c;
+    }
+    budgetMonths.set(m, r = { inLimit: budgetVerdict(t.byCat, limitsAt(cut, v.cats, s => limitFor(s, m)), t.loggedDays, FB.monthMinDays), t,
+      verify: all > 0 && auto >= FB.autoShare * all ? 'auto' : 'honest' });
+    return r;
+  };
+  const finMonths = new Set([...finRaw.map(r => r.date), ...finEdits.flatMap(x => (x.date ? [x.date] : [])), ...[...finImports.values()].flatMap(im => im.rows.map(r => r.date))]
+    .map(d => d.slice(0, 7)));
+  const budgetRow = (id: string, d: ISODate, rank: Rank, skill: SkillId, v: 'auto' | 'honest'): LedgerEntry => {
+    const base = BALANCE.rank.base[rank], k = BALANCE.verify[v], xp = Math.round(base * k), sp = splitXp(xp, [skill]);
+    return { id, ts: closesAtTs(d, closeOf(d)), date: d, source: 'budget', base, k, bonus: 0, penalty: 0, mult: 1, xp, gold: goldFor(xp), skills: sp.skills, stats: sp.stats, verified: v === 'auto' };
+  };
+
   // Недельные: прогресс за 7 дней недели; XP — один раз за выполненное, в том числе за прошлые недели.
   const doneOn = (d: ISODate) => issued.get(d)?.filter(q => q.done && q.kind !== 'custom') ?? []; // свои дают только свой XP
   const weekProgress = (w: WeeklyQuest, upTo?: ISODate) => {
@@ -672,6 +823,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       if (w.kind === 'stat_quests') n += dq.filter(q => q.stat === w.stat).length;
       else if (w.kind === 'steps_total') n += plausibleSteps(metrics.get(d)?.steps) ?? 0;
       else if (w.kind === 'shadow_wins') n += outcomeOf(d).counted ? 1 : 0; // легаси — засчитанные в серию дни
+      else if (w.kind === 'budget_week') n += i === 6 && budgetWeekOk(w.weekStart) ? 1 : 0;
       else n += dq.length ? 1 : 0; // active_days
     }
     return n;
@@ -980,7 +1132,9 @@ export function replay(events: GameEvent[], now: number): GameState {
   const firstLadder = ladList.map(l => l.created).filter(d => d <= today).sort()[0] as ISODate | undefined;
   // от первого дня с заданиями или первой лестницы (день только с ритуалами тоже закрывается в серию)
   const firstDay = [...issued.keys(), ...(firstLadder ? [firstLadder] : [])].sort()[0] as ISODate | undefined;
-  const dates = new Set([...issued.keys(), ...extra.keys(), ...weeklyAt.keys(), ...spendsOn.keys(), ...restTyped, ...gameOps.keys()]);
+  // закрытие месяца с финансами (≥ rivalSince) — бюджетные проверки и без заданий
+  const monthEnds = [...finMonths].map(lastDayOf).filter(d => d < today && d >= BALANCE.rivalSince);
+  const dates = new Set([...issued.keys(), ...extra.keys(), ...weeklyAt.keys(), ...spendsOn.keys(), ...restTyped, ...gameOps.keys(), ...monthEnds]);
   if (firstDay) for (let d = firstDay; d <= today; d = addDays(d, 1)) dates.add(d);
   const firstFacet = [...facetMap.values()].map(f => f.added).filter(d => d <= today).sort()[0] as ISODate | undefined;
   if (firstFacet) for (let d = firstFacet; d <= today; d = addDays(d, 1)) dates.add(d);
@@ -1196,6 +1350,12 @@ export function replay(events: GameEvent[], now: number): GameState {
       add(flatRow(`weekly:${ws}:${w.id}`, ts, d, 'weekly', w.xp, w.stat)); bump(d, 'weeklyDone');
     }
     for (const r of extra.get(d) ?? []) add(r);
+    if (d < today && d >= BALANCE.rivalSince && addDays(d, 1).endsWith('-01')) {
+      // «Месяц в лимите» (Бюджет) и «Отложить 10% дохода» (Накопления) — по событиям до закрытия последнего дня месяца
+      const m = d.slice(0, 7), b = budgetMonth(m), cents = (x: number) => Math.round(x * 100);
+      if (b.inLimit) add(budgetRow(`budget:month:${m}`, d, FB.monthRank, 'budget', b.verify));
+      if (b.t.income > 0 && cents(b.t.saving) >= cents(b.t.income) * FB.saveShare) add(budgetRow(`budget:save:${m}`, d, FB.saveRank, 'savings', b.verify));
+    }
     if (d <= today) gameDay(d, qs);
     if (firstLadder && d >= firstLadder && d <= today) ladderDay(d);
     if (firstFacet && d >= firstFacet && d <= today) shadowDay(d);
@@ -1330,6 +1490,27 @@ export function replay(events: GameEvent[], now: number): GameState {
   const yearGoal = interview?.answers.year_goal;
   const bossOptions = bossOptionsByRules({ goals: profile?.goals ?? [], legacy: legacyBosses, yearGoal: typeof yearGoal === 'string' ? yearGoal : null, theme });
 
+  // Финансы на сейчас: все события; месяцы — закрытые, вердикт — принятый при закрытии.
+  const finNow = finAt(Infinity);
+  const finPeriod = (from: ISODate, to: ISODate, lim: (s: { month: string; limit: number | null }[]) => number | null): FinPeriod => {
+    const t = periodTotals(finNow.entries, from, to);
+    const byCat = [...finNow.cats.values()].filter(c => c.kind === 'expense').flatMap(c => {
+      const limit = c.archived ? null : lim(limSets(Infinity, c.id)), spent = t.byCat[c.id];
+      return spent !== undefined || limit !== null ? [{ id: c.id, spent: spent ?? 0, limit }] : [];
+    });
+    return { start: from, end: to, income: t.income, expense: t.expense, saving: t.saving, loggedDays: t.loggedDays, byCat };
+  };
+  const finance: GameState['finance'] = {
+    categories: [...finNow.cats.values()], rules: [...new Map(finRules.map(r => [r.id, r])).values()].flatMap(r => (r.categoryId === null ? [] : [{ id: r.id, pattern: r.pattern, categoryId: r.categoryId }])),
+    entries: finNow.entries.map(({ ts: _, ...e }) => e),
+    month: finPeriod(`${today.slice(0, 7)}-01`, lastDayOf(today.slice(0, 7)), s => limitFor(s, today.slice(0, 7))),
+    week: finPeriod(thisWeek, addDays(thisWeek, 6), weekLim(thisWeek)),
+    months: [...new Set(finNow.entries.map(e => e.date.slice(0, 7)))].filter(m => lastDayOf(m) < today).sort().reverse().slice(0, 24).map(m => {
+      const t = periodTotals(finNow.entries, `${m}-01`, lastDayOf(m));
+      return { month: m, income: t.income, expense: t.expense, saving: t.saving, inLimit: budgetMonth(m).inLimit };
+    }),
+    uncategorized: finNow.entries.filter(e => e.uncategorized && !e.dup).length,
+  };
   const c0 = cls ?? pickClass(classWeights(stats, forms), null), cdef = CLASSES[c0.id], last = clsHist.at(-1), prevCls = clsHist.at(-2);
   const clsState: ClassState = { id: c0.id, name: cdef.name, pair: c0.pair, since: last?.date ?? null, weights: classWeights(stats, forms),
     passive: { text: cdef.passive, power: passivePower(c0, forms) },
@@ -1374,14 +1555,15 @@ export function replay(events: GameEvent[], now: number): GameState {
     bosses: [...bossMap.values()].filter(b => !b.abandoned),
     reports: [...reports].map(([weekStart, r]) => ({ weekStart, text: r.text, ...(r.final ? { final: true as const } : {}) })).sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1)),
     genWeekly: { weekStart: thisWeek, stats, multipliers, prevActiveDays, prevStatQuests, bestSteps7: best7(metrics, today, 'steps'), themeStat: theme ? THEMES[theme].stats[0] : null,
-      easy: weekResults.find(r => r.weekStart === addDays(thisWeek, -7))?.rank === 'D' },
+      easy: weekResults.find(r => r.weekStart === addDays(thisWeek, -7))?.rank === 'D',
+      budget: Object.values(limitsAt(Infinity, finNow.cats, weekLim(thisWeek))).some(l => l !== null) },
     season: { id: season.id, kind: season.kind, name: season.name, start: season.start, end: season.end, theme, xp: seasonXp,
       step: Math.min(BALANCE.season.steps, Math.floor(seasonXp / stepXp)), stepXp, joined: firstDay ?? null,
       rewards: pathGot.get(season.id) ?? [], title: pathTitles.filter(x => x.sid === season.id).at(-1)?.t ?? null },
     week: { start: thisWeek, preview: weekScore(thisWeek, today), results: weekResults.slice(-12).reverse() },
     league: { tier: leagueTier(league.points), name: BALANCE.league.names[leagueTier(league.points)], points: league.points, seasonId: league.seasonId ?? season.id },
     cosmetics: { owned, equipped },
-    finance: { categories: [], rules: [], entries: [], month: emptyFinPeriod(today), week: emptyFinPeriod(thisWeek), months: [], uncategorized: 0 },   // stage 6: наполняется следующей задачей
+    finance, 
     dayTypes, ledger, history, achievements: achs, title, statHistory, metricHistory,
     ladders: ladList.filter(l => l.status === 'active' || l.status === 'queued' || l.status === 'auto').map(l => {
       const st = l.steps[l.step - 1], wk = l.status === 'auto';
@@ -1417,4 +1599,3 @@ export function replay(events: GameEvent[], now: number): GameState {
   };
 }
 
-function emptyFinPeriod(start: ISODate): FinPeriod { return { start, end: start, income: 0, expense: 0, saving: 0, loggedDays: 0, byCat: [] }; }

@@ -113,7 +113,12 @@ test('белый список ИИ: траты, магазины, приложе
     ev(4, { type: 'signal_logged', at: T - 3000e3, signal: { kind: 'app', app: 'social', state: 'open' } }),
     ev(5, { type: 'signal_logged', at: T - 1200e3, signal: { kind: 'app', app: 'social', state: 'close' } }),
     ev(6, { type: 'signal_logged', at: T - 600e3, signal: { kind: 'arrive', place: 'gym' } }),
+    ev(7, { type: 'fin_category_set', categoryId: 'c1', title: 'СекретКатегория', kind: 'expense', limit: 4321 }),
+    ev(8, { type: 'fin_rule_set', ruleId: 'r1', pattern: 'секретправило', categoryId: 'c1' }),
+    ev(9, { type: 'fin_entry_added', entryId: 'x1', date: '2026-11-17', kind: 'income', amount: 6543, categoryId: 'default:salary', note: 'СекретЗаметка' }),
+    ev(10, { type: 'fin_imported', importId: 'i1', rows: [{ key: 'k', date: '2026-11-17', amount: -8765, text: 'СекретИмпорт' }] }),
   ], T + 60e3)
+  expect(st.finance.entries).toHaveLength(3)
   expect(AI_METRICS).not.toContain('spend')
   gen.mockResolvedValue({ texts: [], text: 'отчёт', factors: {}, note: 'ок' })
   await aiWeeklyReport(cfg, st, '2026-11-16')
@@ -121,7 +126,8 @@ test('белый список ИИ: траты, магазины, приложе
   await aiTuning(cfg, st, { went: '', notWent: '', energy: 5 })
   const prompts = [questContext(st, profile), ...gen.mock.calls.map(c => `${c[1]}\n${c[2]}`)]
   expect(prompts[1]).toContain('steps')
-  for (const p of prompts) for (const bad of ['spend', '5000', '777', 'Лавка Секретова', 'socialMin', 'social', 'gym', 'wallet', 'Траты', 'spendAuto'])
+  for (const p of prompts) for (const bad of ['spend', '5000', '777', 'Лавка Секретова', 'socialMin', 'social', 'gym', 'wallet', 'Траты', 'spendAuto',
+    'СекретКатегория', '4321', 'секретправило', '6543', 'СекретЗаметка', '8765', 'СекретИмпорт', 'finEntries', 'finance'])
     expect(p, bad).not.toContain(bad)
 })
 
