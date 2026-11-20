@@ -98,7 +98,10 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'recovery_ended'; date: ISODate }
   | { type: 'cosmetic_bought'; itemId: string }
   | { type: 'cosmetic_equipped'; slot: CosmeticSlot; itemId: string | null }
-  | { type: 'ability_used'; date: ISODate; ability: AbilityId; questId?: string; stat?: Stat; replacement?: Quest; quests?: WeeklyQuest[] }
+  | { type: 'ability_used'; date: ISODate; ability: AbilityId | AbilityId2; questId?: string; stat?: Stat; replacement?: Quest; quests?: WeeklyQuest[]; skill?: SkillId; facetId?: string }
+  | { type: 'advanced_trial_started'; date: ISODate; classId: AdvancedId }
+  | { type: 'advanced_trial_abandoned'; date: ISODate }
+  | { type: 'advanced_path_switched'; date: ISODate; classId: AdvancedId }
   | { type: 'ladder_created'; ladderId: string; title: string; kind: LadderKind; skill: SkillId; steps: LadderStep[]; suitable?: 'all' | 'workdays'; facetId?: string }
   | { type: 'ladder_updated'; ladderId: string; title?: string; steps?: LadderStep[] }
   | { type: 'ladder_removed'; ladderId: string }
@@ -244,6 +247,8 @@ export type Rank = 'E' | 'D' | 'C' | 'B' | 'A' | 'S';
 export type Verify = 'auto' | 'photo' | 'honest';
 export type ClassId = 'warrior' | 'paladin' | 'ranger' | 'sage' | 'strategist' | 'merchant' | 'bard' | 'wanderer';
 export type AbilityId = 'rush' | 'shield' | 'insight' | 'plan' | 'deal' | 'inspire' | 'march' | 'universal';
+export type AdvancedId = 'champion' | 'guard' | 'crusader' | 'keeper' | 'archmage' | 'hermit' | 'architect' | 'treasurer' | 'magnate' | 'diplomat' | 'leader' | 'storyteller' | 'rover' | 'ascetic' | 'harmony';
+export type AbilityId2 = 'record' | 'bastion' | 'vow' | 'wall' | 'explore' | 'silence' | 'blueprint' | 'audit' | 'invest' | 'alliance' | 'gather' | 'saga' | 'expedition' | 'fast' | 'balance';
 export type SeasonKind = 'prologue' | 'winter' | 'spring' | 'summer' | 'autumn';
 export type QuestKind = 'daily' | 'challenge' | 'restore' | 'custom' | 'boss' | 'chain';
 export interface LadderStep { label: string; per7: 1 | 2 | 3 | 4 | 5 | 6 | 7; auto?: { metric: AutoMetric; op: '>=' | '<='; value: number } }
