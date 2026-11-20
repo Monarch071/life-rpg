@@ -63,9 +63,9 @@ export function focusScore(i: { focusMin: number | null; socialMin: number | nul
 export const intFocusMult = (focus: number | null): number =>
   focus === null || !num(focus) ? 1 : (100 * V.focus.intBase + V.focus.intSpan * clamp(focus)) / 100;
 
-export function fatigueNext(prev: number, day: { bigDay: boolean; rest: boolean; calm: boolean; lowEvening: boolean; relapses?: number } | null, nightSleep: number | null): number {
+export function fatigueNext(prev: number, day: { bigDay: boolean; rest: boolean; calm: boolean; lowEvening: boolean; relapses?: number } | null, nightSleep: number | null, extraDecay = 0): number {
   const F = V.fatigue;
-  let d = F.nightly;
+  let d = F.nightly - (num(extraDecay) ? extraDecay : 0);
   if (day) d += (day.bigDay ? F.bigDay : 0) + (day.rest ? F.rest : 0) + (day.calm ? F.calm : 0) + (day.lowEvening ? F.lowEvening : 0) + (num(day.relapses) ? F.relapse * day.relapses : 0);
   if (num(nightSleep)) d += nightSleep < F.shortNightH ? F.shortNight : nightSleep >= F.longNightH ? F.longNight : 0;
   return Math.round(clamp((num(prev) ? prev : 0) + d));

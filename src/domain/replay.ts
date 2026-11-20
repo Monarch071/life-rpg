@@ -9,7 +9,7 @@ import { ladderAfterWindow, requiredIn, ritualXp, step5Relapse, validLadderSteps
 import { AUTO_METRIC_INFO, METRIC_INFO } from './metricInfo';
 import { baseFromXp, fatiguePenalty, formNorm, formOf, formStatus, goldFor, questReward, rankCap, skillFromXp, streakBonus } from './progression';
 import { DEFAULT_SKILL_BY_STAT, LEGACY_SKILL_BY_TEMPLATE, legacyRank } from './questBank';
-import { isSkillId, primaryStat, SKILL_CATALOG, splitXp, type SkillId } from './skillCatalog';
+import { isSkillId, primaryStat, SKILL_IDS, splitXp, type SkillId } from './skillCatalog';
 import { bossOptionsByRules, partHp, partWindows, validBossDraft, validChainSteps } from './boss';
 import { banished, battleOutcome, facetDay, isSerious, lastSunday, masterPlan } from './shadow';
 import { startProfile } from './startProfile';
@@ -24,7 +24,6 @@ import { levelFromXp } from './xp';
 export const DEFAULT_AVATAR: AvatarParams = { hair: 'short', hairColor: '#2b1d14', outfitColor: '#4f46e5', eyes: 'round' };
 
 const STAT_KEYS = Object.keys(STATS) as Stat[];
-const SKILL_IDS = SKILL_CATALOG.map(s => s.id);
 const fill = (n: number) => Object.fromEntries(STAT_KEYS.map(s => [s, n])) as Record<Stat, number>;
 const WEEKLY_KINDS = ['active_days', 'stat_quests', 'steps_total', 'shadow_wins'];
 const validWeekly = (w: any): w is WeeklyQuest => !!w && typeof w.id === 'string' && typeof w.title === 'string' && w.title.length >= 1 && w.title.length <= 120 && WEEKLY_KINDS.includes(w.kind)

@@ -36,6 +36,7 @@ export const SKILL_CATALOG: SkillDef[] = [
   S('teamwork', 'Командная работа', 'team', 'своя часть командного задания в срок', 'помочь коллеге в завал', 'подтвердить задание друга', 'все части командного задания за месяц без пропусков'),
 ];
 
+export const SKILL_IDS: SkillId[] = SKILL_CATALOG.map(s => s.id);
 const IDS = new Set<unknown>(SKILL_CATALOG.map(s => s.id));
 export const isSkillId = (x: unknown): x is SkillId => IDS.has(x);
 

@@ -8,8 +8,8 @@ export function dayOutcome(d: { issued: number; done: number; dropped: number; r
 }
 
 /** Серия после дня: засчитан +1, отдых — без изменений, пропуск ×0,5 вниз (заморозка гасит пропуск). */
-export function nextStreak(prev: number, o: ReturnType<typeof dayOutcome>, freeze: boolean): number {
+export function nextStreak(prev: number, o: ReturnType<typeof dayOutcome>, freeze: boolean, missFactor: number = BALANCE.streak.missFactor): number {
   if (o.neutral) return prev;
   if (o.counted) return prev + 1;
-  return freeze ? prev : Math.floor(prev * BALANCE.streak.missFactor);
+  return freeze ? prev : Math.floor(prev * missFactor);
 }

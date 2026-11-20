@@ -40,16 +40,16 @@ export function rankCap(level: number, skillLevel: number): Rank {
 export const rankShift = (r: Rank, d: number): Rank =>
   RANKS[Math.max(0, Math.min(RANKS.length - 1, RANKS.indexOf(r) + d))];
 
-export const streakBonus = (streak: number): number => Math.min(B.bonus.streakMax, r9(B.bonus.streakPerDay * streak));
+export const streakBonus = (streak: number, perDay: number = B.bonus.streakPerDay): number => Math.min(B.bonus.streakMax, r9(perDay * streak));
 export const fatiguePenalty = (f: number): number => r9(B.penalty.fatiguePerPoint * f);
 
 export interface RewardBreakdown { base: number; k: number; bonus: number; penalty: number; mult: number; xp: number; gold: number }
 
-export const goldFor = (xp: number): number => Math.round(B.goldShare * xp);
+export const goldFor = (xp: number, goldBonus = 0): number => Math.round(B.goldShare * xp * (1 + goldBonus));
 
-export function questReward(i: { rank: Rank; verify: Verify; bonuses: number[]; penalties: number[]; mult?: number }): RewardBreakdown {
+export function questReward(i: { rank: Rank; verify: Verify; bonuses: number[]; penalties: number[]; mult?: number; goldBonus?: number }): RewardBreakdown {
   const base = B.rank.base[i.rank], k = B.verify[i.verify], mult = i.mult ?? 1;
   const bonus = Math.min(B.bonus.cap, sum(i.bonuses)), penalty = Math.min(B.penalty.cap, sum(i.penalties));
   const xp = Math.round(base * k * (1 + bonus) * (1 - penalty) * mult);
-  return { base, k, bonus, penalty, mult, xp, gold: goldFor(xp) };
+  return { base, k, bonus, penalty, mult, xp, gold: goldFor(xp, i.goldBonus) };
 }

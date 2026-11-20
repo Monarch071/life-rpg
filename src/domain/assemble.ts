@@ -134,7 +134,7 @@ export function assembleDay(ctx: AssembleCtx): Quest[] {
   }
   const rusty = (Object.keys(ctx.skills) as SkillId[])
     .map(id => ({ id, d: ctx.skills[id].lastDate ? daysSince(ctx.skills[id].lastDate!, ctx.date) : -1 }))
-    .filter(x => x.d >= B.skill.nearRustDays).sort((a, b) => b.d - a.d);
+    .filter(x => x.d >= B.rust.warnDays).sort((a, b) => b.d - a.d);
   for (const r of rusty) {
     const c = cands.find(c => c.skill === r.id && can(c));
     if (c) { take(c, false, `Навык «${skillTitle(r.id)}» на грани ржавчины`); break; }

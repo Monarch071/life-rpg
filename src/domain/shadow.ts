@@ -7,9 +7,9 @@ const clamp = (x: number) => Math.min(100, Math.max(0, x));
 type Freq = keyof typeof S.start;
 
 /** Один закрытый день грани [S§7]: срыв +8; иначе −2, каждый 7-й чистый день ещё −5; ритуал-помощник −1 (не в день срыва). */
-export function facetDay(f: { strength: number; cleanRun: number }, relapse: boolean, assist: boolean): { strength: number; cleanRun: number } {
+export function facetDay(f: { strength: number; cleanRun: number }, relapse: boolean, assist: boolean, relapseAdd: number = S.relapse): { strength: number; cleanRun: number } {
   const run = relapse ? 0 : f.cleanRun + 1;
-  let d = relapse ? S.relapse : -S.clean - (run % S.cleanWeekDays === 0 ? S.cleanWeek : 0);
+  let d = relapse ? relapseAdd : -S.clean - (run % S.cleanWeekDays === 0 ? S.cleanWeek : 0);
   if (assist && !relapse) d -= BALANCE.ladder.assist;
   return { strength: Math.round(clamp(f.strength + d)), cleanRun: run };
 }
