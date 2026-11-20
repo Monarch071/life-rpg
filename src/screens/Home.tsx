@@ -307,19 +307,22 @@ function WeekReport({ state }: { state: GameState }) {
   const tried = useRef<string | null>(null)
   const [gen, setGen] = useState(false)
   useEffect(() => {
-    if (!r || r.ai || tried.current === r.weekStart) return
+    const redo = dow === 1 && r?.ai && !r.final   // понедельник: предварительный воскресный отчёт пересобираем один раз
+    if (!r || (r.ai && !redo) || tried.current === r.weekStart) return
     tried.current = r.weekStart   // защита от двойного запуска: одна попытка за открытие Главной
     let on = true
     void (async () => {
       const cfg = await getAiConfig()
-      if (!cfg || !on) return
+      if (!on) return
+      if (!cfg && redo) { try { await appendEvent({ type: 'ai_report', weekStart: r.weekStart, text: r.text, final: true }) } catch { /* повтор при следующем открытии */ } return }
+      if (!cfg) return
       setGen(true)
-      try { await appendEvent({ type: 'ai_report', weekStart: r.weekStart, text: await aiWeeklyReport(cfg, state, r.weekStart) }) }
+      try { await appendEvent({ type: 'ai_report', weekStart: r.weekStart, text: await aiWeeklyReport(cfg, state, r.weekStart), final: dow === 1 }) }
       catch { /* остаётся текст правил */ }
       finally { if (on) setGen(false) }
     })().catch(() => {})
     return () => { on = false }
-  }, [r?.weekStart, r?.ai]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [r?.weekStart, r?.ai, r?.final]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!r) return null
   const [first, ...rest] = r.text.split(/\n\n/)
   return (

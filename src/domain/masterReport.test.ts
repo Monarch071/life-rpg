@@ -35,6 +35,8 @@ test('текст правил: 4 раздела, ранг и план', () => {
 })
 test('weekReportOf: ИИ-текст за неделю побеждает правила', () => {
   const s = stateWith()
-  expect(weekReportOf({ ...s, reports: [{ weekStart: '2026-12-21', text: 'ИИ' }] })).toEqual({ weekStart: '2026-12-21', text: 'ИИ', ai: true })
+  expect(weekReportOf({ ...s, reports: [{ weekStart: '2026-12-21', text: 'ИИ' }] })).toEqual({ weekStart: '2026-12-21', text: 'ИИ', ai: true, final: false })
+  expect(weekReportOf({ ...s, reports: [{ weekStart: '2026-12-21', text: 'ИИ', final: true }] }).final).toBe(true);
+  expect(weekReportOf({ ...s, reports: [{ weekStart: '2026-12-21', text: 'ИИ' }] }).final).toBe(false);
   expect(weekReportOf({ ...s, reports: [] }).ai).toBe(false)
 })

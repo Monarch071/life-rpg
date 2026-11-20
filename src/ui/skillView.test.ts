@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import type { DayQuest, GameState, PerkView, SkillState, WeeklyQuest } from '../domain/types'
-import { abilityOff, classChangeText, passiveText, perkDot, planQuests, questAbility, rustBadge } from './skillView'
+import { abilityOff, classChangeText, perkDot, planQuests, questAbility, rustBadge } from './skillView'
 
 test('бейдж ржавчины', () => {
   expect(rustBadge({ idleDays: 25, rusty: false } as SkillState)).toEqual({ text: 'ржавеет через 5 дн.', tone: 'warn' })
@@ -8,12 +8,9 @@ test('бейдж ржавчины', () => {
   expect(rustBadge({ idleDays: 10, rusty: false } as SkillState)).toBeNull(); expect(rustBadge({ idleDays: null, rusty: false } as SkillState)).toBeNull()
 })
 
-test('точки перков и текст пассива', () => {
+test('точки перков', () => {
   expect(perkDot(undefined)).toBe('locked'); expect(perkDot({ power: 0.5 } as PerkView)).toBe('half'); expect(perkDot({ power: 0 } as PerkView)).toBe('off')
   expect(perkDot({ power: 1 } as PerkView)).toBe('on')
-  expect(passiveText({ passive: { text: '+10% XP за тренировки', power: 0.5 } } as GameState['cls'])).toBe('+10% XP за тренировки — вполовину')
-  expect(passiveText({ passive: { text: 'x', power: 1 } } as GameState['cls'])).toBe('x — в полную силу')
-  expect(passiveText({ passive: { text: 'x', power: 0 } } as GameState['cls'])).toBe('x — выключен')
 })
 
 test('«План»: невыполненные недельные заменяются заданиями фокуса, выполненные остаются', () => {

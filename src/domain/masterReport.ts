@@ -71,8 +71,8 @@ export function reportByRules(i: ReportInput): string {
   return [`Что получилось\n${got.join(' ')}`, `Закономерности\n${pat.join(' ')}`, `Слабые места\n${weak.join(' ')}`, `План на неделю\n${plan.join(' ')}`].join('\n\n').slice(0, 1500)
 }
 
-export function weekReportOf(state: GameState): { weekStart: ISODate; text: string; ai: boolean } {
+export function weekReportOf(state: GameState): { weekStart: ISODate; text: string; ai: boolean; final: boolean } {
   const weekStart = reportWeek(state.today.date)
   const r = state.reports.find(x => x.weekStart === weekStart)
-  return r ? { weekStart, text: r.text, ai: true } : { weekStart, text: reportByRules(reportInput(state, weekStart)), ai: false }
+  return r ? { weekStart, text: r.text, ai: true, final: !!r.final } : { weekStart, text: reportByRules(reportInput(state, weekStart)), ai: false, final: false }
 }

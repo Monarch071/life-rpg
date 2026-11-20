@@ -234,7 +234,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   let busyUntil: HHMM | null = null, checkedIn = false, lastEnergy: number | null = null;
   const weeklyIssued = new Map<ISODate, { ts: number; qs: WeeklyQuest[] }>();
   const tunings = new Map<ISODate, { factors: Partial<Record<Stat, number>>; note: string }>();
-  const reports = new Map<ISODate, string>();
+  const reports = new Map<ISODate, { text: string; final: boolean }>();
   const bossEvents: Extract<GameEvent, { type: 'boss_created' | 'boss_stage_done' | 'boss_abandoned' }>[] = [];
   const shopEvents: Extract<GameEvent, { type: 'reward_created' | 'reward_deleted' | 'reward_purchased' | 'cosmetic_bought' }>[] = [];
   const equips: Extract<GameEvent, { type: 'cosmetic_equipped' }>[] = [];
@@ -508,7 +508,9 @@ export function replay(events: GameEvent[], now: number): GameState {
       }
       case 'ai_report': {
         if (!isDate(e.weekStart) || weekStart(e.weekStart) !== e.weekStart || typeof e.text !== 'string') break;
-        reports.set(e.weekStart, e.text.slice(0, 4000)); // последний по ts
+        const final = e.final === true;
+        if (reports.get(e.weekStart)?.final && !final) break; // финальный не затираем предварительным
+        reports.set(e.weekStart, { text: e.text.slice(0, 4000), final }); // иначе последний по ts
         break;
       }
       case 'boss_created': case 'boss_stage_done': case 'boss_abandoned': bossEvents.push(e); break;
@@ -1370,7 +1372,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     skills, rewards, purchases,
     weekly: { weekStart: thisWeek, quests: weeklyNow },
     bosses: [...bossMap.values()].filter(b => !b.abandoned),
-    reports: [...reports].map(([weekStart, text]) => ({ weekStart, text })).sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1)),
+    reports: [...reports].map(([weekStart, r]) => ({ weekStart, text: r.text, ...(r.final ? { final: true as const } : {}) })).sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1)),
     genWeekly: { weekStart: thisWeek, stats, multipliers, prevActiveDays, prevStatQuests, bestSteps7: best7(metrics, today, 'steps'), themeStat: theme ? THEMES[theme].stats[0] : null,
       easy: weekResults.find(r => r.weekStart === addDays(thisWeek, -7))?.rank === 'D' },
     season: { id: season.id, kind: season.kind, name: season.name, start: season.start, end: season.end, theme, xp: seasonXp,

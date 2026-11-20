@@ -686,6 +686,13 @@ test('ai_report: не‑понедельник игнорируется, тек�
   expect(s.reports).toEqual([{ weekStart: '2026-11-09', text: 'b' }, { weekStart: '2026-11-02', text: 'old' }]);
 });
 
+test('ai_report: final предпочтительнее, мусор игнорируется', () => {
+  const r = (extra: object, ts: number) => ev({ type: 'ai_report', weekStart: '2026-11-09', text: 't' + ts, ts, ...extra });
+  expect(replay([r({ final: true }, 1), r({}, 2)], NOW).reports).toEqual([{ weekStart: '2026-11-09', text: 't1', final: true }]);
+  expect(replay([r({}, 1), r({ final: true }, 2)], NOW).reports[0]).toEqual({ weekStart: '2026-11-09', text: 't2', final: true });
+  expect(replay([r({ final: 'yes' }, 1)], NOW).reports[0]).toEqual({ weekStart: '2026-11-09', text: 't1' });
+});
+
 test('avatar_image: последний по ts для тира, невалидное игнорируется', () => {
   const s = replay([
     ev({ type: 'avatar_image', tier: 1, blob: 'avatar-t1-aa', ts: at('2026-11-10') }),

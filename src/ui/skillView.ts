@@ -16,7 +16,6 @@ export const perkDot = (p: Pick<PerkView, 'power'> | undefined): 'locked' | 'on'
   !p ? 'locked' : p.power === 1 ? 'on' : p.power === 0.5 ? 'half' : 'off'
 
 export const POWER_TEXT = { 1: 'в полную силу', 0.5: 'вполовину', 0: 'выключен' } as const
-export const passiveText = (cls: Pick<GameState['cls'], 'passive'>): string => `${cls.passive.text} — ${POWER_TEXT[cls.passive.power]}`
 
 /** «План»: замены невыполненных недельных с фокусом на stat. Выполненные виды не повторяются; id — свои, чтобы не совпасть с оставленными. */
 export function planQuests(state: Pick<GameState, 'weekly' | 'genWeekly' | 'stats'>, focus: Stat): WeeklyQuest[] {

@@ -75,7 +75,7 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'boss_stage_done'; bossId: string; stage: number }
   | { type: 'boss_abandoned'; bossId: string }
   | { type: 'ai_tuning'; date: ISODate; factors: Partial<Record<Stat, number>>; note: string }
-  | { type: 'ai_report'; weekStart: ISODate; text: string }
+  | { type: 'ai_report'; weekStart: ISODate; text: string; final?: boolean }
   | { type: 'avatar_image'; tier: 1|2|3|4; blob: string }
   | { type: 'interview_completed'; answers: Answers; followups: { q: string; a: string }[]; analysis: Analysis | null }
   | { type: 'season_theme_set'; theme: ThemeId }
@@ -166,7 +166,7 @@ export interface GameState {
   purchases: { rewardId: string; title: string; price: number; ts: number }[];
   weekly: { weekStart: ISODate; quests: (WeeklyQuest & { progress: number; done: boolean })[] };   // неделя сегодняшней игровой даты; без выдачи — []
   bosses: Boss[];         // кроме брошенных
-  reports: { weekStart: ISODate; text: string }[];   // недельные отчёты ИИ, по убыванию недели
+  reports: { weekStart: ISODate; text: string; final?: true }[];   // недельные отчёты ИИ, по убыванию недели
   genWeekly: WeeklyCtx & { easy: boolean };   // easy — прошлая неделя закрыта рангом D   // контекст для generateWeeklyQuests текущей недели
   season: { id: string; kind: 'prologue' | 'winter' | 'spring' | 'summer' | 'autumn'; name: string; start: ISODate; end: ISODate; theme: ThemeId | null; xp: number; step: number;
     stepXp: number; joined: ISODate | null; rewards: { step: number; gold: number; items: string[]; date: ISODate }[]; title: string | null };   // путь сезона: цена ступени, первая игровая дата, полученные ступени

@@ -4,6 +4,7 @@ import { STAT_COLORS, StatIcon } from '../ui/icons'
 import { getAiConfig, type AiConfig } from '../ai/config'
 import { aiErrorText } from '../ai/providers'
 import { aiWeeklyReport } from '../ai/tasks'
+import { weekStart } from '../domain/day'
 import { reportWeek } from '../domain/masterReport'
 import { useWrite } from '../ui/useWrite'
 import { METRIC_INFO } from '../domain/metricInfo'
@@ -30,7 +31,7 @@ export default function Analytics({ state }: { state: GameState }) {
   const makeReport = async () => {
     if (!cfg || gen) return
     setGen(true); setRepErr(null)
-    try { await write({ type: 'ai_report', weekStart: prevWeek, text: await aiWeeklyReport(cfg, state, prevWeek) }, 'Отчёт готов') }
+    try { await write({ type: 'ai_report', weekStart: prevWeek, text: await aiWeeklyReport(cfg, state, prevWeek), final: weekStart(state.today.date) !== prevWeek }, 'Отчёт готов') }
     catch (e) { setRepErr(aiErrorText(e)) }
     finally { setGen(false) }
   }
@@ -72,7 +73,7 @@ export default function Analytics({ state }: { state: GameState }) {
       ) })}
       <div className="panel"><h2><Bot size={18} aria-hidden="true" /> Недельный отчёт ИИ</h2>
         {!cfg && <p className="muted">Подключи ИИ в настройках, чтобы получать недельный отчёт</p>}
-        {cfg && !state.reports.some(r => r.weekStart === prevWeek) &&
+        {cfg && !state.reports.some(r => r.weekStart === prevWeek && r.final) &&
           <button className="btn" disabled={gen || busy} onClick={makeReport}>{gen ? 'Составляю…' : 'Составить отчёт за прошлую неделю'}</button>}
         {report && <><h3>Неделя с {dm(report.weekStart)}</h3><p style={{ whiteSpace: 'pre-wrap' }}>{report.text}</p></>}
         {repErr && <p className="err" role="alert">{repErr}</p>}
