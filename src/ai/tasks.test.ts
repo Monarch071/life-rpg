@@ -2,7 +2,8 @@ import { beforeEach, expect, test, vi } from 'vitest'
 
 vi.mock('./providers', async (orig) => ({ ...(await orig<typeof import('./providers')>()), generateJson: vi.fn() }))
 import { AiError, generateJson } from './providers'
-import { AI_METRICS, aiCustomRank, aiQuestTexts, aiTuning, aiWeeklyReport, applyTexts, questContext, validateAiTexts } from './tasks'
+import { AI_METRICS } from '../domain/masterReport'
+import { aiCustomRank, aiQuestTexts, aiTuning, aiWeeklyReport, applyTexts, questContext, validateAiTexts } from './tasks'
 import { replay } from '../domain/replay'
 import type { GameEvent, Profile, Quest } from '../domain/types'
 import type { AiConfig } from './config'
@@ -115,7 +116,7 @@ test('белый список ИИ: траты, магазины, приложе
   ], T + 60e3)
   expect(AI_METRICS).not.toContain('spend')
   gen.mockResolvedValue({ texts: [], text: 'отчёт', factors: {}, note: 'ок' })
-  await aiWeeklyReport(cfg, st)
+  await aiWeeklyReport(cfg, st, '2026-11-16')
   await aiQuestTexts(cfg, st, [quest('a')])
   await aiTuning(cfg, st, { went: '', notWent: '', energy: 5 })
   const prompts = [questContext(st, profile), ...gen.mock.calls.map(c => `${c[1]}\n${c[2]}`)]
@@ -136,7 +137,7 @@ test('грани Тени не уходят в ИИ (questContext, aiTuning, aiW
   ], T + 60e3)
   expect(st.shadow.facets.map(f => f.name)).toEqual(['Тайная Грань', 'Ночной Холодильник'])
   gen.mockResolvedValue({ texts: [], text: 'отчёт', factors: {}, note: 'ок' })
-  await aiWeeklyReport(cfg, st)
+  await aiWeeklyReport(cfg, st, '2026-11-16')
   await aiQuestTexts(cfg, st, [quest('a')])
   await aiTuning(cfg, st, { went: '', notWent: '', energy: 5 })
   const prompts = [questContext(st, profile), ...gen.mock.calls.map(c => `${c[1]}
@@ -144,4 +145,16 @@ ${c[2]}`)]
   expect(prompts).toHaveLength(4)
   for (const p of prompts) for (const bad of ['Тайная', 'Холодильник', 'f1', 'f2', 'Тень', 'тени'])
     expect(p, bad).not.toContain(bad)
+})
+
+test('aiWeeklyReport: промпт — только белый список, с рангом недели', async () => {
+  const s = replay([{ id: 'o', ts: 1, deviceId: 'd', type: 'onboarding_completed', profile: { ...profile, goals: [{ text: 'СекретнаяЦель', months: 6, stat: 'fin' }] } } as GameEvent,
+    { id: 'f', ts: 2, deviceId: 'd', type: 'facet_added', facetId: 'f1', name: 'СекретнаяГрань', kind: 'custom', start: 50 } as GameEvent,
+    { id: 'm', ts: new Date(2026, 10, 17, 9).getTime(), deviceId: 'd', type: 'metric_logged', date: '2026-11-17', metric: 'spend', value: 999, mode: 'set' } as GameEvent],
+    new Date(2026, 10, 17, 12).getTime())
+  gen.mockResolvedValueOnce({ text: 'ок' })
+  await aiWeeklyReport(cfg, s, '2026-11-09')
+  const user = gen.mock.calls[0][2]
+  expect(user).toContain('ранг недели')
+  for (const x of ['СекретнаяЦель', 'СекретнаяГрань', 'spend', '999']) expect(user).not.toContain(x)
 })

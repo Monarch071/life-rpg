@@ -132,6 +132,11 @@ describe('пуш после сна', () => {
     expect((await store.getPushSub(EP))!.last_morning).not.toBe('2026-11-18')
     expect(await sendWakePush(store, vapid, T0630, '2026-11-18', 7, f)).toBe(1)
   })
+  it('воскресный вечер — разбор недели без данных игрока', () => {
+    expect(message('evening', '2026-12-27')).toMatchObject({ title: 'Разбор недели', tag: 'weekly' })
+    expect(message('evening', '2026-12-28').tag).toBe('evening')
+    expect(message('evening', '2026-12-27').body).not.toMatch(/\d/)
+  })
   it('текст про сон', () => expect(message('wake', '2026-11-18', { sleepHours: 7.6 }).body).toBe('Сон 7,6 ч засчитан. Открой «Мой день» — задания ждут'))
 })
 

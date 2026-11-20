@@ -68,6 +68,8 @@ export function message(kind: Kind | 'test' | 'wake', date = '', extra?: { sleep
     const h = (extra?.sleepHours ?? 0).toFixed(1).replace('.', ',')
     return { title: 'Доброе утро, герой', body: `Сон ${h} ч засчитан. Открой «Мой день» — задания ждут`, tag: 'morning', url: '/life-rpg/' }
   }
+  if (kind === 'evening' && new Date(date + 'T00:00:00Z').getUTCDay() === 0)
+    return { title: 'Разбор недели', body: 'Мастер разобрал твою неделю — загляни', tag: 'weekly', url: '/life-rpg/' } // воскресенье, без данных игрока
   const t = TEXTS[kind]
   const day = Number(date.slice(-2)) || 0
   return { title: t.title, body: t.body[day % t.body.length], tag: kind, url: '/life-rpg/' }

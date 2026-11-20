@@ -3,6 +3,7 @@ import { STATS } from '../domain/stats'
 import { RANKS } from '../domain/balance'
 import type { GameState, Profile, Quest, Rank, Stat } from '../domain/types'
 import { weakestStat } from '../domain/weekly'
+import { AI_METRICS, reportInput, reportWeek } from '../domain/masterReport'
 import type { AiConfig } from './config'
 import { AiError, generateJson } from './providers'
 
@@ -24,10 +25,6 @@ function portrait(state: GameState): string[] {
   return ['Портрет героя:', `Архетип: ${c.archetype}`, `О герое: ${c.summary}`, `Зоны роста: ${c.focus.join('; ')}`, `Как давать задания: ${c.questGuidance}`,
     ...(key.length ? [`Ключевые ответы: ${key.join('; ')}`] : [])]
 }
-
-/** Белый список: только эти метрики уходят в промпты ИИ. Траты (в т.ч. ручные), магазины, приложения и места — никогда. */
-export const AI_METRICS = ['steps', 'sleepHours', 'readPages', 'water', 'mood', 'screenMin', 'workoutMin'] as const
-const aiMetrics = (m: GameState['metricHistory'][number]['metrics']) => Object.fromEntries(AI_METRICS.filter(k => m[k] !== undefined).map(k => [k, m[k]]))
 
 /** Компактный русский контекст для ИИ. */
 export function questContext(state: GameState, profile: Profile): string {
@@ -112,13 +109,10 @@ export async function aiTuning(cfg: AiConfig, state: GameState, checkin: { went:
 const REPORT_SYSTEM = 'Ты — наставник в игре по прокачке. Составь недельный отчёт по-русски, 150–400 слов, простым текстом без разметки, с разделами: «Что получилось», «Закономерности», «Слабые места», «План на неделю». Опирайся только на данные.'
 const REPORT_SCHEMA = { type: 'object', required: ['text'], properties: { text: { type: 'string' } } }
 
-export async function aiWeeklyReport(cfg: AiConfig, state: GameState): Promise<string> {
-  const from = addDays(state.today.date, -14)
-  const user = [`Герой: ${state.profile?.name ?? ''}, уровень ${state.level}`,
-    `Характеристики: ${STAT_KEYS.map(s => statLine(s, state)).join(', ')}`,
-    `Дни (дата: xp/выполнено из выдано/засчитан): ${state.history.filter(h => h.date >= from).map(h => `${h.date}: ${h.xp}/${h.completed} из ${h.issued}/${h.counted ? 'да' : 'нет'}`).join('; ') || 'нет'}`,
-    `Метрики: ${state.metricHistory.filter(h => h.date >= from).map(h => `${h.date} ${JSON.stringify(aiMetrics(h.metrics))}`).join('; ') || 'нет'}`,
-  ].join('\n')
+export async function aiWeeklyReport(cfg: AiConfig, state: GameState, weekStart = reportWeek(state.today.date)): Promise<string> {
+  const i = reportInput(state, weekStart) // только белый список (спека §8)
+  const user = [`Герой: ${state.profile?.name ?? ''}, уровень ${state.level}`, `Неделя с ${weekStart}; ранг недели: ${i.score.rank ?? 'нет'}${i.final ? '' : ' (предварительно)'}`,
+    `Данные недели (JSON): ${JSON.stringify(i)}`].join('\n')
   const raw = await generateJson(cfg, REPORT_SYSTEM, user, REPORT_SCHEMA) as any
   const text = typeof raw === 'string' ? raw : raw?.text
   if (typeof text !== 'string' || !text.trim()) throw new AiError('пустой отчёт', 'bad_response')

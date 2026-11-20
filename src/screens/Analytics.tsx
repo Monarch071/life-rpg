@@ -4,7 +4,7 @@ import { STAT_COLORS, StatIcon } from '../ui/icons'
 import { getAiConfig, type AiConfig } from '../ai/config'
 import { aiErrorText } from '../ai/providers'
 import { aiWeeklyReport } from '../ai/tasks'
-import { addDays, weekStart } from '../domain/day'
+import { reportWeek } from '../domain/masterReport'
 import { useWrite } from '../ui/useWrite'
 import { METRIC_INFO } from '../domain/metricInfo'
 import { STATS } from '../domain/stats'
@@ -25,12 +25,12 @@ export default function Analytics({ state }: { state: GameState }) {
   const [repErr, setRepErr] = useState<string | null>(null)
   const { busy, msg, write } = useWrite()
   useEffect(() => { getAiConfig().then(setCfg).catch(() => {}) }, [])
-  const prevWeek = addDays(weekStart(state.today.date), -7)
+  const prevWeek = reportWeek(state.today.date)
   const report = state.reports[0]
   const makeReport = async () => {
     if (!cfg || gen) return
     setGen(true); setRepErr(null)
-    try { await write({ type: 'ai_report', weekStart: prevWeek, text: await aiWeeklyReport(cfg, state) }, 'Отчёт готов') }
+    try { await write({ type: 'ai_report', weekStart: prevWeek, text: await aiWeeklyReport(cfg, state, prevWeek) }, 'Отчёт готов') }
     catch (e) { setRepErr(aiErrorText(e)) }
     finally { setGen(false) }
   }
