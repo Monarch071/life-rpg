@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GameState } from '../domain/types'
-import { pathLabel, statBar } from './statBar'
+import { leagueChip, pathLabel, statBar } from './statBar'
 
 const season = (o: Partial<GameState['season']>): GameState['season'] =>
   ({ id: 'winter-2026', kind: 'winter', name: 'Зима', start: '2026-12-01', end: '2027-02-28', theme: 'mind_spirit', xp: 0, step: 0, stepXp: 600, joined: null, rewards: [], title: null, ...o })
@@ -30,5 +30,17 @@ describe('pathLabel', () => {
     const p = pathLabel(season({ xp: 30 * 600 + 5, step: 30 }), '2027-02-01')
     expect(p.title).toBe('Зима · ступень 30/30')
     expect(p.pct).toBe(100)
+  })
+})
+
+describe('путь и лига (Глубина)', () => {
+  it('путь сезона с уменьшенной ценой ступени', () => {
+    const s = { kind: 'winter', name: 'Зима', step: 2, xp: 700, stepXp: 300 } as GameState['season']
+    expect(pathLabel(s, '2027-01-20')).toEqual({ title: 'Зима · ступень 2/30', sub: 'до ступени 3: 100 / 300 XP', pct: expect.closeTo(33.3, 1) })
+  })
+  it('чип лиги', () => {
+    expect(leagueChip({ tier: 1, name: 'Серебро', points: 8, seasonId: 'winter-2026' })).toEqual({ name: 'Серебро', into: 2, of: 6 })
+    expect(leagueChip({ tier: 5, name: 'Легенда', points: 35, seasonId: 'winter-2026' })).toEqual({ name: 'Легенда', into: 5, of: 6 })
+    expect(leagueChip({ tier: 0, name: 'Бронза', points: 0, seasonId: 'prologue' })).toEqual({ name: 'Бронза', into: 0, of: 6 })
   })
 })

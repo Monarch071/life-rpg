@@ -3,6 +3,7 @@ import { Coins, Trash2 } from 'lucide-react'
 import Confirm from '../ui/Confirm'
 import { useWrite } from '../ui/useWrite'
 import { BALANCE } from '../domain/balance'
+import { cosmeticById, SHOP_COSMETICS } from '../domain/cosmetics'
 import type { GameState } from '../domain/types'
 
 type Reward = GameState['rewards'][number]
@@ -22,7 +23,7 @@ const dm = (ts: number) => { const d = new Date(ts); return `${String(d.getDate(
 export default function Shop({ state }: { state: GameState }) {
   const [title, setTitle] = useState('')
   const [price, setPrice] = useState('')
-  const [ask, setAsk] = useState<{ kind: 'buy' | 'del'; id: string; title: string; price: number } | null>(null)
+  const [ask, setAsk] = useState<{ kind: 'buy' | 'del' | 'gear'; id: string; title: string; price: number } | null>(null)
   const w = useWrite()
   const wf = useWrite() // форма новой награды: своё сообщение под кнопкой
   const create = async () => {
@@ -33,7 +34,9 @@ export default function Shop({ state }: { state: GameState }) {
   }
   const yes = () => {
     const a = ask!; setAsk(null)
-    void (a.kind === 'buy' ? w.write({ type: 'reward_purchased', rewardId: a.id }, 'Куплено! Наслаждайся!') : w.write({ type: 'reward_deleted', rewardId: a.id }, 'Награда удалена'))
+    void (a.kind === 'buy' ? w.write({ type: 'reward_purchased', rewardId: a.id }, 'Куплено! Наслаждайся!')
+      : a.kind === 'gear' ? w.write({ type: 'cosmetic_bought', itemId: a.id }, `Куплено: ${a.title} — надень в «Герой» → «Снаряжение»`)
+      : w.write({ type: 'reward_deleted', rewardId: a.id }, 'Награда удалена'))
   }
   return (
     <div className="home stack">
@@ -57,6 +60,22 @@ export default function Shop({ state }: { state: GameState }) {
         ) })}
         {w.msg && <p role={w.msg.ok ? 'status' : 'alert'} className={w.msg.ok ? 'ok' : 'err'}>{w.msg.text}</p>}
       </section>
+      <section className="panel stack" aria-label="Снаряжение">
+        <h2>Снаряжение</h2>
+        <p className="muted">Вещи для аватара — покупаются один раз, надеваются в «Герой» → «Снаряжение».</p>
+        {SHOP_COSMETICS.map(id => cosmeticById(id)!).map(c => {
+          const have = state.cosmetics.owned.some(o => o.id === c.id), price = c.price ?? 0
+          // как обычная покупка без эффекта: из всего золота (так проверяет replay)
+          const why = have ? 'Уже есть' : state.gold < price ? `Не хватает ${price - state.gold}` : null
+          return (
+            <div key={c.id} className="card">
+              <div className="row qhead"><b className="grow">{c.title}</b><span className="price"><Coins size={13} aria-hidden="true" />{price}</span></div>
+              <button className="btn primary" disabled={w.busy || !!why} aria-label={`Купить «${c.title}» за ${price}${why ? `: ${why}` : ''}`}
+                onClick={() => setAsk({ kind: 'gear', id: c.id, title: c.title, price })}>Купить{why && <small>{why}</small>}</button>
+            </div>
+          )
+        })}
+      </section>
       <section className="panel stack" aria-label="Новая награда">
         <h2>Новая награда</h2>
         <label className="field">Название<input value={title} maxLength={60} onChange={e => { setTitle(e.target.value); wf.setMsg(null) }} /></label>
@@ -71,8 +90,8 @@ export default function Shop({ state }: { state: GameState }) {
           <div key={i} className="hist"><span className="muted">{dm(p.ts)}</span><span className="grow">{p.title}</span><span className="price"><Coins size={13} aria-hidden="true" />{p.price}</span></div>
         ))}
       </section>
-      {ask && <Confirm title={ask.kind === 'buy' ? `Купить «${ask.title}» за ${ask.price}?${state.rewards.find(r => r.id === ask.id)?.effect === 'day_off' ? ' Действует сегодня.' : ''}` : `Удалить «${ask.title}»?`}
-        yes={ask.kind === 'buy' ? 'Купить' : 'Удалить'} onYes={yes} onNo={() => setAsk(null)} />}
+      {ask && <Confirm title={ask.kind !== 'del' ? `Купить «${ask.title}» за ${ask.price}?${state.rewards.find(r => r.id === ask.id)?.effect === 'day_off' ? ' Действует сегодня.' : ''}` : `Удалить «${ask.title}»?`}
+        yes={ask.kind === 'del' ? 'Удалить' : 'Купить'} onYes={yes} onNo={() => setAsk(null)} />}
     </div>
   )
 }

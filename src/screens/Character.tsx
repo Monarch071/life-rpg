@@ -12,6 +12,7 @@ import AvatarAi, { PhotoCta, type Go } from './AvatarAi'
 import StatRadar from '../ui/StatRadar'
 import Skills from './Skills'
 import ClassCard from '../ui/ClassCard'
+import Wardrobe from '../ui/Wardrobe'
 import { InterviewCta, Portrait } from './Interview'
 import Achievements from './Achievements'
 import Shadow from './Shadow'
@@ -86,7 +87,7 @@ export default function Character({ state, go, interview }: { state: GameState; 
         {/* фон декоративный; доступна только фигура тени (подпись «Враг-тень, сила N») */}
         <div className="stage-art">
           {img ? <><img src={img} alt="" /><ShadowFigure strength={state.shadow.strength} avatar={state.avatar} tier={state.tier} /></>
-            : <><ShadowFigure strength={state.shadow.strength} avatar={state.avatar} tier={state.tier} /><div className="stage-fallback"><Avatar params={state.avatar} tier={state.tier} size={300} decorative /></div></>}
+            : <><ShadowFigure strength={state.shadow.strength} avatar={state.avatar} tier={state.tier} /><div className="stage-fallback"><Avatar params={state.avatar} tier={state.tier} size={300} decorative wear={state.cosmetics.equipped} /></div></>}
         </div>
         <div className="glass banner-card">
           <b><small>Lv.</small>{state.level}</b>
@@ -139,6 +140,7 @@ export default function Character({ state, go, interview }: { state: GameState; 
           ))}</div>
         )}
       </section>
+      <Wardrobe state={state} />
       <Editor saved={state.avatar} tier={state.tier} />
       <div id="avatar-ai"><AvatarAi state={state} /></div>
     </div>

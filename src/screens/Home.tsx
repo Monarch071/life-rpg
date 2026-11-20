@@ -7,7 +7,7 @@ import type { DataFlag, DayQuest, GameState, Profile } from '../domain/types'
 import { hhmmNow, now } from '../now'
 import { imageNameFor, PHOTO_ERROR_TEXT, shrinkImage } from '../ai/avatar'
 import { saveBlob, useBlobUrl } from '../blobs'
-import { Bed, Bot, Check, Gem, Hourglass, Moon, PenLine, Shuffle, Timer as TimerIcon, TriangleAlert, Zap, X } from 'lucide-react'
+import { Bed, Bot, Check, Gem, Hourglass, NotebookPen, Moon, PenLine, Shuffle, Timer as TimerIcon, TriangleAlert, Zap, X } from 'lucide-react'
 import HeroStage from '../ui/HeroStage'
 import HeroExtras from '../ui/HeroExtras'
 import QuestCard from '../ui/QuestCard'
@@ -31,8 +31,13 @@ import { battleSeen, markBattleSeen, ritualChip } from '../ui/gameView'
 import BattleSheet from '../ui/BattleSheet'
 import { QuestAbility } from '../ui/ClassCard'
 import { questAbility } from '../ui/skillView'
+import SeasonPath from './SeasonPath'
+import { getAiConfig } from '../ai/config'
+import { aiWeeklyReport } from '../ai/tasks'
+import { weekReportOf } from '../domain/masterReport'
+import { cosmeticById } from '../domain/cosmetics'
 
-type Sheet = null | 'quick' | 'busy' | 'checkin' | 'changed' | 'custom' | 'timer' | 'recovery' | VitalId
+type Sheet = null | 'quick' | 'busy' | 'checkin' | 'changed' | 'custom' | 'timer' | 'recovery' | 'season' | VitalId
 
 // «Позже» на «Мой день» — до перезапуска приложения (переживает переключение вкладок)
 let deferredDay = false
@@ -67,18 +72,23 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
   useEffect(() => { pending.current.clear() }, [today.date])
 
   // новое достижение: полученное сегодня и ещё не показанное на этом устройстве
-  const [toast, setToast] = useState<{ text: string; ids: string[] } | null>(null)
+  const [toast, setToast] = useState<{ text: string; ids: string[]; kind: string } | null>(null)
   useEffect(() => {
     let off = false
     void (async () => {
       const seen = await getSetting<string[]>('seenAchievements', [])
       const fresh = state.achievements.filter(a => a.date === today.date && !seen.includes(a.id))
-      if (off || !fresh.length) return
-      const text = fresh.map(a => ACHIEVEMENTS.find(d => d.id === a.id)?.title ?? a.id).join(' · ')
-      setToast(prev => prev?.text === text ? prev : { text, ids: fresh.map(a => a.id) })
+      // ступени пути сезона, полученные сегодня (id как у строки леджера path:<сезон>:<ступень>) — в том же списке «показано»
+      const pathId = (step: number) => `path:${state.season.id}:${step}`
+      const steps = state.season.rewards.filter(r => r.date === today.date && !seen.includes(pathId(r.step)))
+      if (off || (!fresh.length && !steps.length)) return
+      const text = fresh.length ? fresh.map(a => ACHIEVEMENTS.find(d => d.id === a.id)?.title ?? a.id).join(' · ')
+        : steps.map(r => [`Ступень ${r.step} — +${r.gold} золота`, ...r.items.map(id => cosmeticById(id)?.title ?? id)].join(', ')).join(' · ')
+      const ids = fresh.length ? fresh.map(a => a.id) : steps.map(r => pathId(r.step))
+      setToast(prev => prev?.text === text ? prev : { text, ids, kind: fresh.length ? 'ДОСТИЖЕНИЕ' : 'ПУТЬ СЕЗОНА' })
     })().catch(() => {})
     return () => { off = true }
-  }, [state.achievements, today.date])
+  }, [state.achievements, state.season.rewards, state.season.id, today.date])
   // «показано» — только после 4 с (или закрытия); если ушли с Главной раньше, покажем снова
   const dismiss = async () => {
     if (!toast) return
@@ -186,11 +196,11 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
 
   return (
     <div className="home">
-      <div role="status">{toast && <div className="toast" onClick={() => void dismiss()}><Gem size={22} aria-hidden="true" /><span><small>ДОСТИЖЕНИЕ</small>{toast.text}</span></div>}</div>
+      <div role="status">{toast && <div className="toast" onClick={() => void dismiss()}><Gem size={22} aria-hidden="true" /><span><small>{toast.kind}</small>{toast.text}</span></div>}</div>
       <HeroStage state={state} profile={profile} image={img}
         cta={!today.started ? 'Начать день' : remaining > 0 ? `Задания дня · осталось ${remaining}` : null}
         onCta={() => (!today.started ? setLater(false) : document.getElementById('quests')?.scrollIntoView({ behavior: 'smooth' }))}
-        onVital={id => setSheet(id)} onSyncHelp={() => go('Настройки', 'sync-panel')} />
+        onVital={id => setSheet(id)} onSyncHelp={() => go('Настройки', 'sync-panel')} onPath={() => setSheet('season')} />
       <Banner state={state} hidden={hideBanner} onHide={setHideBanner} busy={leaving}
         onRecovery={() => setSheet('recovery')} onLeave={() => void leaveRecovery()} onChangeDay={() => setSheet('changed')} />
       {state.recovery.active && (
@@ -201,6 +211,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
         </div>
       )}
       {!img && <PhotoCta go={go} />}
+      <WeekReport state={state} />
       {!state.character && !ivwSeen && <InterviewCta onStart={() => { hideIvw(); interview() }} onLater={hideIvw} />}
 
       {today.aiNote && <p className="muted center ai-note"><Bot size={14} aria-hidden="true" /> {today.aiNote}</p>}
@@ -280,10 +291,44 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       {sheet === 'custom' && <CustomQuest state={state} onClose={() => setSheet(null)} />}
       {sheet === 'timer' && <Timer initial={timerKind} onClose={() => setSheet(null)} />}
       {abQuest && <QuestAbility state={state} q={abQuest} ctx={ctxNow} onClose={() => setAbQuest(null)} />}
+      {sheet === 'season' && <SeasonPath state={state} onClose={() => setSheet(null)} />}
       {sheet === 'recovery' && <Recovery state={state} onClose={() => setSheet(null)} />}
       {(sheet === 'hp' || sheet === 'energy' || sheet === 'focus' || sheet === 'fatigue') && <VitalInfo id={sheet} state={state} onClose={() => setSheet(null)} />}
       {!today.started && !later && <MyDay state={state} onLater={() => setLater(true)} />}
     </div>
+  )
+}
+
+/** «Разбор недели» в воскресенье (текущая) и понедельник (прошлая): ИИ-текст, если есть, иначе правила; с ключом ИИ — одна генерация за открытие. */
+function WeekReport({ state }: { state: GameState }) {
+  const dow = new Date(`${state.today.date}T00:00:00Z`).getUTCDay()   // 0 — воскресенье, 1 — понедельник
+  const show = dow === 0 || dow === 1
+  const r = show ? weekReportOf(state) : null
+  const tried = useRef<string | null>(null)
+  const [gen, setGen] = useState(false)
+  useEffect(() => {
+    if (!r || r.ai || tried.current === r.weekStart) return
+    tried.current = r.weekStart   // защита от двойного запуска: одна попытка за открытие Главной
+    let on = true
+    void (async () => {
+      const cfg = await getAiConfig()
+      if (!cfg || !on) return
+      setGen(true)
+      try { await appendEvent({ type: 'ai_report', weekStart: r.weekStart, text: await aiWeeklyReport(cfg, state, r.weekStart) }) }
+      catch { /* остаётся текст правил */ }
+      finally { if (on) setGen(false) }
+    })().catch(() => {})
+    return () => { on = false }
+  }, [r?.weekStart, r?.ai]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!r) return null
+  const [first, ...rest] = r.text.split(/\n\n/)
+  return (
+    <section className="glass week-report" aria-label="Разбор недели">
+      <h2><NotebookPen size={18} aria-hidden="true" /> Разбор недели <small className="muted">с {r.weekStart.slice(8, 10)}.{r.weekStart.slice(5, 7)} · {r.ai ? 'Мастер (ИИ)' : 'по правилам'}</small></h2>
+      <p aria-live="polite" className="muted">{gen ? 'Мастер пишет разбор…' : ''}</p>
+      <p className="rep">{first}</p>
+      {rest.length > 0 && <details><summary>Читать полностью</summary><p className="rep">{rest.join('\n\n')}</p></details>}
+    </section>
   )
 }
 

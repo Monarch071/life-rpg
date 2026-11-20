@@ -24,14 +24,15 @@ export default function Celebration({ state }: { state: GameState }) {
     void (c.kind === 'level' ? setSetting('seenLevelV2', c.level) : c.kind === 'boss' ? setSetting('seenBossSeason', c.seasonId)
       : setSetting('seenPerfectDate', c.date)).catch(() => {})
   }
-  return <Overlay key={c.kind} c={c} onClose={close} />
+  return <Overlay key={c.kind} c={c} onClose={close} frame={state.cosmetics.equipped.frame ?? null} />
 }
 
-function Overlay({ c, onClose }: { c: NonNullable<ReturnType<typeof pickCelebration>>; onClose: () => void }) {
+/** frame — надетая рамка пути сезона: повышение уровня в её цветах (спека §7). */
+function Overlay({ c, onClose, frame }: { c: NonNullable<ReturnType<typeof pickCelebration>>; onClose: () => void; frame: string | null }) {
   const btn = useDialog<HTMLButtonElement>(onClose)
   const win = c.kind === 'perfect', boss = c.kind === 'boss'
   return (
-    <div className="lvlup" role="dialog" aria-modal="true" aria-labelledby="cel-title">
+    <div className={`lvlup${frame && c.kind === 'level' ? ` framed frame-${frame.split(':')[1]}` : ''}`} role="dialog" aria-modal="true" aria-labelledby="cel-title">
       <div className="rays" aria-hidden="true" />
       {[8, 20, 33, 47, 60, 74, 88].map((l, i) => <i key={l} className="conf" aria-hidden="true" style={{ left: `${l}%`, animationDelay: `${i * 0.35}s`, background: i % 2 ? 'var(--gold)' : 'var(--fire2)' }} />)}
       <div className="k">{boss ? 'БОСС СЕЗОНА' : win ? 'ИДЕАЛЬНЫЙ ДЕНЬ' : 'НОВЫЙ УРОВЕНЬ'}</div>

@@ -24,3 +24,7 @@ export function pathLabel(season: GameState['season'], today: ISODate): { title:
   const into = season.xp - season.step * stepXp
   return { title, sub: `до ступени ${season.step + 1}: ${into} / ${stepXp} XP`, pct: (into / stepXp) * 100 }
 }
+
+/** Чип лиги: ступень и очки внутри неё (из perTier). */
+export const leagueChip = (l: GameState['league']): { name: string; into: number; of: 6 } =>
+  ({ name: l.name, into: Math.max(0, l.points - l.tier * BALANCE.league.perTier), of: BALANCE.league.perTier as 6 })

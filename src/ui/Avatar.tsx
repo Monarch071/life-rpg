@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react'
+import type { CosmeticSlot } from '../domain/cosmetics'
 import type { AvatarParams } from '../domain/types'
 
 export const HAIR_OPTIONS = ['short', 'spiky', 'long', 'ponytail'] as const
@@ -47,10 +48,19 @@ function light(hex: string, t = 0.55) {
   return `#${c.map(v => v.toString(16).padStart(2, '0')).join('')}`
 }
 
-interface Props { params: AvatarParams; tier: 1 | 2 | 3 | 4; shadow?: boolean; size?: number; decorative?: boolean; image?: string | null }
+// Носимые вещи (слои поверх силуэта); цвет — по происхождению вещи
+const WEAR_HEAD = 'M86 52 C84 32 104 20 121 27 C131 32 135 44 133 55 L124 50 C120 41 109 37 99 41 C93 44 90 48 89 54Z'
+const WEAR_NECK = 'M93 84 C100 93 116 91 123 82 L125 93 C117 101 100 101 91 95Z M117 94 L134 120 L125 123 L111 97Z'
+const WEAR_EMBLEM = 'M104 110 L111 119 L104 128 L97 119Z'
+const WEAR_COLOR: [RegExp, string][] = [[/^season:winter/, '#a9d1ff'], [/^season:spring/, '#5ee0a0'], [/^season:summer/, '#f3bd5a'], [/^season:autumn/, '#ffb16b'],
+  [/^rare:/, '#c9b8ff'], [/^trophy:/, '#ffd98a'], [/^shop:/, '#ffd98a']]
+const wearColor = (id: string) => WEAR_COLOR.find(([r]) => r.test(id))?.[1] ?? '#eef2ff'
+
+interface Props { params: AvatarParams; tier: 1 | 2 | 3 | 4; shadow?: boolean; size?: number; decorative?: boolean; image?: string | null
+  wear?: Partial<Record<CosmeticSlot, string>> }
 
 /** Тёмный аниме‑силуэт в полный рост с контурной подсветкой. Детали растут с тиром; shadow — фиолетовая Тень. */
-export default function Avatar({ params, tier, shadow = false, size = 220, decorative = false, image = null }: Props) {
+export default function Avatar({ params, tier, shadow = false, size = 220, decorative = false, image = null, wear = {} }: Props) {
   const [bad, setBad] = useState(false)
   useEffect(() => setBad(false), [image])
   const uid = useId().replace(/:/g, '')
@@ -125,7 +135,8 @@ export default function Avatar({ params, tier, shadow = false, size = 220, decor
         <ellipse cx={104} cy={330} rx={84} ry={11} opacity={0.4} />
       </g>}
 
-      {tier >= 2 && <path d={CAPE} fill={url('c')} stroke={url('r')} strokeWidth={2.4} strokeLinejoin="round" />}
+      {wear.cloak ? <path className="wear" d={CAPE} fill={wearColor(wear.cloak)} fillOpacity={0.3} stroke={wearColor(wear.cloak)} strokeWidth={2.4} strokeLinejoin="round" />
+        : tier >= 2 && <path d={CAPE} fill={url('c')} stroke={url('r')} strokeWidth={2.4} strokeLinejoin="round" />}
 
       {/* контур: обводка снизу, заливка сверху — видна только внешняя кромка */}
       <use href={`#${id('sil')}`} fill="none" stroke={url('r')} strokeWidth={6} strokeLinejoin="round" filter={url('g')} opacity={0.7} />
@@ -135,6 +146,11 @@ export default function Avatar({ params, tier, shadow = false, size = 220, decor
       {hair.back && <path d={hair.back} fill={params.hairColor} opacity={0.22} />}
       <path d={DETAIL} fill="none" stroke={glow} strokeOpacity={0.22} strokeWidth={1} strokeLinecap="round" />
       {tier >= 3 && <path d={PAULDRONS} fill="none" stroke={glow} strokeOpacity={0.55} strokeWidth={1} strokeLinejoin="round" />}
+
+      {wear.neck && <path className="wear" d={WEAR_NECK} fill={wearColor(wear.neck)} fillOpacity={0.75} stroke={wearColor(wear.neck)} strokeWidth={1} strokeLinejoin="round" />}
+      {wear.emblem && <path className="wear" d={WEAR_EMBLEM} fill={wearColor(wear.emblem)} stroke="#fff" strokeOpacity={0.6} strokeWidth={1} filter={url('g')} />}
+      {wear.emblem && <path className="wear" d={WEAR_EMBLEM} fill={wearColor(wear.emblem)} />}
+      {wear.head && <path className="wear" d={WEAR_HEAD} fill={wearColor(wear.head)} fillOpacity={0.8} stroke={wearColor(wear.head)} strokeWidth={1.2} strokeLinejoin="round" />}
 
       {/* глаза */}
       <g fill={glowL}>

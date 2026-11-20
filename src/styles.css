@@ -662,3 +662,56 @@ label.btn:focus-within { outline: 2px solid var(--fire); outline-offset: 2px; }
 .big-ico { width: 72px; height: 72px; border-radius: 20px; }
 .big-ico svg { width: 40px; height: 40px; }
 .btn.sm.ab { color: var(--fire2); border-color: color-mix(in srgb, var(--fire) 45%, transparent); }
+
+/* лига, ранг-предпросмотр, путь сезона */
+.league-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.league-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #ffffff10; box-shadow: inset 0 0 0 1px var(--line); font: 800 12px Manrope, sans-serif; color: var(--ice2); }
+.league-chip small { color: var(--muted); font-weight: 700; }
+.rank-pre { font: 700 11px Manrope, sans-serif; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+.rank-pre b { --rc: var(--muted); font: 900 18px Manrope, sans-serif; color: var(--rc); margin-left: 4px; }
+button.path-t { width: 100%; min-height: 44px; background: none; border: 0; padding: 0; color: inherit; text-align: left; cursor: pointer; }
+button.path-t small { display: inline-flex; align-items: center; gap: 2px; }
+button.path-t:focus-visible { outline: 2px solid var(--fire2); outline-offset: 2px; border-radius: 8px; }
+.weeks, .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.weeks li, .steps li { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.weeks .rk { width: 32px; height: 32px; font-size: 15px; border-radius: 9px; }
+.steps li { padding: 6px 8px; border-radius: 12px; border: 1px solid transparent; }
+.steps li .grow { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.steps li .grow small { color: var(--muted); font: 600 11px Manrope, sans-serif; }
+.steps .sn { width: 26px; height: 26px; flex: none; border-radius: 50%; display: grid; place-items: center; font: 800 12px Manrope, sans-serif; background: #ffffff10; color: var(--muted); }
+.steps li.got .sn { background: var(--ice); color: var(--bg); }
+.steps li.next { border-color: color-mix(in srgb, var(--fire) 50%, transparent); background: #f3bd5a12; }
+.steps li.next .sn { background: var(--fire); color: #1d1406; }
+.steps li.locked { opacity: 0.6; }
+
+/* разбор недели */
+.week-report { padding: 14px 16px; margin: 0 0 12px; display: flex; flex-direction: column; gap: 6px; }
+.week-report h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 16px; }
+.week-report h2 svg { color: var(--fire2); }
+.week-report h2 small { font: 600 12px Manrope, sans-serif; }
+.week-report p { margin: 0; }
+.week-report p:empty { display: none; }
+.week-report .rep { white-space: pre-line; overflow-wrap: anywhere; font-size: 14px; line-height: 1.45; }
+.week-report summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--fire2); font: 700 13px Manrope, sans-serif; }
+
+/* снаряжение: фон и рамка */
+.shelf h3 { margin: 4px 0 0; font-size: 14px; }
+.card.worn { border-color: color-mix(in srgb, var(--fire) 55%, transparent); }
+.stage-bg { position: absolute; inset: 0; z-index: -1; }
+.bg-winter .stage-bg { background: radial-gradient(80% 50% at 50% 100%, #1d2f5a 0%, transparent 70%), linear-gradient(180deg, #0a1430, #0d1a3c 60%, var(--bg));
+}
+.bg-winter .stage-bg::before { content: ""; position: absolute; inset: 0; background-image: radial-gradient(2px 2px at 20% 30%, #fff8, transparent), radial-gradient(1.5px 1.5px at 60% 10%, #fff9, transparent),
+  radial-gradient(2px 2px at 80% 50%, #fff7, transparent), radial-gradient(1.5px 1.5px at 35% 70%, #fff8, transparent), radial-gradient(2px 2px at 90% 85%, #fff6, transparent);
+  background-size: 240px 240px; animation: snow 14s linear infinite; }
+.bg-spring .stage-bg { background: radial-gradient(70% 50% at 70% 30%, #1f4a3a 0%, transparent 70%), linear-gradient(180deg, #0c1f24, var(--bg)); }
+.bg-summer .stage-bg { background: radial-gradient(70% 50% at 70% 25%, #5a3d14 0%, transparent 70%), linear-gradient(180deg, #1c1a2c, var(--bg)); }
+.bg-autumn .stage-bg { background: radial-gradient(70% 50% at 70% 30%, #5a2a14 0%, transparent 70%), linear-gradient(180deg, #1c1424, var(--bg)); }
+@keyframes snow { from { background-position: 0 0; } to { background-position: 40px 240px; } }
+@media (prefers-reduced-motion: reduce) { .bg-winter .stage-bg::before { animation: none; } }
+.ring.frame-winter { background: conic-gradient(#fff, var(--ice2), var(--ice), #fff); box-shadow: 0 0 22px var(--ice); }
+.ring.frame-spring { background: conic-gradient(#d9ffe9, var(--up), #2d8a5c, #d9ffe9); box-shadow: 0 0 22px var(--up); }
+.ring.frame-summer { background: conic-gradient(var(--fire2), var(--fire), var(--fire-deep), var(--fire2)); box-shadow: 0 0 22px var(--fire); }
+.ring.frame-autumn { background: conic-gradient(#ffd2a8, var(--cha), #9c4a1c, #ffd2a8); box-shadow: 0 0 22px var(--cha); }
+.lvlup.framed { background: radial-gradient(circle at 50% 42%, #6fb2ff55, transparent 65%), rgba(6, 6, 9, 0.96); }
+.lvlup.framed .huge { background: linear-gradient(160deg, var(--ice2), var(--ice)); }
+.lvlup.framed .rays { background: repeating-conic-gradient(#a9d1ff22 0 6deg, transparent 6deg 18deg); }
