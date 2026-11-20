@@ -29,6 +29,8 @@ import Timer, { readRunning, type TimerKind } from './Timer'
 import { autoHint, bannerKey, VITAL_LABEL, type VitalId } from '../ui/vitalsView'
 import { battleSeen, markBattleSeen, ritualChip } from '../ui/gameView'
 import BattleSheet from '../ui/BattleSheet'
+import { QuestAbility } from '../ui/ClassCard'
+import { questAbility } from '../ui/skillView'
 
 type Sheet = null | 'quick' | 'busy' | 'checkin' | 'changed' | 'custom' | 'timer' | 'recovery' | VitalId
 
@@ -165,10 +167,13 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       return false
     })
   }
-  const rerollOne = async (q: DayQuest) => {
+  const ctxNow = () => {
     const wakeAt = today.wakeAt ?? hhmmNow()
-    const ctx = assembleCtx(state, today.dayType ?? legacyDayType(today.work, wakeAt, profile.sleep), wakeAt, today.energy ?? BALANCE.energy.fallback)
-    const r = rerollCandidate(ctx, q, today.quests)
+    return assembleCtx(state, today.dayType ?? legacyDayType(today.work, wakeAt, profile.sleep), wakeAt, today.energy ?? BALANCE.energy.fallback)
+  }
+  const [abQuest, setAbQuest] = useState<DayQuest | null>(null)
+  const rerollOne = async (q: DayQuest) => {
+    const r = rerollCandidate(ctxNow(), q, today.quests)
     if (!r) { setErr('Замены того же ранга нет'); return }
     await appendEvent({ type: 'quest_rerolled', date: today.date, questId: q.id, replacement: r })
   }
@@ -233,6 +238,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
             <QuestCard key={q.id} q={q} i={i} pop={pop?.id === q.id ? pop.k : null} busy={busyIds.has(q.id)}
               reroll={rerollable(q) ? { ...rerollInfo, off: rerolling ? 'подожди…' : rerollInfo.off } : null}
               hint={autoHint(q, today.data)}
+              ability={questAbility(state, q) ? { name: state.cls.ability.name, onUse: () => setAbQuest(q) } : null}
               onTimer={!q.done && (q.templateId === 'focus' || q.templateId === 'read') ? () => openTimer(q.templateId === 'read' ? 'reading' : 'focus') : null}
               onDone={() => void complete(q.id)} onPhoto={f => void photo(q.id, f)} onReroll={() => void reroll(q)} />
           ))}
@@ -273,6 +279,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       {sheet === 'changed' && <DayChanged state={state} onClose={() => setSheet(null)} />}
       {sheet === 'custom' && <CustomQuest state={state} onClose={() => setSheet(null)} />}
       {sheet === 'timer' && <Timer initial={timerKind} onClose={() => setSheet(null)} />}
+      {abQuest && <QuestAbility state={state} q={abQuest} ctx={ctxNow} onClose={() => setAbQuest(null)} />}
       {sheet === 'recovery' && <Recovery state={state} onClose={() => setSheet(null)} />}
       {(sheet === 'hp' || sheet === 'energy' || sheet === 'focus' || sheet === 'fatigue') && <VitalInfo id={sheet} state={state} onClose={() => setSheet(null)} />}
       {!today.started && !later && <MyDay state={state} onLater={() => setLater(true)} />}

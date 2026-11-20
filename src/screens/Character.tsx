@@ -11,6 +11,7 @@ import { useBlobUrl } from '../blobs'
 import AvatarAi, { PhotoCta, type Go } from './AvatarAi'
 import StatRadar from '../ui/StatRadar'
 import Skills from './Skills'
+import ClassCard from '../ui/ClassCard'
 import { InterviewCta, Portrait } from './Interview'
 import Achievements from './Achievements'
 import Shadow from './Shadow'
@@ -124,6 +125,7 @@ export default function Character({ state, go, interview }: { state: GameState; 
           )
         })}
       </section>
+      <ClassCard state={state} />
       <Shadow state={state} />
       <StartLevel state={state} interview={interview} />
       {state.character ? <Portrait c={state.character} onRetake={interview} /> : <InterviewCta onStart={interview} />}

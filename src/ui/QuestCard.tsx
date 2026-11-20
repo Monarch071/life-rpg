@@ -1,4 +1,4 @@
-import { Camera, Check, Hand, Shuffle, Timer, Zap } from 'lucide-react'
+import { Camera, Check, Hand, Shuffle, Sparkles, Timer, Zap } from 'lucide-react'
 import { SKILL_CATALOG } from '../domain/skillCatalog'
 import type { DayQuest, Verify } from '../domain/types'
 
@@ -10,11 +10,12 @@ const VERIFY: Record<Verify, { Icon: typeof Zap; text: string }> = {
 const skillTitle = (id: string) => SKILL_CATALOG.find(s => s.id === id)?.title ?? id
 
 /** Карточка задания: ранг, навыки и окно, «почему», способ проверки, «+XP», галочка, фото и переброс. */
-export default function QuestCard({ q, i, pop, busy, reroll, hint, onDone, onPhoto, onReroll, onTimer }: {
+export default function QuestCard({ q, i, pop, busy, reroll, hint, ability = null, onDone, onPhoto, onReroll, onTimer }: {
   q: DayQuest; i: number; pop: number | null; busy: boolean
   hint: string | null                                     // «засчитается само: …»
   onTimer: (() => void) | null                            // таймер фокуса/чтения для этого задания
   reroll: { label: string; off: string | null } | null   // null — переброс недоступен для этого задания
+  ability?: { name: string; onUse: () => void } | null   // способность класса на этом задании (только когда доступна)
   onDone: () => void; onPhoto: (f: File) => void; onReroll: () => void
 }) {
   const v = VERIFY[q.done ? q.verify ?? 'honest' : q.auto ? 'auto' : 'honest']
@@ -47,6 +48,11 @@ export default function QuestCard({ q, i, pop, busy, reroll, hint, onDone, onPho
           {onTimer && (
             <button className="btn ghost sm" disabled={busy} onClick={onTimer} aria-label={`Таймер для задания: ${q.title}`}>
               <Timer size={16} aria-hidden="true" /> Таймер
+            </button>
+          )}
+          {ability && (
+            <button className="btn ghost sm ab" disabled={busy} onClick={ability.onUse} aria-label={`Способность «${ability.name}»: ${q.title}`}>
+              <Sparkles size={16} aria-hidden="true" /> {ability.name}
             </button>
           )}
           {reroll && (

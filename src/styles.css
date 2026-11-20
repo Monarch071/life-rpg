@@ -621,3 +621,44 @@ label.btn:focus-within { outline: 2px solid var(--fire); outline-offset: 2px; }
 .part-edit { border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin: 0; min-width: 0; }
 .part-edit legend { font: 700 13px Manrope, sans-serif; color: var(--muted); padding: 0 4px; }
 .stages li[aria-current="step"] { color: var(--fire2); font-weight: 700; }
+
+/* навыки: перки и ржавчина */
+.skill-row { width: 100%; background: none; border: 0; border-bottom: 1px solid #ffffff0d; color: inherit; text-align: left; font: inherit; min-height: 44px; cursor: pointer; }
+.skill-row .stat { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.skill-row .stat .n { flex: 1 1 auto; font-size: 14px; }
+.skill-row .stat .v { font: 800 13px Manrope, sans-serif; min-width: 0; }
+.skill-row:focus-visible { outline: 2px solid var(--fire2); outline-offset: 2px; border-radius: 8px; }
+.perk-dots { display: inline-flex; gap: 4px; }
+.pd { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; box-sizing: border-box; }
+.pd.on { background: var(--fire); box-shadow: 0 0 6px var(--fire); }
+.pd.half { background: linear-gradient(90deg, var(--fire) 50%, transparent 50%); border: 1px solid var(--fire); }
+.pd.off { border: 1px solid var(--muted); }
+.pd.locked { border: 1px dashed #ffffff33; }
+.rust { font: 700 11px Manrope, sans-serif; font-style: normal; padding: 2px 8px; border-radius: 999px; }
+.rust.warn, .rust-note.warn { color: var(--cha); background: color-mix(in srgb, var(--cha) 16%, transparent); }
+.rust.bad, .rust-note.bad { color: var(--str); background: color-mix(in srgb, var(--str) 16%, transparent); }
+.rust-note { padding: 8px 12px; border-radius: 12px; font: 600 13px Manrope, sans-serif; }
+.perk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.perk-list li { display: flex; gap: 10px; align-items: flex-start; }
+.perk-list li > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.perk-list li > .pd { margin-top: 4px; }
+.perk-list li.locked b { opacity: 0.6; }
+.perk-list.ex .rk { width: 32px; height: 32px; font-size: 15px; border-radius: 9px; }
+.perk-list .opt { width: 100%; justify-content: flex-start; text-align: left; min-height: 56px; padding: 6px 10px; }
+.perk-list .opt .grow { display: flex; flex-direction: column; }
+.perk-list .opt .rk { width: 32px; height: 32px; font-size: 15px; }
+.sheet h3 { margin: 4px 0 0; font-size: 15px; }
+
+/* класс */
+.class-card h2 { margin: 0; }
+.passive { margin: 0; font: 600 13px Manrope, sans-serif; }
+.passive.p2 b { color: var(--up); } .passive.p1 b { color: var(--fire2); } .passive.p0 b { color: var(--muted); }
+.card.ability .btn { width: 100%; flex-wrap: wrap; }
+.card.ability .btn small { flex-basis: 100%; font-size: 12px; }
+.weights { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+.weights li { display: flex; flex-direction: column; gap: 3px; font: 600 11px Manrope, sans-serif; color: var(--muted); min-width: 0; }
+.weights li > i { height: 4px; border-radius: 2px; background: #ffffff14; overflow: hidden; }
+.weights li > i > i { display: block; height: 100%; background: var(--c); }
+.big-ico { width: 72px; height: 72px; border-radius: 20px; }
+.big-ico svg { width: 40px; height: 40px; }
+.btn.sm.ab { color: var(--fire2); border-color: color-mix(in srgb, var(--fire) 45%, transparent); }
