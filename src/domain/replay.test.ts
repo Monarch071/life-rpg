@@ -62,7 +62,11 @@ test('season_theme_set меняет тему с даты события до к�
     issue('2026-12-06', [nq('i6', '2026-12-06', 'C', ['reading']), nq('s6', '2026-12-06', 'C', ['mobility'])]), done('2026-12-06', 'i6'), done('2026-12-06', 's6')];
   const s = replay(evs, at('2026-12-07'));
   const row = (id: string) => s.ledger.find(r => r.questId === id)!;
-  expect(row('i4').xp).toBe(59); expect(row('i6').xp).toBe(49); expect(row('s6').xp).toBe(59);
+  // разницы бонусов, а не числа XP: с depthSince добавляются пассивы класса и перки
+  const noTheme = replay(evs.filter(e => e.type !== 'season_theme_set'), at('2026-12-07')).ledger.find(r => r.questId === 's6')!;
+  const d = (a: number, b: number) => Math.round((a - b) * 1e9) / 1e9;
+  expect(d(row('i4').bonus, row('i6').bonus)).toBe(BALANCE.bonus.theme);   // Разум и дух → Тело: чтение без темы
+  expect(d(row('s6').bonus, noTheme.bonus)).toBe(BALANCE.bonus.theme);     // Мобильность — по теме Тело
   expect(s.season.theme).toBe('body');
   // мусорная тема игнорируется; следующий сезон стартует со своей темой
   expect(replay([ev({ type: 'season_theme_set', theme: 'magic', ts: at('2026-12-05') })], at('2026-12-07')).season.theme).toBe('mind_spirit');

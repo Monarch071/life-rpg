@@ -305,3 +305,36 @@ test('вещи: покупка один раз по цене каталога, �
     ev({ type: 'cosmetic_equipped', slot: cosmeticById(item)!.slot, itemId: null, ts: at(day, 13) })], at(day, 14));
   expect(off.cosmetics.equipped).toEqual({});
 });
+
+// ---- Fix round 1 ----
+test('отклонённая покупка вещи не блокирует следующую', () => {
+  const item = SHOP_COSMETICS.at(-1)!, price = cosmeticById(item)!.price!, d1 = addDays(D0, 1), d2 = addDays(D0, 18);
+  const buy = (d: string) => ev({ type: 'cosmetic_bought', itemId: item, ts: at(d, 9) });
+  const poor = replay([onb(rating('str', 'int')), buy(d1)], at(d1, 12));
+  expect(poor.cosmetics.owned.some(o => o.id === item)).toBe(false);
+  // приём покупок считает весь заработок: регрессия на «одна заявка на вещь» — вторая заявка не игнорируется, списание одно
+  const s = replay([onb(rating('str', 'int')), buy(d1), ...doneDays(addDays(D0, 2), 15, 'reading', 'S'), buy(d2)], at(d2, 12));
+  expect(s.cosmetics.owned.filter(o => o.id === item)).toHaveLength(1);
+  expect(s.gold).toBe(replay([onb(rating('str', 'int')), ...doneDays(addDays(D0, 2), 15, 'reading', 'S')], at(d2, 12)).gold - price);
+});
+test('отклонённое Прозрение не блокирует обычный переброс того же задания', () => {
+  const s = replay([onb(rating('str', 'int')), issue(T, [nq('a', T, 'E', ['reading'])]),
+    use(T, 'insight', { questId: 'a', replacement: nq('a1', T, 'E', ['languages'], { templateId: 'tl' }) }, 9),
+    ev({ type: 'quest_rerolled', date: T, questId: 'a', replacement: nq('a2', T, 'E', ['tech'], { templateId: 'tt' }), ts: at(T, 10) })], at(T, 12));
+  expect(s.today.quests.map(q => q.id)).toEqual(['a2']); expect(s.today.rerollsUsed).toBe(1);
+});
+test('задание под Рывком не перебрасывается', () => {
+  const s = replay([onb(rating('str', 'int')), issue(T, [nq('a', T, 'E', ['strength'])]), use(T, 'rush', { questId: 'a' }, 9),
+    ev({ type: 'quest_rerolled', date: T, questId: 'a', replacement: nq('a2', T, 'E', ['cardio'], { templateId: 'tc' }), ts: at(T, 10) })], at(T, 12));
+  expect(s.today.quests.map(q => q.id)).toEqual(['a']); expect(s.today).toMatchObject({ rerollsUsed: 0, ability: { rush: 'a' } });
+});
+test('Марш: время выполнения — пакет, достигший цели', () => {
+  const s = replay([onb(rating('end', 'spi')), issue(T, [nq('w', T, 'C', ['cardio'], { auto: { metric: 'steps', op: '>=', value: 8000 } })]),
+    ev({ type: 'health_packet', date: T, kind: 'other', health: { steps: 3000 }, calendar: [], ts: at(T, 13) }),
+    ev({ type: 'health_packet', date: T, kind: 'evening', health: { steps: 6400 }, calendar: [], ts: at(T, 20) }), use(T, 'march')], at(T, 22));
+  expect(xpOf(s, 'w').ts).toBe(at(T, 20));
+});
+test('ранг недели — с первого понедельника не раньше depthSince', () => {
+  const W0 = weekStart(D0), evs = [onb(rating('str', 'int')), ...week(W0)];
+  expect(replay(evs, at(addDays(W0, 7), 12)).week.results).toHaveLength(W0 >= D0 ? 1 : 0);
+});

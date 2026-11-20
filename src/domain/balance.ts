@@ -50,7 +50,7 @@ export const BALANCE = {
   dayChangedXp: 20,
   season:  { prologueEnd: '2026-11-30', stepXp: 600, steps: 30, stepGold: 50, itemEvery: 3, bgStep: 10, frameStep: 20, lookStep: 30, minStepXp: 60, roundStep: 10 },
   cosmeticPrices: [100, 150, 200, 300, 400, 500, 650, 800],
-  depthSince: '2026-12-16',   // игровая дата выхода этапа «Глубина»: раньше — без перков, пассивов, ржавчины, способностей, рангов недели
+  depthSince: '2026-11-22',   // игровая дата выхода этапа «Глубина»: раньше — без перков, пассивов, ржавчины, способностей, рангов недели
   perks:   { levels: [3, 6, 10], xpPct: 0.1, goldPct: 0.1, relapse: 5, streakMiss: 0.75, fatigueDecay: 3, pctFull: 0.8, flatMin: 0.4 },
   rust:    { days: 30, warnDays: 23, bonus: 0.5 },
   classes: { wandererSpread: 0.1, hysteresis: 0.05, passiveFull: 0.8, passiveHalf: 0.4,
