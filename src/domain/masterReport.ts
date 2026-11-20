@@ -97,8 +97,9 @@ export function seasonInput(state: GameState, seasonId: string): SeasonInput {
   const xpIn = (from: ISODate, to: ISODate) => state.ledger.reduce((a, r) => a + (r.date >= from && r.date <= to ? r.xp : 0), 0)
   const xpBefore = (d: ISODate) => state.ledger.reduce((a, r) => a + (r.date < d ? r.xp : 0), 0)
   const xp = sn.kind === 'prologue' ? 0 : xpIn(sn.start, end)
-  // рабочие дни сезона — финализированные без отдыха; прошлый сезон (не Пролог) — так же, иначе база
-  const work = (a: ISODate, b: ISODate) => { const ds = state.history.filter(h => h.date >= a && h.date <= b && !h.rest); return { xp: ds.reduce((s, h) => s + xpIn(h.date, h.date), 0), days: ds.length } }
+  // рабочие дни сезона — те же, что у индекса роста (growth: закрытые незамороженные, и без выдачи); прошлый сезон (не Пролог) — так же, иначе база
+  const work = (a: ISODate, b: ISODate) => [state.growth.current, ...state.growth.months].filter(m => m.month >= a.slice(0, 7) && m.month <= b.slice(0, 7))
+    .reduce((s, m) => ({ xp: s.xp + Math.round(m.xpPerDay * m.days), days: s.days + m.days }), { xp: 0, days: 0 })
   const prev = seasonOf(addDays(sn.start, -1))
   const g = growthIndex(work(sn.start, end), prev.kind === 'prologue' || sn.kind === 'prologue' ? null : work(prev.start, prev.end))
   const inSn = state.history.filter(h => h.date >= sn.start && h.date <= end)

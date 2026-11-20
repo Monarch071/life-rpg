@@ -539,7 +539,8 @@ export function replay(events: GameEvent[], now: number): GameState {
       }
       case 'ai_report': {
         // разбор сезона: weekStart — начало сезона; отдельно от недельных (1 марта — понедельник)
-        if (e.scope === 'season') { if (isDate(e.weekStart) && typeof e.text === 'string' && seasonOf(e.weekStart).start === e.weekStart) seasonRev.set(seasonOf(e.weekStart).id, e.text.slice(0, 4000)); break; }
+        // только закончившийся сезон: разбор пишется по итогам (игровая дата события после конца сезона)
+        if (e.scope === 'season') { if (isDate(e.weekStart) && typeof e.text === 'string' && seasonOf(e.weekStart).start === e.weekStart && seasonOf(e.weekStart).end < gd(e.ts)) seasonRev.set(seasonOf(e.weekStart).id, e.text.slice(0, 4000)); break; }
         if (!isDate(e.weekStart) || weekStart(e.weekStart) !== e.weekStart || typeof e.text !== 'string') break;
         const final = e.final === true;
         if (reports.get(e.weekStart)?.final && !final) break; // финальный не затираем предварительным
@@ -914,9 +915,11 @@ export function replay(events: GameEvent[], now: number): GameState {
   for (const [d, m] of metrics) if (plausibleSteps(m.steps) !== undefined) dayOf(d).steps = plausibleSteps(m.steps); // до цикла: золото достижений прошлых дней
   let goldSoFar = 0, xpSoFar = 0; // цикл идёт по датам: на начало дня d — строки с датой < d
   const statByDate = new Map<ISODate, Record<Stat, number>>(); // XP характеристик по датам — для «Перекоса» и Формы
+  const rivalXp = new Map<ISODate, number>();   // XP строк призрака и рекордов по датам — не идут в week_xp и сравнение недели
   const rawXp = new Map<ISODate, number>(); // XP дня без штрафов — «большой день» Усталости (без строк Тени: победа не утомляет)
   const add = (r: LedgerEntry) => {
-    ledger.push(r); if (r.source !== 'shadow') rawXp.set(r.date, (rawXp.get(r.date) ?? 0) + r.xp / (1 - r.penalty)); bump(r.date, 'xp', r.xp); goldSoFar += r.gold; xpSoFar += r.xp;
+    ledger.push(r); if (r.source === 'ghost' || r.source === 'record') rivalXp.set(r.date, (rivalXp.get(r.date) ?? 0) + r.xp);
+    if (r.source !== 'shadow') rawXp.set(r.date, (rawXp.get(r.date) ?? 0) + r.xp / (1 - r.penalty)); bump(r.date, 'xp', r.xp); goldSoFar += r.gold; xpSoFar += r.xp;
     const sd = statByDate.get(r.date) ?? fill(0);
     for (const k of STAT_KEYS) { statXp[k] += r.stats[k] ?? 0; sd[k] += r.stats[k] ?? 0; }
     statByDate.set(r.date, sd);
@@ -1176,6 +1179,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   // Соперник (спека §3–§5): x(d) — XP всех строк даты; призрак есть, если прошлый месяц целиком в сезоне (не Пролог).
   const RV = BALANCE.rival;
   const xOf = (d: ISODate) => days.get(d)?.xp ?? 0;
+  const xSelf = (d: ISODate) => xOf(d) - (rivalXp.get(d) ?? 0);   // без наград призрака и рекордов: награда не кормит следующую
   const hasGhost = (d: ISODate) => seasonOf(`${addDays(`${d.slice(0, 7)}-01`, -1).slice(0, 7)}-01`).kind !== 'prologue';
   // Рекорды — по всей истории, награда — только за побитый в день ≥ rivalSince; prev — лучший до текущего.
   const recs = new Map<RecordId, { value: number | null; date: ISODate | null; prev: number | null }>(RECORDS.map(r => [r.id, { value: null, date: null, prev: null }]));
@@ -1199,10 +1203,10 @@ export function replay(events: GameEvent[], now: number): GameState {
     recordAt('focus_day', d, f !== undefined && f <= RV.focusDayMax ? f : undefined);
     const ws = weekStart(d);
     if (addDays(ws, 6) !== d) return;
-    const g = d >= BALANCE.rivalSince ? ghostWeek(xOf, ws, hasGhost) : null;
+    const g = d >= BALANCE.rivalSince ? ghostWeek(xSelf, ws, hasGhost) : null;
     if (g && g.you > g.ghost) { add(flatRow(`ghost:${ws}`, closesAtTs(d, closeOf(d)), d, 'ghost', RV.ghostWeekXp, null)); weeksWon++; }
     let wx = 0, pages = 0;
-    for (let i = 0; i < 7; i++) { const x = addDays(ws, i), p = pagesT.get(x) ?? 0; wx += xOf(x); if (p > 0 && p <= RV.pagesDayMax) pages += p; }
+    for (let i = 0; i < 7; i++) { const x = addDays(ws, i), p = pagesT.get(x) ?? 0; wx += xSelf(x); if (p > 0 && p <= RV.pagesDayMax) pages += p; }
     recordAt('week_xp', d, wx); recordAt('pages_week', d, pages);
   };
   const xpOn = (ds: ISODate[], k: Stat) => ds.reduce((a, d) => a + (statByDate.get(d)?.[k] ?? 0), 0);
@@ -1605,7 +1609,9 @@ export function replay(events: GameEvent[], now: number): GameState {
   const gm = new Map<string, { xp: number; days: number }>();
   for (const d of workDays) { const m = d.slice(0, 7), g = gm.get(m) ?? { xp: 0, days: 0 }; g.xp += xOf(d); g.days++; gm.set(m, g); }
   const prevMonth = (m: string) => addDays(`${m}-01`, -1).slice(0, 7);
-  const gOf = (m: string) => { const c = gm.get(m) ?? { xp: 0, days: 0 }; return { ...growthIndex(c, gm.get(prevMonth(m)) ?? null), days: c.days }; };
+  // месяц Пролога — не прошлый месяц для сравнения, а база (как seasonInput)
+  const gOf = (m: string) => { const c = gm.get(m) ?? { xp: 0, days: 0 }, p = prevMonth(m);
+    return { ...growthIndex(c, seasonOf(`${p}-01`).kind === 'prologue' ? null : gm.get(p) ?? null), days: c.days }; };
   const growth: GameState['growth'] = { current: { month: today.slice(0, 7), ...gOf(today.slice(0, 7)) },
     months: [...new Set(closed.map(c => c.date.slice(0, 7)))].filter(m => lastDayOf(m) < today).sort().reverse().slice(0, 24)
       .map(m => { const { base: _, ...g } = gOf(m); return { month: m, ...g }; }) };

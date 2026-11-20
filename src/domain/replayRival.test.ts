@@ -84,3 +84,27 @@ test('история аватара — каждая принятая карти
     ev({ type: 'avatar_image', tier: 2, blob: 'b-2', ts: at('2027-01-05') })], at('2027-01-06'));
   expect(s.avatarHistory).toEqual([{ date: '2027-01-03', tier: 1, blob: 'a-1' }, { date: '2027-01-05', tier: 2, blob: 'b-2' }]);
 });
+// Ревью T4–5
+const noRival = (s: ReturnType<typeof replay>, d: string) => s.ledger.filter(r => r.date === d && r.source !== 'ghost' && r.source !== 'record').reduce((a, r) => a + r.xp, 0);
+test('week_xp и призрак недели — без строк ghost/record (нет обратной связи)', () => {
+  const s = replay([onb(rating('int', 'spi')), ...doneDays('2026-12-01', 41, 'reading', 'C')], at('2027-01-11', 12));
+  expect(s.ledger.some(r => r.source === 'ghost')).toBe(true);
+  let best = 0;
+  for (let ws = '2026-11-30'; addDays(ws, 6) < '2027-01-11'; ws = addDays(ws, 7)) best = Math.max(best, span(ws, 7).reduce((a, d) => a + noRival(s, d), 0));
+  expect(s.records.find(r => r.id === 'week_xp')!.value).toBe(best);
+});
+test('индекс роста: месяц Пролога — не prev, база', () => {
+  const s = replay([onb(rating('int', 'spi')), ...doneDays('2026-11-10', 52, 'reading', 'C')], at('2027-01-01', 12));
+  const dec = s.growth.months.find(m => m.month === '2026-12')!;
+  expect(dec.index).toBe(Math.round(100 * dec.xpPerDay / BALANCE.rival.growthBaseDayXp));
+});
+test('рост сезона в разборе — те же рабочие дни, что индекс роста (дни без выдачи тоже)', () => {
+  const s = replay([onb(rating('int', 'spi')), ...doneDays('2026-12-01', 10, 'reading', 'C'), ...doneDays('2026-12-21', 11, 'reading', 'C')], at('2027-01-01', 12));
+  const dec = s.growth.months.find(m => m.month === '2026-12')!;
+  expect(dec.days).toBe(31);
+  expect(seasonInput(s, seasonOf('2026-12-01').id).growth.xpPerDay).toBe(Math.round(dec.xpPerDay));
+});
+test('разбор сезона ИИ — только для закончившегося сезона', () => {
+  const s = replay([ev({ type: 'ai_report', weekStart: '2026-12-01', text: 'рано', final: true, scope: 'season', ts: at('2027-01-10') })], at('2027-03-02'));
+  expect(s.seasonReviews).toEqual([]);
+});
