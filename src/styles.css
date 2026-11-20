@@ -611,3 +611,14 @@ label.btn:focus-within { outline: 2px solid var(--fire); outline-offset: 2px; }
 .battle-result { display: flex; flex-direction: column; gap: 4px; text-align: center; animation: in 0.4s 1.4s cubic-bezier(0.2, 1.4, 0.4, 1) backwards; }
 .battle-result b { font: 800 22px Manrope, sans-serif; color: var(--fire2); }
 @media (prefers-reduced-motion: reduce) { .battle { display: none; } .shadow-fig { transition: none; } }
+
+/* босс сезона и сюжет */
+.bar.hp i { background: linear-gradient(#ff8fa3, var(--str)); box-shadow: 0 0 6px #ff6b8688; }
+.part.active { border-color: #9b7bff77; }
+.part.late { border-color: color-mix(in srgb, var(--fin) 60%, transparent); }
+.part.won { border-color: color-mix(in srgb, var(--up) 50%, transparent); }
+.part.won .bar.hp i { background: var(--up); }
+.part.muted, .part.lost { opacity: 0.6; }
+.part-edit { border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin: 0; min-width: 0; }
+.part-edit legend { font: 700 13px Manrope, sans-serif; color: var(--muted); padding: 0 4px; }
+.stages li[aria-current="step"] { color: var(--fire2); font-weight: 700; }

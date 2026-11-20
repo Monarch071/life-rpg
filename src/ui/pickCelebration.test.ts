@@ -15,3 +15,10 @@ describe('pickCelebration', () => {
   it('не идеальный → null', () => expect(pickCelebration(st(5, false), { level: 5 })).toBeNull())
   it('уровень приоритетнее', () => expect(pickCelebration(st(6, true), { level: 5 })?.kind).toBe('level'))
 })
+
+describe('победа над боссом сезона', () => {
+  const won = { ...st(5), seasonBoss: { seasonId: 'w2026', defeated: true } as never }
+  it('не показана → boss', () => expect(pickCelebration(won, { level: 5 })).toEqual({ kind: 'boss', seasonId: 'w2026' }))
+  it('показана → null', () => expect(pickCelebration(won, { level: 5, bossSeason: 'w2026' })).toBeNull())
+  it('уровень приоритетнее', () => expect(pickCelebration({ ...won, level: 6 }, { level: 5 })?.kind).toBe('level'))
+})

@@ -27,3 +27,12 @@ export function battleSeen(date: ISODate, store: Storage | null = ls()): boolean
 export function markBattleSeen(date: ISODate, store: Storage | null = ls()): void {
   try { store?.setItem(KEY, date) } catch { /* не критично */ }
 }
+
+type Part = NonNullable<GameState['seasonBoss']>['parts'][number]
+const TONE: Record<Part['status'], 'muted' | 'active' | 'late' | 'won' | 'lost'> = { upcoming: 'muted', active: 'active', late: 'late', defeated: 'won', escaped: 'lost' }
+
+/** Карточка части босса: подпись с HP, тон по статусу, следующий шаг (у законченной — нет). */
+export function partView(p: Omit<Part, 'steps'> & { steps: readonly Part['steps'][number][] }): { label: string; tone: 'muted' | 'active' | 'late' | 'won' | 'lost'; next: string | null } {
+  const over = p.status === 'defeated' || p.status === 'escaped'
+  return { label: `${p.title} · HP ${p.hp}`, tone: TONE[p.status], next: over ? null : p.steps.find(s => !s.done)?.title ?? null }
+}

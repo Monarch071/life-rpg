@@ -4,7 +4,7 @@ import { expect, test } from 'vitest'
 import { replay } from '../domain/replay'
 import type { GameEvent, GameState, Profile } from '../domain/types'
 import Home from '../screens/Home'
-import { battleSeen, markBattleSeen, ritualChip, shadowScale } from './gameView'
+import { battleSeen, markBattleSeen, partView, ritualChip, shadowScale } from './gameView'
 
 const profile: Profile = {
   name: 'Гэндальф', wake: '08:00', sleep: '23:00', workTemplates: [], goals: [], sportLevel: 1, stepsUsual: 5000,
@@ -44,4 +44,13 @@ test('на Главной нет имени грани', () => {
   expect(s.shadow.facets[0]?.name).toBe('СЕКРЕТ')
   const html = renderToStaticMarkup(createElement(Home, { state: s, profile: s.profile!, go: () => {}, interview: () => {} }))
   expect(html).not.toContain('СЕКРЕТ')
+})
+
+test('вид части босса', () => {
+  const p = { title: 'Часть 1', start: '2026-12-01', end: '2026-12-31', steps: [{ title: 'А', done: true }, { title: 'Б', done: false }], hits: 2, hp: 52, status: 'active' } as const
+  expect(partView(p)).toEqual({ label: 'Часть 1 · HP 52', tone: 'active', next: 'Б' })
+  expect(partView({ ...p, status: 'late' }).tone).toBe('late')
+  expect(partView({ ...p, status: 'upcoming' }).tone).toBe('muted')
+  expect(partView({ ...p, status: 'escaped' })).toMatchObject({ tone: 'lost', next: null })
+  expect(partView({ ...p, hp: 0, status: 'defeated' })).toMatchObject({ tone: 'won', next: null })
 })
