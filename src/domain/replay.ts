@@ -23,6 +23,7 @@ import { isStat, STATS, tierFor } from './stats';
 import { budgetVerdict, DEFAULT_CATEGORIES, limitFor, matchRule, normText, otherOf, periodTotals, validAmount, weekLimit } from './finance';
 import { matchWallet } from './csvImport';
 import { cleanText } from './text';
+import { ghostAt, ghostWeek, growthIndex, prevMonthSameDay, recordStep, RECORDS, streakRecord, type RecordId } from './rival';
 import type { Analysis, Answers, BossDraft, AutoMetric, ClassId, ClassState, PerkView, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, FinKind, FinPeriod, ImportRow, WeeklyQuest, WeekResult, WeekScore } from './types';
 import { weakestStat } from './weekly';
 import { energyScore, fatigueNext, focusScore, hpScore, intFocusMult, sessionMinutes, unionMinutes, workoutKind } from './vitals';
@@ -308,8 +309,11 @@ export function replay(events: GameEvent[], now: number): GameState {
   const finImports = new Map<string, { ts: number; rows: FinRow[] }>(), finRemoved = new Map<string, number>();
   const gameOp = (ts: number, op: GameOp) => { const d = gd(ts); if (d >= MIN_ISSUE_DATE) gameOps.set(d, [...(gameOps.get(d) ?? []), op]); };
 
+  // Соперник: дни открытия (не Shortcuts — их пишет Worker), история аватара, разборы сезона, страницы дня до закрытия (рекорд недели).
+  const openedTs: number[] = [], avatarHistory: GameState['avatarHistory'] = [], seasonRev = new Map<string, string>(), pagesT = new Map<ISODate, number>();
   for (const e of evs) {
     if (e.deviceId === 'shortcuts') sync.last = e.ts; // события по возрастанию ts
+    else openedTs.push(e.ts);
     switch (e.type) {
       case 'onboarding_completed': {
         if (!validProfile(e.profile)) break; // из сети
@@ -326,7 +330,10 @@ export function replay(events: GameEvent[], now: number): GameState {
       }
       case 'avatar_updated': if (validAvatar(e.params)) avatar = { hair: e.params.hair, hairColor: e.params.hairColor, outfitColor: e.params.outfitColor, eyes: e.params.eyes }; break;
       case 'avatar_image':
-        if (Number.isInteger(e.tier) && e.tier >= 1 && e.tier <= 4 && typeof e.blob === 'string' && BLOB.test(e.blob)) avatarImages[e.tier] = e.blob; // последний по ts
+        if (Number.isInteger(e.tier) && e.tier >= 1 && e.tier <= 4 && typeof e.blob === 'string' && BLOB.test(e.blob)) {
+          avatarImages[e.tier] = e.blob; // последний по ts
+          avatarHistory.push({ date: gd(e.ts), tier: e.tier, blob: e.blob });
+        }
         break;
       case 'quests_issued': {
         if (!isDate(e.date) || e.date < MIN_ISSUE_DATE || !nearTs(e.date, e.ts) || issued.has(e.date) || !Array.isArray(e.quests)) break; // побеждает первый
@@ -372,6 +379,8 @@ export function replay(events: GameEvent[], now: number): GameState {
         const lim = BALANCE.metricAbsMax;
         m[e.metric] = e.mode === 'add' ? Math.min(lim, Math.max(-lim, (m[e.metric] ?? 0) + e.value)) : e.value;
         metrics.set(e.date, m);
+        if (e.metric === 'readPages' && (e.date >= today || e.ts < closesAtTs(e.date, closeOf(e.date))))   // рекорд страниц — только принятое до закрытия дня
+          pagesT.set(e.date, e.mode === 'add' ? Math.min(lim, Math.max(-lim, (pagesT.get(e.date) ?? 0) + e.value)) : e.value);
         const amount = e.metric === 'spend' && e.mode === 'add' ? validAmount(e.value) : null;   // старые траты — записи «Прочее»
         if (amount !== null) finRaw.push({ id: `legacy:${e.id}`, ts: e.ts, date: e.date, kind: 'expense', amount, cat: 'default:other', text: '', norm: '', source: 'legacy' });
         break;
@@ -529,6 +538,8 @@ export function replay(events: GameEvent[], now: number): GameState {
         break;
       }
       case 'ai_report': {
+        // разбор сезона: weekStart — начало сезона; отдельно от недельных (1 марта — понедельник)
+        if (e.scope === 'season') { if (isDate(e.weekStart) && typeof e.text === 'string' && seasonOf(e.weekStart).start === e.weekStart) seasonRev.set(seasonOf(e.weekStart).id, e.text.slice(0, 4000)); break; }
         if (!isDate(e.weekStart) || weekStart(e.weekStart) !== e.weekStart || typeof e.text !== 'string') break;
         const final = e.final === true;
         if (reports.get(e.weekStart)?.final && !final) break; // финальный не затираем предварительным
@@ -1162,6 +1173,38 @@ export function replay(events: GameEvent[], now: number): GameState {
   const recAll = [...recSpans, ...(recOn ? [{ from: recOn.since, to: addDays(today, 1) }] : [])];
   // Форма по закрытым дням без отдыха (на момент вызова — все < at): окно 14; норма — из плана первые 30 дней, потом из факта за 60 дней.
   const workDays: ISODate[] = [];
+  // Соперник (спека §3–§5): x(d) — XP всех строк даты; призрак есть, если прошлый месяц целиком в сезоне (не Пролог).
+  const RV = BALANCE.rival;
+  const xOf = (d: ISODate) => days.get(d)?.xp ?? 0;
+  const hasGhost = (d: ISODate) => seasonOf(`${addDays(`${d.slice(0, 7)}-01`, -1).slice(0, 7)}-01`).kind !== 'prologue';
+  // Рекорды — по всей истории, награда — только за побитый в день ≥ rivalSince; prev — лучший до текущего.
+  const recs = new Map<RecordId, { value: number | null; date: ISODate | null; prev: number | null }>(RECORDS.map(r => [r.id, { value: null, date: null, prev: null }]));
+  let streakRec = { best: 0, armed: true }, weeksWon = 0;
+  const recordRow = (id: RecordId, d: ISODate) => {
+    if (d >= BALANCE.rivalSince) add(flatRow(`record:${id}:${d}`, closesAtTs(d, closeOf(d)), d, 'record', RV.recordXp, null));
+  };
+  const recordAt = (id: RecordId, d: ISODate, v: number | undefined) => {
+    const cur = recs.get(id)!, r = recordStep(cur.value, v !== undefined && v > 0 ? v : null);
+    if (r.best !== cur.value) recs.set(id, { value: r.best, date: d, prev: cur.value });
+    if (r.beaten) recordRow(id, d);
+  };
+  /** Закрытие дня d (только данные, принятые до закрытия): серия, шаги, фокус; в воскресенье — призрак и рекорды недели. */
+  const rivalDay = (d: ISODate) => {
+    const sr = streakRecord(streakRec, streak), sc = recs.get('streak')!;
+    streakRec = { best: sr.best, armed: sr.armed };
+    if (sr.best > (sc.value ?? 0)) recs.set('streak', { value: sr.best, date: d, prev: sr.beaten || sc.value === null ? sc.value : sc.prev });
+    if (sr.beaten) recordRow('streak', d);
+    recordAt('steps_day', d, hv(d).steps);   // hv: пакеты до закрытия, неправдоподобный максимум снят
+    const f = data.get(d)?.focusMin;
+    recordAt('focus_day', d, f !== undefined && f <= RV.focusDayMax ? f : undefined);
+    const ws = weekStart(d);
+    if (addDays(ws, 6) !== d) return;
+    const g = d >= BALANCE.rivalSince ? ghostWeek(xOf, ws, hasGhost) : null;
+    if (g && g.you > g.ghost) { add(flatRow(`ghost:${ws}`, closesAtTs(d, closeOf(d)), d, 'ghost', RV.ghostWeekXp, null)); weeksWon++; }
+    let wx = 0, pages = 0;
+    for (let i = 0; i < 7; i++) { const x = addDays(ws, i), p = pagesT.get(x) ?? 0; wx += xOf(x); if (p > 0 && p <= RV.pagesDayMax) pages += p; }
+    recordAt('week_xp', d, wx); recordAt('pages_week', d, pages);
+  };
   const xpOn = (ds: ISODate[], k: Stat) => ds.reduce((a, d) => a + (statByDate.get(d)?.[k] ?? 0), 0);
   const formsAt = (at: ISODate): Record<Stat, { form: number | null; norm: number; xp14: number }> => {
     const win = workDays.slice(-BALANCE.form.window), past = workDays.slice(-BALANCE.form.normDays);
@@ -1376,6 +1419,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       const m = d.slice(0, 7), b = budgetMonth(m), cents = (x: number) => Math.round(x * 100);
       if (b.inLimit) add(budgetRow(`budget:month:${m}`, d, FB.monthRank, 'budget', b.verify));
       if (b.t.income > 0 && cents(b.t.saving) >= cents(b.t.income) * FB.saveShare) add(budgetRow(`budget:save:${m}`, d, FB.saveRank, 'savings', b.verify));
+      recordAt('savings_month', d, b.t.saving);
     }
     if (d <= today) gameDay(d, qs);
     if (firstLadder && d >= firstLadder && d <= today) ladderDay(d);
@@ -1392,6 +1436,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     // порядок конца дня: задания → недельные → ступени пути → ранг недели (золото — в goldSoFar следующего дня)
     pathDay(d);
     if (addDays(d, -6) >= BALANCE.depthSince && addDays(weekStart(d), 6) === d) rankWeek(d);   // с первого понедельника ≥ depthSince
+    rivalDay(d);
     closed.push({ date: d, done: dq.length, rest }); if (!rest) workDays.push(d);
     if (!rest) idleRun = realDone || (ritualsOn.get(d)?.done ?? 0) > 0 ? 0 : idleRun + 1; // ритуал — тоже активность
     dayOf(d).streak = streak;
@@ -1545,6 +1590,28 @@ export function replay(events: GameEvent[], now: number): GameState {
     focus: a?.focus ?? [], questGuidance: a?.questGuidance ?? '', date: interview.date, ai: !!a,
   };
 
+  // Призрак на сегодня; неделя — по сегодня, если у всех её дней есть призрак; сезонный — сезон назад к тому же дню сезона.
+  const gNow = ghostAt(xOf, today, hasGhost), wkDays = Array.from({ length: 7 }, (_, i) => addDays(thisWeek, i)).filter(x => x <= today);
+  const prevSn = seasonOf(addDays(season.start, -1));
+  let snGhost: GameState['ghost']['season'] = null;
+  if (season.kind !== 'prologue' && prevSn.kind !== 'prologue') {
+    let xp = 0;
+    for (let k = season.start, p = prevSn.start; k <= today && p <= prevSn.end; k = addDays(k, 1), p = addDays(p, 1)) xp += xOf(p);
+    snGhost = { xp, step: Math.min(BALANCE.season.steps, Math.floor(xp / stepXpFor(prevSn, firstDay ?? null))) };
+  }
+  const ghost: GameState['ghost'] = { ...gNow, weeksWon, season: snGhost,
+    week: gNow.available && wkDays.every(hasGhost) ? wkDays.reduce((a, x) => { const p = prevMonthSameDay(x); return { you: a.you + xOf(x), ghost: a.ghost + (p ? xOf(p) : 0) }; }, { you: 0, ghost: 0 }) : null };
+  // Индекс роста: рабочие дни — закрытые, не замороженные (отдых, восстановление, день без заданий).
+  const gm = new Map<string, { xp: number; days: number }>();
+  for (const d of workDays) { const m = d.slice(0, 7), g = gm.get(m) ?? { xp: 0, days: 0 }; g.xp += xOf(d); g.days++; gm.set(m, g); }
+  const prevMonth = (m: string) => addDays(`${m}-01`, -1).slice(0, 7);
+  const gOf = (m: string) => { const c = gm.get(m) ?? { xp: 0, days: 0 }; return { ...growthIndex(c, gm.get(prevMonth(m)) ?? null), days: c.days }; };
+  const growth: GameState['growth'] = { current: { month: today.slice(0, 7), ...gOf(today.slice(0, 7)) },
+    months: [...new Set(closed.map(c => c.date.slice(0, 7)))].filter(m => lastDayOf(m) < today).sort().reverse().slice(0, 24)
+      .map(m => { const { base: _, ...g } = gOf(m); return { month: m, ...g }; }) };
+  const from400 = addDays(today, -400);
+  const opened = [...new Set(openedTs.map(gd))].filter(d => d > from400 && d <= today).sort();
+
   return {
     profile, avatar, avatarImages, totalXp, level, xpInto: into, xpNeed: need, startLevel,
     start: { source: start.source, scores: start.scores, levelWhy: start.levelWhy },
@@ -1574,6 +1641,8 @@ export function replay(events: GameEvent[], now: number): GameState {
     skills, rewards, purchases,
     weekly: { weekStart: thisWeek, quests: weeklyNow },
     bosses: [...bossMap.values()].filter(b => !b.abandoned),
+    seasonReviews: [...seasonRev].map(([seasonId, text]) => ({ seasonId, text })),
+    ghost, growth, records: RECORDS.map(r => ({ ...r, ...recs.get(r.id)! })), avatarHistory, activity: { opened },
     reports: [...reports].map(([weekStart, r]) => ({ weekStart, text: r.text, ...(r.final ? { final: true as const } : {}) })).sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1)),
     genWeekly: { weekStart: thisWeek, stats, multipliers, prevActiveDays, prevStatQuests, bestSteps7: best7(metrics, today, 'steps'), themeStat: theme ? THEMES[theme].stats[0] : null,
       easy: weekResults.find(r => r.weekStart === addDays(thisWeek, -7))?.rank === 'D',

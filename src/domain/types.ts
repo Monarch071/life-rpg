@@ -3,6 +3,7 @@ import type { ThemeId } from './calendar';
 import type { CosmeticSlot } from './cosmetics';
 import type { DayType } from './dayType';
 import type { WeekRank } from './rivalry';
+import type { RecordId } from './rival';
 import type { SkillId } from './skillCatalog';
 export type Stat = 'str'|'end'|'int'|'dis'|'cha'|'fin'|'spi';
 export type HHMM = string;            // '09:30'
@@ -87,7 +88,7 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'boss_stage_done'; bossId: string; stage: number }
   | { type: 'boss_abandoned'; bossId: string }
   | { type: 'ai_tuning'; date: ISODate; factors: Partial<Record<Stat, number>>; note: string }
-  | { type: 'ai_report'; weekStart: ISODate; text: string; final?: boolean }
+  | { type: 'ai_report'; weekStart: ISODate; text: string; final?: boolean; scope?: 'season' }   // season: weekStart — начало сезона
   | { type: 'avatar_image'; tier: 1|2|3|4; blob: string }
   | { type: 'interview_completed'; answers: Answers; followups: { q: string; a: string }[]; analysis: Analysis | null }
   | { type: 'season_theme_set'; theme: ThemeId }
@@ -130,7 +131,7 @@ export interface ClassState { id: ClassId; name: string; pair: [Stat, Stat] | nu
   passive: { text: string; power: 0 | 0.5 | 1 };
   ability: { id: AbilityId; name: string; desc: string; target: 'quest' | 'day' | 'week'; usedOn: ISODate | null; available: boolean };
   nextRecalc: ISODate; changedFrom: { id: ClassId; date: ISODate } | null }
-export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss' | 'ritual' | 'ladder' | 'shadow' | 'chain' | 'week_rank' | 'season_step' | 'budget';
+export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss' | 'ritual' | 'ladder' | 'shadow' | 'chain' | 'week_rank' | 'season_step' | 'budget' | 'ghost' | 'record';
   questId?: string; base: number; k: number; bonus: number; penalty: number; mult: number; xp: number; gold: number;
   skills: [SkillId, number][]; stats: Partial<Record<Stat, number>>; verified: boolean }
 /** legacy — задание без ранга (старый журнал): XP как сохранено, без проверки и бонусов. */
@@ -179,6 +180,16 @@ export interface GameState {
   weekly: { weekStart: ISODate; quests: (WeeklyQuest & { progress: number; done: boolean })[] };   // неделя сегодняшней игровой даты; без выдачи — []
   bosses: Boss[];         // кроме брошенных
   reports: { weekStart: ISODate; text: string; final?: true }[];   // недельные отчёты ИИ, по убыванию недели
+  seasonReviews: { seasonId: string; text: string }[];   // разборы сезона ИИ (ai_report scope 'season'), последний по ts на сезон
+  /** Призрак (спека §3.3): ты и прошлый месяц с 1-го числа по сегодня; week — текущая неделя по сегодня; season — сезон назад к тому же дню. */
+  ghost: { available: boolean; you: number; ghost: number; lead: number; week: { you: number; ghost: number } | null;
+    weeksWon: number; season: { step: number; xp: number } | null };
+  /** Индекс роста (спека §4): рабочие дни — закрытые, не замороженные; months — закрытые, по убыванию, до 24. */
+  growth: { current: { month: string; index: number | null; xpPerDay: number; days: number; base: 'prev' | 'base' };
+    months: { month: string; index: number | null; xpPerDay: number; days: number }[] };
+  records: { id: RecordId; title: string; value: number | null; date: ISODate | null; prev: number | null; unit: string }[];   // зал славы (спека §5)
+  avatarHistory: { date: ISODate; tier: 1 | 2 | 3 | 4; blob: string }[];   // каждое принятое avatar_image по ts
+  activity: { opened: ISODate[] };   // игровые даты событий не от Shortcuts, за 400 дней, по возрастанию
   genWeekly: WeeklyCtx & { easy: boolean; budget: boolean };   // easy — прошлая неделя закрыта рангом D; budget — на понедельник есть лимит   // контекст для generateWeeklyQuests текущей недели
   season: { id: string; kind: 'prologue' | 'winter' | 'spring' | 'summer' | 'autumn'; name: string; start: ISODate; end: ISODate; theme: ThemeId | null; xp: number; step: number;
     stepXp: number; joined: ISODate | null; rewards: { step: number; gold: number; items: string[]; date: ISODate }[]; title: string | null };   // путь сезона: цена ступени, первая игровая дата, полученные ступени

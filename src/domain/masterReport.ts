@@ -5,6 +5,10 @@ import { PERKS } from './perks'
 import { STATS } from './stats'
 import { BALANCE } from './balance'
 import { weakestStat } from './weekly'
+import { seasonOf, type Season } from './calendar'
+import { growthIndex } from './rival'
+import { stepXpFor } from './seasonPath'
+import { levelFromXp } from './xp'
 import type { GameState, ISODate, WeekScore } from './types'
 
 /** Белый список: только эти метрики уходят в промпты ИИ. Траты (в т.ч. ручные), магазины, приложения и места — никогда. */
@@ -75,4 +79,52 @@ export function weekReportOf(state: GameState): { weekStart: ISODate; text: stri
   const weekStart = reportWeek(state.today.date)
   const r = state.reports.find(x => x.weekStart === weekStart)
   return r ? { weekStart, text: r.text, ai: true, final: !!r.final } : { weekStart, text: reportByRules(reportInput(state, weekStart)), ai: false, final: false }
+}
+
+/** Вход разбора сезона (спека §9) — отдельный белый список: только числа и названия игры; без финансов, граней, названий частей босса и лестниц. */
+export interface SeasonInput { season: string; start: ISODate; end: ISODate; level: { start: number; end: number }; xp: number; step: number; steps: number;
+  growth: { index: number | null; xpPerDay: number; base: 'prev' | 'base' }; bestStreak: number; days: number; habitsMastered: number;
+  bossDefeated: boolean; facetsBanished: number; records: number; league: string; title: string | null; cls: string }
+
+const SEASON_START: Record<string, string> = { winter: '12', spring: '03', summer: '06', autumn: '09' }
+const seasonById = (id: string): Season => {
+  const [k, y] = id.split('-')
+  return SEASON_START[k] && /^\d{4}$/.test(y ?? '') ? seasonOf(`${y}-${SEASON_START[k]}-01`) : seasonOf(BALANCE.season.prologueEnd)
+}
+
+export function seasonInput(state: GameState, seasonId: string): SeasonInput {
+  const sn = seasonById(seasonId), end = state.today.date < sn.end ? state.today.date : sn.end, cur = state.season.id === sn.id
+  const xpIn = (from: ISODate, to: ISODate) => state.ledger.reduce((a, r) => a + (r.date >= from && r.date <= to ? r.xp : 0), 0)
+  const xpBefore = (d: ISODate) => state.ledger.reduce((a, r) => a + (r.date < d ? r.xp : 0), 0)
+  const xp = sn.kind === 'prologue' ? 0 : xpIn(sn.start, end)
+  // рабочие дни сезона — финализированные без отдыха; прошлый сезон (не Пролог) — так же, иначе база
+  const work = (a: ISODate, b: ISODate) => { const ds = state.history.filter(h => h.date >= a && h.date <= b && !h.rest); return { xp: ds.reduce((s, h) => s + xpIn(h.date, h.date), 0), days: ds.length } }
+  const prev = seasonOf(addDays(sn.start, -1))
+  const g = growthIndex(work(sn.start, end), prev.kind === 'prologue' || sn.kind === 'prologue' ? null : work(prev.start, prev.end))
+  const inSn = state.history.filter(h => h.date >= sn.start && h.date <= end)
+  return { season: sn.name, start: sn.start, end: sn.end,
+    level: { start: levelFromXp(xpBefore(sn.start), state.startLevel).level, end: levelFromXp(xpBefore(addDays(end, 1)), state.startLevel).level },
+    xp, step: cur ? state.season.step : Math.min(BALANCE.season.steps, Math.floor(xp / stepXpFor(sn, state.season.joined))), steps: BALANCE.season.steps,
+    growth: { index: g.index, xpPerDay: Math.round(g.xpPerDay), base: g.base },
+    bestStreak: inSn.reduce((a, h) => Math.max(a, h.streak), 0), days: inSn.length,
+    habitsMastered: state.ladders.filter(l => l.step >= 4).length,
+    bossDefeated: !!state.seasonBoss && state.seasonBoss.seasonId === sn.id && state.seasonBoss.defeated,
+    facetsBanished: state.shadow.facets.filter(f => f.banished).length,
+    // рекорд накоплений — финансовый факт, в ИИ не уходит
+    records: state.ledger.filter(r => r.source === 'record' && r.date >= sn.start && r.date <= end && !r.id.startsWith('record:savings_month:')).length,
+    league: state.league.name, title: cur ? state.season.title : null, cls: state.cls.name }
+}
+
+/** Разбор сезона правилами: 3 раздела, ≤ 1500 символов. */
+export function seasonReviewByRules(i: SeasonInput): string {
+  const idx = i.growth.index === null ? 'индекса роста нет — закрытых рабочих дней не было' : `индекс роста ${i.growth.index} (${i.growth.xpPerDay} XP в день против ${i.growth.base === 'base' ? 'базы' : 'прошлого сезона'})`
+  const got = [`Сезон «${i.season}»: уровень ${i.level.start} → ${i.level.end}, ${i.xp} XP, ступень пути ${i.step} из ${i.steps}${i.title ? `, титул «${i.title}»` : ''}.`,
+    `${idx[0].toUpperCase()}${idx.slice(1)}. Лучшая серия — ${i.bestStreak} дн., лига — ${i.league}.`,
+    ...(i.habitsMastered ? [`Освоено привычек: ${i.habitsMastered}.`] : []), ...(i.bossDefeated ? ['Босс сезона побеждён.'] : []),
+    ...(i.facetsBanished ? [`Изгнано граней тени: ${i.facetsBanished}.`] : []), ...(i.records ? [`Новых рекордов: ${i.records}.`] : [])]
+  const miss = [...(i.step < i.steps ? [`Путь сезона не пройден до конца (${i.step}/${i.steps}).`] : []), ...(!i.bossDefeated ? ['Босс сезона не побеждён.'] : []),
+    ...(i.growth.index !== null && i.growth.index < 100 ? ['Темп ниже прошлого — XP в день упал.'] : []), ...(!i.habitsMastered ? ['Ни одна привычка не дошла до 4-й ступени.'] : [])]
+  const next = [i.growth.index !== null && i.growth.index >= 100 ? 'Держи темп и подними планку: одна новая лестница привычки.' : 'Меньше заданий, но каждый день: вернуть серию важнее объёма.',
+    `Класс «${i.cls}» — используй способность каждую неделю.`]
+  return [`Что получилось\n${got.join(' ')}`, `Что нет\n${miss.length ? miss.join(' ') : 'Явных провалов нет.'}`, `Что взять в следующий сезон\n${next.join(' ')}`].join('\n\n').slice(0, 1500)
 }
