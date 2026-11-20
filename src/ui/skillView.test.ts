@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
-import type { DayQuest, GameState, PerkView, SkillState, WeeklyQuest } from '../domain/types'
-import { abilityOff, classChangeText, perkDot, planQuests, questAbility, rustBadge } from './skillView'
+import type { AbilityId2, DayQuest, GameState, PerkView, SkillState, WeeklyQuest } from '../domain/types'
+import { abilityOff, abilityTarget, auditTips, classChangeText, perkDot, planQuests, questAbility, questAbility2, rustBadge, trialText } from './skillView'
 
 test('бейдж ржавчины', () => {
   expect(rustBadge({ idleDays: 25, rusty: false } as SkillState)).toEqual({ text: 'ржавеет через 5 дн.', tone: 'warn' })
@@ -50,4 +50,28 @@ test('объяснение смены класса', () => {
   const base = { name: 'Воин', pair: ['str', 'end'], weights, changedFrom: { id: 'sage', date: '2026-12-01' } } as unknown as GameState['cls']
   expect(classChangeText(base)).toBe('Пара «Сила + Выносливость» обогнала «Выносливость + Интеллект» на 22% — теперь ты Воин.')
   expect(classChangeText({ ...base, pair: null, name: 'Странник' })).toBe('Характеристики выровнялись — теперь ты Странник, а не Мудрец.')
+})
+
+test('текст испытания и цели способностей', () => {
+  expect(trialText({ classId: 'champion', start: '2027-01-20', day: 6, counted: 5, focusDone: 4, need: { days: 10, quests: 8 } })).toBe('Испытание: день 6/14 · засчитано 5/10 · заданий фокуса 4/8')
+  expect(['record', 'vow', 'fast', 'invest', 'wall', 'saga', 'explore'].map(a => abilityTarget(a as AbilityId2))).toEqual(['quest', 'skill', 'facet', 'invest', 'day', 'card', 'chain'])
+})
+
+test('вторая способность на задании: только фокус пути и доступность', () => {
+  const st = (id: string, available = true) => ({ cls: { advanced: { id, ability: { id: 'record', available } } } }) as unknown as GameState
+  const q = (o: Partial<DayQuest>) => ({ done: false, dropped: false, legacy: false, kind: 'daily', skills: ['strength'], ...o }) as DayQuest
+  expect(questAbility2(st('champion'), q({}))).toBe(true)
+  expect(questAbility2(st('champion'), q({ skills: ['reading'] }))).toBe(false)
+  expect(questAbility2(st('champion', false), q({}))).toBe(false)
+  expect(questAbility2(st('champion'), q({ kind: 'custom' }))).toBe(false)
+  expect(questAbility2({ cls: { advanced: null } } as unknown as GameState, q({}))).toBe(false)
+})
+
+test('«Аудит»: три совета по правилам, без сумм', () => {
+  const fin = { month: { income: 1000, saving: 0, expense: 900, byCat: [{ id: 'a', spent: 600, limit: 500 }, { id: 'b', spent: 300, limit: null }] }, uncategorized: 4,
+    categories: [{ id: 'a', title: 'Еда' }, { id: 'b', title: 'Кафе' }] } as unknown as GameState['finance']
+  const tips = auditTips(fin)
+  expect(tips).toHaveLength(3)
+  expect(tips.join(' ')).toContain('Еда')
+  expect(tips.join(' ')).not.toMatch(/600|500|1000|900/)
 })

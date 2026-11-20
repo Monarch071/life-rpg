@@ -765,3 +765,6 @@ button.path-t:focus-visible { outline: 2px solid var(--fire2); outline-offset: 2
 .review .rv { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; border: 1px solid currentColor; }
 .verdict { padding: 10px 12px; border-radius: 12px; background: var(--card2); }
 .sheet .rep { white-space: pre-line; overflow-wrap: anywhere; font-size: 14px; line-height: 1.45; }
+.adv-path p { margin: 0; }
+.adv-path .perk-list .btn { margin-top: 6px; }
+.audit { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; line-height: 1.4; }

@@ -29,8 +29,8 @@ import Timer, { readRunning, type TimerKind } from './Timer'
 import { autoHint, bannerKey, VITAL_LABEL, type VitalId } from '../ui/vitalsView'
 import { battleSeen, markBattleSeen, ritualChip } from '../ui/gameView'
 import BattleSheet from '../ui/BattleSheet'
-import { QuestAbility } from '../ui/ClassCard'
-import { questAbility } from '../ui/skillView'
+import { QuestAbility, QuestAbility2 } from '../ui/ClassCard'
+import { questAbility, questAbility2 } from '../ui/skillView'
 import SeasonPath from './SeasonPath'
 import { getAiConfig } from '../ai/config'
 import { aiWeeklyReport } from '../ai/tasks'
@@ -187,6 +187,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
     return assembleCtx(state, today.dayType ?? legacyDayType(today.work, wakeAt, profile.sleep), wakeAt, today.energy ?? BALANCE.energy.fallback)
   }
   const [abQuest, setAbQuest] = useState<DayQuest | null>(null)
+  const [ab2Quest, setAb2Quest] = useState<DayQuest | null>(null)
   const rerollOne = async (q: DayQuest) => {
     const r = rerollCandidate(ctxNow(), q, today.quests)
     if (!r) { setErr('Замены того же ранга нет'); return }
@@ -256,6 +257,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
               reroll={rerollable(q) ? { ...rerollInfo, off: rerolling ? 'подожди…' : rerollInfo.off } : null}
               hint={autoHint(q, today.data)}
               ability={questAbility(state, q) ? { name: state.cls.ability.name, onUse: () => setAbQuest(q) } : null}
+              ability2={questAbility2(state, q) ? { name: state.cls.advanced!.ability.name, onUse: () => setAb2Quest(q) } : null}
               onTimer={!q.done && (q.templateId === 'focus' || q.templateId === 'read') ? () => openTimer(q.templateId === 'read' ? 'reading' : 'focus') : null}
               onDone={() => void complete(q.id)} onPhoto={f => void photo(q.id, f)} onReroll={() => void reroll(q)} />
           ))}
@@ -296,6 +298,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       {sheet === 'changed' && <DayChanged state={state} onClose={() => setSheet(null)} />}
       {sheet === 'custom' && <CustomQuest state={state} onClose={() => setSheet(null)} />}
       {sheet === 'timer' && <Timer initial={timerKind} onClose={() => setSheet(null)} />}
+      {ab2Quest && state.cls.advanced && <QuestAbility2 state={state} q={ab2Quest} onClose={() => setAb2Quest(null)} />}
       {abQuest && <QuestAbility state={state} q={abQuest} ctx={ctxNow} onClose={() => setAbQuest(null)} />}
       {sheet === 'season' && <SeasonPath state={state} onClose={() => setSheet(null)} />}
       {sheet === 'recovery' && <Recovery state={state} onClose={() => setSheet(null)} />}

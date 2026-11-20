@@ -10,12 +10,13 @@ const VERIFY: Record<Verify, { Icon: typeof Zap; text: string }> = {
 const skillTitle = (id: string) => SKILL_CATALOG.find(s => s.id === id)?.title ?? id
 
 /** Карточка задания: ранг, навыки и окно, «почему», способ проверки, «+XP», галочка, фото и переброс. */
-export default function QuestCard({ q, i, pop, busy, reroll, hint, ability = null, onDone, onPhoto, onReroll, onTimer }: {
+export default function QuestCard({ q, i, pop, busy, reroll, hint, ability = null, ability2 = null, onDone, onPhoto, onReroll, onTimer }: {
   q: DayQuest; i: number; pop: number | null; busy: boolean
   hint: string | null                                     // «засчитается само: …»
   onTimer: (() => void) | null                            // таймер фокуса/чтения для этого задания
   reroll: { label: string; off: string | null } | null   // null — переброс недоступен для этого задания
   ability?: { name: string; onUse: () => void } | null   // способность класса на этом задании (только когда доступна)
+  ability2?: { name: string; onUse: () => void } | null  // вторая способность продвинутого класса («Рекорд», «Союз», «Сбор»)
   onDone: () => void; onPhoto: (f: File) => void; onReroll: () => void
 }) {
   const v = VERIFY[q.done ? q.verify ?? 'honest' : q.auto ? 'auto' : 'honest']
@@ -53,6 +54,11 @@ export default function QuestCard({ q, i, pop, busy, reroll, hint, ability = nul
           {ability && (
             <button className="btn ghost sm ab" disabled={busy} onClick={ability.onUse} aria-label={`Способность «${ability.name}»: ${q.title}`}>
               <Sparkles size={16} aria-hidden="true" /> {ability.name}
+            </button>
+          )}
+          {ability2 && (
+            <button className="btn ghost sm ab" disabled={busy} onClick={ability2.onUse} aria-label={`Способность «${ability2.name}»: ${q.title}`}>
+              <Sparkles size={16} aria-hidden="true" /> {ability2.name}
             </button>
           )}
           {reroll && (
