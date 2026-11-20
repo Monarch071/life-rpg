@@ -570,3 +570,44 @@ label.btn:focus-within { outline: 2px solid var(--fire); outline-offset: 2px; }
 .src-list b { font-weight: 700; color: var(--muted); }
 .sheet h2 svg { vertical-align: -2px; }
 @media (prefers-reduced-motion: reduce) { .vital > i > i { transition: none; } }
+
+/* игровой слой: ритуалы, лестницы, тень, битва */
+.rituals h2 { font-size: 15px; margin: 4px 0 8px; }
+.rituals ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ritual { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 8px 12px; text-align: left; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; }
+.ritual .rd { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; }
+.ritual .rt { min-width: 0; display: flex; flex-direction: column; }
+.ritual .rt b { font: 700 14px Manrope, sans-serif; overflow-wrap: anywhere; }
+.ritual .rt small { font: 600 11px Manrope, sans-serif; color: var(--muted); }
+.ritual.done .rd, .ritual.auto .rd { background: var(--up); border-color: var(--up); color: #062a12; }
+.ritual.done, .ritual.auto { border-color: color-mix(in srgb, var(--up) 50%, transparent); }
+.ritual.later { opacity: 0.75; }
+.ritual:disabled { cursor: default; }
+.qbadge { font: 800 10px Manrope, sans-serif; font-style: normal; letter-spacing: 0.5px; text-transform: uppercase; padding: 2px 6px; border-radius: 6px; margin-right: 6px; vertical-align: 1px; background: var(--shadow); color: #12071f; }
+.qbadge.chain { background: var(--ice); color: #06122a; }
+.lad-steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; }
+.lad-steps li { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); }
+.lad-steps li.on { background: var(--fire); border-color: var(--fire); box-shadow: 0 0 6px #f3bd5a88; }
+.lad-q { align-items: center; }
+.lad-edit { align-items: flex-end; }
+.lad-edit .per7 { flex: 0 0 96px; }
+.lad-edit .select { min-height: 44px; }
+.bar.sh i { background: linear-gradient(var(--shadow2), var(--shadow)); box-shadow: 0 0 6px #9b7bff88; }
+.btn.on-shadow { background: color-mix(in srgb, var(--shadow) 35%, transparent); border-color: var(--shadow); }
+.trophies { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.trophy { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card2); font: 700 13px Manrope, sans-serif; }
+.trophy span { display: flex; flex-direction: column; }
+.trophy small { color: var(--muted); font-weight: 600; }
+.trophy.rare svg { color: var(--shadow); } .trophy.legendary svg { color: var(--gold); } .trophy.avatar svg { color: var(--up); }
+.shadow-fig { position: absolute; left: 4%; bottom: 80px; transform-origin: 50% 100%; pointer-events: none; }
+.battle { position: relative; height: 200px; border-radius: 18px; overflow: hidden; background: linear-gradient(180deg, #101a33, #070b18); border: 1px solid var(--line); }
+.battle > span { position: absolute; bottom: 0; }
+.bt-me { left: 4%; animation: bt-me 1.5s ease-in-out both; }
+.bt-sh { right: 4%; animation: bt-sh 1.5s ease-in-out both; }
+.bt-flash { position: absolute; inset: 0; background: radial-gradient(circle at 50% 55%, #fff 0%, #f3bd5a88 30%, transparent 60%); opacity: 0; animation: bt-flash 1.5s ease-out both; pointer-events: none; }
+@keyframes bt-me { 0% { transform: translateX(-30px); } 60% { transform: translateX(40px); } 100% { transform: translateX(10px); } }
+@keyframes bt-sh { 0% { transform: scaleX(-1) translateX(-30px); } 60% { transform: scaleX(-1) translateX(40px); } 100% { transform: scaleX(-1) translateX(10px); } }
+@keyframes bt-flash { 0%, 55% { opacity: 0; } 65% { opacity: 1; } 100% { opacity: 0; } }
+.battle-result { display: flex; flex-direction: column; gap: 4px; text-align: center; animation: in 0.4s 1.4s cubic-bezier(0.2, 1.4, 0.4, 1) backwards; }
+.battle-result b { font: 800 22px Manrope, sans-serif; color: var(--fire2); }
+@media (prefers-reduced-motion: reduce) { .battle { display: none; } .shadow-fig { transition: none; } }

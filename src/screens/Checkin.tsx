@@ -1,13 +1,22 @@
 import { useRef, useState } from 'react'
 import { X, Zap } from 'lucide-react'
-import { appendEvent } from '../db'
+import { appendEvents } from '../db'
+import { BALANCE } from '../domain/balance'
+import type { GameState } from '../domain/types'
 import { getAiConfig } from '../ai/config'
 import { aiTuning } from '../ai/tasks'
 import { loadState } from '../useGame'
 import { useDialog } from '../ui/useDialog'
 
-/** Вечерний чек‑ин: что получилось / что нет / энергия 1–10. */
-export default function Checkin({ date, onClose }: { date: string; onClose: () => void }) {
+const toggle = (set: Set<string>, id: string) => { const n = new Set(set); if (!n.delete(id)) n.add(id); return n }
+
+/** Вечерний чек‑ин: ритуалы, срывы Тени, что получилось / что нет / энергия 1–10. Дата — игровая. */
+export default function Checkin({ state, onClose }: { state: GameState; onClose: () => void }) {
+  const date = state.today.date
+  const rituals = state.ladders.filter(l => (l.status === 'active' || l.status === 'auto') && !l.todayDone)
+  const facets = state.shadow.facets.filter(f => !f.banished && !f.relapsedToday)
+  const [rit, setRit] = useState<Set<string>>(new Set())
+  const [rel, setRel] = useState<Set<string>>(new Set())
   const [went, setWent] = useState('')
   const [notWent, setNotWent] = useState('')
   const [energy, setEnergy] = useState<number | null>(null)
@@ -23,13 +32,18 @@ export default function Checkin({ date, onClose }: { date: string; onClose: () =
     setSaving(true)
     try {
       const c = { went: went.trim(), notWent: notWent.trim(), energy }
-      await appendEvent({ type: 'checkin', date, ...c })
+      // отдельными событиями до чек-ина, атомарно
+      await appendEvents([
+        ...[...rit].map(ladderId => ({ type: 'ritual_done' as const, ladderId, date })),
+        ...[...rel].map(facetId => ({ type: 'shadow_relapse' as const, facetId, date })),
+        { type: 'checkin', date, ...c },
+      ])
       onClose()
       void (async () => { // фон: ошибки ИИ молча игнорируются
         const cfg = await getAiConfig()
         if (!cfg) return
         const t = await aiTuning(cfg, await loadState(), c)
-        await appendEvent({ type: 'ai_tuning', date, ...t })
+        await appendEvents([{ type: 'ai_tuning', date, ...t }])
       })().catch(() => {})
     } catch {
       setErr('Не удалось сохранить, попробуй ещё раз')
@@ -45,6 +59,25 @@ export default function Checkin({ date, onClose }: { date: string; onClose: () =
           <h2 id="ci-title">Чек‑ин дня</h2>
           <button className="icon-btn" aria-label="Закрыть" onClick={onClose}><X size={20} aria-hidden="true" /></button>
         </div>
+        {rituals.length > 0 && (
+          <div className="field" role="group" aria-label="Ритуалы">
+            <span>Ритуалы сегодня</span>
+            <div className="chips">{rituals.map(l => (
+              <button key={l.id} type="button" className={`btn${rit.has(l.id) ? ' primary' : ''}`} aria-pressed={rit.has(l.id)}
+                onClick={() => setRit(toggle(rit, l.id))}>{l.title} · {l.label}</button>
+            ))}</div>
+          </div>
+        )}
+        {facets.length > 0 && (
+          <div className="field" role="group" aria-label="Тень">
+            <span>Тень</span>
+            <div className="chips">{facets.map(f => (
+              <button key={f.id} type="button" className={`btn${rel.has(f.id) ? ' on-shadow' : ' ghost'}`} aria-pressed={rel.has(f.id)}
+                onClick={() => setRel(toggle(rel, f.id))}>Был срыв: {f.name}</button>
+            ))}</div>
+            <small className="muted">Честно — +{BALANCE.shadow.honestXp} XP. Срыв — это данные, а не наказание.</small>
+          </div>
+        )}
         <label className="field">Что получилось
           <textarea rows={3} maxLength={500} value={went} onChange={e => setWent(e.target.value)} />
         </label>

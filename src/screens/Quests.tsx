@@ -4,6 +4,7 @@ import { StatIcon } from '../ui/icons'
 import XpBar from '../ui/XpBar'
 import { STATS } from '../domain/stats'
 import Confirm from '../ui/Confirm'
+import Ladders from './Ladders'
 import { useWrite } from '../ui/useWrite'
 import type { GameState, Stat } from '../domain/types'
 
@@ -60,6 +61,7 @@ export default function Quests({ state }: { state: GameState }) {
           </div>
         ))}
       </section>
+      <Ladders state={state} />
       <section className="panel stack" aria-label="Боссы">
         <h1>Боссы</h1>
         {state.bosses.length === 0 && <p className="muted">Боссов пока нет — создай первого ниже.</p>}

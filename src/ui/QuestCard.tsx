@@ -24,7 +24,7 @@ export default function QuestCard({ q, i, pop, busy, reroll, hint, onDone, onPho
     <li className={`q${q.done ? ' done' : ''}`} style={{ '--i': i } as React.CSSProperties}>
       <span className={`rk rk-${q.rank}`} role="img" aria-label={`Ранг ${q.rank}`}>{q.rank}</span>
       <div className="t">
-        <b>{q.title}</b>
+        <b>{(q.kind === 'boss' || q.kind === 'chain') && <em className={`qbadge ${q.kind}`}>{q.kind === 'boss' ? 'Босс' : 'Сюжет'}</em>}{q.title}</b>
         <small>{q.skills.map(skillTitle).join(' + ')} · {q.window ? `${q.window.start}–${q.window.end}` : 'в течение дня'}</small>
         {q.why && <small className="why">{q.why}</small>}
         {hint && <small className="auto-hint">{hint}</small>}

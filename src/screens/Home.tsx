@@ -27,6 +27,8 @@ import { replanToday } from './replan'
 import Recovery from './Recovery'
 import Timer, { readRunning, type TimerKind } from './Timer'
 import { autoHint, bannerKey, VITAL_LABEL, type VitalId } from '../ui/vitalsView'
+import { battleSeen, markBattleSeen, ritualChip } from '../ui/gameView'
+import BattleSheet from '../ui/BattleSheet'
 
 type Sheet = null | 'quick' | 'busy' | 'checkin' | 'changed' | 'custom' | 'timer' | 'recovery' | VitalId
 
@@ -118,6 +120,16 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
     if (!keep) pending.current.delete(id)
     setBusyIds(new Set(pending.current))
   }
+  // ритуал — честное слово за игровую дату
+  const ritual = (id: string) => guarded(`rit:${id}`, 'Не удалось отметить ритуал, попробуй ещё раз', async () => {
+    await appendEvent({ type: 'ritual_done', ladderId: id, date: today.date })
+    return true
+  })
+  const rituals = state.ladders.filter(l => l.status === 'active' || l.status === 'auto')
+  const battle = state.shadow.lastBattle
+  const [battleOpen, setBattleOpen] = useState(() => !!battle && !battleSeen(battle.date))
+  useEffect(() => { if (battle && !battleSeen(battle.date)) setBattleOpen(true) }, [battle?.date]) // eslint-disable-line react-hooks/exhaustive-deps
+  const closeBattle = () => { if (battle) markBattleSeen(battle.date); setBattleOpen(false) }
   const celebrate = (id: string) => {
     setPop({ id, k: Date.now() })
     setTimeout(() => setPop(p => (p?.id === id ? null : p)), 1200)
@@ -189,6 +201,25 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       {today.aiNote && <p className="muted center ai-note"><Bot size={14} aria-hidden="true" /> {today.aiNote}</p>}
       {fallback && <p className="muted center" role="status">ИИ недоступен — задания по правилам</p>}
 
+      {rituals.length > 0 && (
+        <section className="rituals" aria-label="Ритуалы">
+          <h2>Ритуалы</h2>
+          <ul>{rituals.map(l => {
+            const c = ritualChip(l), on = c.state === 'done' || c.state === 'auto'
+            return (
+              <li key={l.id}>
+                <button className={`ritual ${c.state}`} aria-pressed={on} disabled={on || c.state === 'later' || busyIds.has(`rit:${l.id}`)}
+                  aria-label={`${c.text}, ${c.sub}${c.state === 'auto' ? ', засчитано по данным' : c.state === 'later' ? ', отметь в вечернем чек-ине' : on ? ', выполнено' : ''}`}
+                  onClick={() => void ritual(l.id)}>
+                  <span className="rd" aria-hidden="true">{on && <Check size={16} />}</span>
+                  <span className="rt"><b>{c.text}</b><small>{c.state === 'auto' ? 'авто · ' : ''}{c.state === 'later' ? 'засчитается вечером · ' : ''}{c.sub}</small></span>
+                </button>
+              </li>
+            )
+          })}</ul>
+        </section>
+      )}
+
       <section className="quests" id="quests" aria-label="Задания на сегодня">
         <h2>Задания дня {today.busyUntil && <small className="muted">· занят до {today.busyUntil}</small>}</h2>
         {quests.length === 0 && today.started && (
@@ -237,7 +268,8 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
 
       {sheet === 'quick' && <QuickInput state={state} onClose={() => setSheet(null)} />}
       {sheet === 'busy' && <BusyUntil date={today.date} onClose={() => setSheet(null)} />}
-      {sheet === 'checkin' && <Checkin date={today.date} onClose={() => setSheet(null)} />}
+      {sheet === 'checkin' && <Checkin state={state} onClose={() => setSheet(null)} />}
+      {battle && battleOpen && <BattleSheet battle={battle} avatar={state.avatar} tier={state.tier} onClose={closeBattle} />}
       {sheet === 'changed' && <DayChanged state={state} onClose={() => setSheet(null)} />}
       {sheet === 'custom' && <CustomQuest state={state} onClose={() => setSheet(null)} />}
       {sheet === 'timer' && <Timer initial={timerKind} onClose={() => setSheet(null)} />}

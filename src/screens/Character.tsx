@@ -13,6 +13,8 @@ import StatRadar from '../ui/StatRadar'
 import Skills from './Skills'
 import { InterviewCta, Portrait } from './Interview'
 import Achievements from './Achievements'
+import Shadow from './Shadow'
+import ShadowFigure from '../ui/ShadowFigure'
 import type { AvatarParams, GameState, Stat } from '../domain/types'
 
 const HAIR_NAMES: Record<string, string> = { short: 'Короткая', spiky: 'Колючая', long: 'Длинная', ponytail: 'Хвост' }
@@ -80,8 +82,10 @@ export default function Character({ state, go, interview }: { state: GameState; 
   return (
     <div className="home stack">
       <section className="hero-banner" aria-label="Герой">
-        <div className="stage-art" aria-hidden="true">
-          {img ? <img src={img} alt="" /> : <div className="stage-fallback"><Avatar params={state.avatar} tier={state.tier} size={300} decorative /></div>}
+        {/* фон декоративный; доступна только фигура тени (подпись «Враг-тень, сила N») */}
+        <div className="stage-art">
+          {img ? <><img src={img} alt="" /><ShadowFigure strength={state.shadow.strength} avatar={state.avatar} tier={state.tier} /></>
+            : <><ShadowFigure strength={state.shadow.strength} avatar={state.avatar} tier={state.tier} /><div className="stage-fallback"><Avatar params={state.avatar} tier={state.tier} size={300} decorative /></div></>}
         </div>
         <div className="glass banner-card">
           <b><small>Lv.</small>{state.level}</b>
@@ -120,6 +124,7 @@ export default function Character({ state, go, interview }: { state: GameState; 
           )
         })}
       </section>
+      <Shadow state={state} />
       <StartLevel state={state} interview={interview} />
       {state.character ? <Portrait c={state.character} onRetake={interview} /> : <InterviewCta onStart={interview} />}
       <Skills state={state} />
