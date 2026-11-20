@@ -16,7 +16,7 @@ export const weeklyXpFor = (level?: number): number =>
 /** Ровно 3 недельных задания; без случайности. Без данных о шагах третье — по теме сезона (в Прологе — вторая по слабости). */
 export function generateWeeklyQuests(c: WeeklyCtx): WeeklyQuest[] {
   const mk = (kind: WeeklyQuest['kind'], stat: Stat | null, target: number, title: string, id: string = kind): WeeklyQuest =>
-    ({ id: `${c.weekStart}:w:${id}`, weekStart: c.weekStart, kind, stat, target, title, xp: weeklyXpFor(c.level) });
+    ({ id: `${c.weekStart}:w:${id}`, weekStart: c.weekStart, kind, stat, target, title, xp: weeklyXpFor(c.weekStart >= BALANCE.finishSince ? c.level : undefined) });
   const weak = weakestStat(c.stats);
   const E = BALANCE.week.easy;
   const days0 = Math.min(7, Math.max(3, c.prevActiveDays + 1));

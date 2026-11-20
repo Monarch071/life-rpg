@@ -281,7 +281,7 @@ function LegendPath({ state }: { state: GameState }) {
       <b>Легендарный класс</b>
       {lg ? <>
         <p className="legend-name">{lg.title}</p>
-        <small>Навсегда: +{Math.round(LG.xpBonus * 100)}% ко всему XP и сияющий аватар. С {dm(lg.since)}.</small>
+        <small>Навсегда: +{Math.round(LG.xpBonus * 100)}% XP за задания и сияющий аватар. С {dm(lg.since)}.</small>
         {title === null ? <button className="btn ghost" onClick={() => setTitle(lg.title)}>Изменить название</button> : <>
           <label className="field">Название (можно дописать город)<input value={title} maxLength={LG.titleMax} onChange={e => setTitle(e.target.value)} /></label>
           <button className="btn primary" disabled={w.busy || !title.trim()} onClick={() => void saveTitle()}>Сохранить</button>
@@ -296,7 +296,7 @@ function LegendPath({ state }: { state: GameState }) {
         })}</ul>
         <button className="btn ghost" disabled={w.busy} onClick={() => setAsk(true)}>Отказаться</button>
       </> : cls.legendOpen ? <>
-        <small>Испытание на {LG.days} дней: {LG.stages} недельных этапа по твоим целям на годы и финальное задание ранга S. Награда — своё легендарное название, сияющий аватар и +{Math.round(LG.xpBonus * 100)}% ко всему XP навсегда.</small>
+        <small>Испытание на {LG.days} дней: {LG.stages} недельных этапа по твоим целям на годы и финальное задание ранга S. Награда — своё легендарное название, сияющий аватар и +{Math.round(LG.xpBonus * 100)}% XP за задания навсегда.</small>
         <button className="btn primary" disabled={w.busy} onClick={open}>Начать легендарное испытание</button>
       </> : <small className="muted">{cls.legendFail ? `Повтор испытания — с ${dm(addDays(cls.legendFail, LG.retryDays))}` : `Откроется с уровня ${LG.level}, когда продвинутый класс будет с тобой целый сезон`}</small>}
       <div aria-live="polite">{w.msg && <p role={w.msg.ok ? 'status' : 'alert'} className={w.msg.ok ? 'ok' : 'err'}>{w.msg.text}</p>}</div>

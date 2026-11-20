@@ -539,7 +539,7 @@ test('недельное с 23.11: сундук — вещь из редких; 
 test('weekly_issued: дубли id оплачиваются раз, не-понедельник и мусор игнорируются, XP зажат', () => {
   const dup = replay([weekly([wq('active_days', 1, null, 5000), wq('active_days', 1, null, 5000)]), issue(W, [q('a', W, 10)]), done(W, 'a')], NOW);
   expect(dup.weekly.quests.length).toBe(1);
-  expect(dup.totalXp).toBe(1210 + 50);
+  expect(dup.totalXp).toBe(1010 + 50);
   const bad = replay([ev({ type: 'weekly_issued', weekStart: '2026-11-17', quests: [wq('active_days', 1)], ts: at(W, 7) })], NOW);
   expect(bad.weekly.quests).toEqual([]);
   expect(replay([weekly([wq('bogus', 1), wq('active_days', 1e12)])], NOW).weekly.quests).toEqual([]);
@@ -1784,6 +1784,13 @@ test('калибровка шаблонов с 23.11: по воскресень�
   expect(s.calibration.mult.read).toBeCloseTo(0.7225, 6);
   expect(s.calibration.rest).toEqual(['read']);
   expect(s.calibration.promoted).toEqual([]);
+  expect(replay(evs, at('2026-12-20')).calibration.rest).toEqual(['read']);   // 14-й день отдыха
+  expect(replay(evs, at('2026-12-21')).calibration.rest).toEqual([]);
+  // неделя без шаблона рвёт «две недели подряд»
+  const gap = [onboard, ...days.flatMap((d, i) => [issue(d, [nq(`p${i}`, d, 'E', ['strength'], { templateId: 'pushups' }),
+    ...(i < 7 ? [nq(`r${i}`, d, 'E', ['reading'], { templateId: 'read' })] : [])]), done(d, `p${i}`)]),
+    ...Array.from({ length: 7 }, (_, i) => addDays('2026-12-07', i)).flatMap((d, i) => [issue(d, [nq(`x${i}`, d, 'E', ['reading'], { templateId: 'read' })])])];
+  expect(replay(gap, at('2026-12-14')).calibration.rest).toEqual([]);
   const before = replay(evs, at('2026-11-29'));   // воскресенье ещё не закрыто
   expect(before.calibration.mult).toEqual({});
 });

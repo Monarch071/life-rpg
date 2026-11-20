@@ -180,6 +180,9 @@ test('легендарное: сезон в продвинутом и урове
 test('легендарное: без полного сезона, без финала, отказ — повтор через 30 дней', () => {
   expect(replay([...legendBase(), legend('2027-05-20', 'legend_trial_started', stages)], at('2027-05-21')).cls.legendTrial).toBeNull();
   expect(replay([...legendBase(), legend(L0, 'legend_trial_started', { ...stages, final: ' ' })], at('2027-06-02')).cls.legendTrial).toBeNull();
+  expect(replay([...legendBase(), legend(L0, 'legend_trial_started', { ...stages, stages: [...stages.stages, 'лишний'] })], at('2027-06-02')).cls.legendTrial).toBeNull();
+  expect(() => replay([...legendBase(), legend(L0, 'legend_trial_started', stages), legend(L0, 'legend_stage_done', { stage: '0' }),
+    legend(L0, 'legend_stage_done', { stage: NaN }), legend(L0, 'legend_title_set', { title: 5 })], at('2027-06-02'))).not.toThrow();
   const fail = [...legendBase(), legend(L0, 'legend_trial_started', stages), ...[0, 1, 2, 3].map(k => legend(addDays(L0, 7 * k), 'legend_stage_done', { stage: k }))];
   const f = replay(fail, at('2027-07-02'));
   expect(f.cls.legend).toBeNull(); expect(f.cls.legendFail).toBe('2027-06-30'); expect(f.cls.legendOpen).toBe(false);

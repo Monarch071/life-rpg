@@ -90,17 +90,18 @@ function VideoSheet({ state, seasonId, model, onClose }: { state: GameState; sea
   useEffect(() => {
     const { state, model } = snap
     let dead = false, url: string | null = null
+    const ac = new AbortController()
     if (!videoMime()) { setMsg({ ok: false, text: 'Этот браузер не умеет записывать видео — сохрани карточку сезона' }); return }
     void (async () => {
       const [before, after] = await Promise.all([cardImage(model.before.avatar), cardImage(model.after.avatar)])
       const moments = seasonMoments(state, model)
       const run = (imgs: { before: CanvasImageSource | null; after: CanvasImageSource | null }) =>
-        recordVideo(t => videoOps(model, moments, t), imgs, VIDEO_MS, share => { if (!dead) setP(share) })
-      // испорченный canvas в Safari — запись без картинок (силуэты)
-      const blob = await run({ before, after }).catch(() => run({ before: null, after: null }))
+        recordVideo(t => videoOps(model, moments, t), imgs, VIDEO_MS, share => { if (!dead) setP(share) }, ac.signal)
+      // испорченный canvas в Safari — запись без картинок (силуэты); свернули или закрыли — без повтора
+      const blob = await run({ before, after }).catch((e: Error) => (e.message === 'hidden' || e.message === 'aborted' ? Promise.reject(e) : run({ before: null, after: null })))
       if (!dead) setVid({ blob, url: (url = URL.createObjectURL(blob)) })
-    })().catch(() => { if (!dead) setMsg({ ok: false, text: 'Не удалось записать ролик' }) })
-    return () => { dead = true; if (url) URL.revokeObjectURL(url) }
+    })().catch((e: Error) => { if (!dead) setMsg({ ok: false, text: e.message === 'hidden' ? 'Запись прервана: приложение свернули. Закрой и открой ролик снова' : 'Не удалось записать ролик' }) })
+    return () => { dead = true; ac.abort(); if (url) URL.revokeObjectURL(url) }
   }, [snap, seasonId])
   const save = async () => {
     if (!vid) return

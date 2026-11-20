@@ -107,7 +107,7 @@ export const BALANCE = {
               invest: { stake: 300, payout: 450, share: 0.7, days: 7 }, silenceMaxMin: 5 },
   legend:   { level: 40, days: 30, stages: 4, finalDays: 2, need: 3, retryDays: 30, stageXp: 200, finalXp: 350, xpBonus: 0.05, textMax: 80, titleMax: 40 },
   legacyRank: { 1: 'E', 2: 'E', 3: 'D', 4: 'C', 5: 'B' },
-  legacy:  { questXpMax: 10_000, weeklyXpMax: 1200, bossStageXp: 100, bossDefeatXp: 200 },   // старый журнал: XP как сохранено, в пределах
+  legacy:  { questXpMax: 10_000, weeklyXpMax: 1000, weeklyXpMaxNew: 1200, bossStageXp: 100, bossDefeatXp: 200 },   // старый журнал: XP как сохранено, в пределах
 } as const;
 
 export const RANKS: readonly Rank[] = ['E', 'D', 'C', 'B', 'A', 'S'];

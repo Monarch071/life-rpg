@@ -545,7 +545,7 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (!isDate(e.weekStart) || weekStart(e.weekStart) !== e.weekStart || weeklyIssued.has(e.weekStart)) break;
         const seenIds = new Set<string>();
         const qs = (Array.isArray(e.quests) ? e.quests : []).filter(w => validWeekly(w) && !seenIds.has(w.id) && !!seenIds.add(w.id))
-          .slice(0, 5).map(w => ({ ...w, xp: Math.min(BALANCE.legacy.weeklyXpMax, Math.max(0, Math.round(w.xp))) }));
+          .slice(0, 5).map(w => ({ ...w, xp: Math.min(e.weekStart >= BALANCE.finishSince ? BALANCE.legacy.weeklyXpMaxNew : BALANCE.legacy.weeklyXpMax, Math.max(0, Math.round(w.xp))) }));
         if (qs.length) weeklyIssued.set(e.weekStart, { ts: e.ts, qs }); // побеждает первый
         break;
       }
@@ -1191,7 +1191,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   let fatigue = 0, todayVit: Vitals | null = null; // Усталость рекуррентно от первого дня с заданиями
   // калибровка шаблонов [S§6]: по воскресеньям с finishSince, по заданиям сборки (не свои/босс/цепочка/легаси)
   const CB = BALANCE.calibration, tmplDays: { date: ISODate; items: { tid: string; stat: Stat; done: boolean }[] }[] = [];
-  let gateMult: Record<Stat, number> | null = null;   // множители характеристик на дату выхода — старт шаблонов
+  let weekMult: Record<Stat, number> | null = null;   // множители характеристик на начало недели — старт шаблона (без двойного учёта недели)
   const tmplMult = new Map<string, number>(), tmplStart = new Map<string, number>(), tmplLow = new Map<string, number>(), tmplRest = new Map<string, ISODate>();
   let streak = 0, idleRun = 0, multipliers = fill(1); // idleRun — подряд закрытых не-отдыхающих дней без выполненного
   // Даты: каждый день от первого дня с заданиями до сегодня (пропуски тоже закрываются) + выдачи и строки вне его.
@@ -1373,7 +1373,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     // легендарный: старт (уровень на начало дня), отметки этапов в их окнах, отказ, своё название
     for (const e of legOps.get(d) ?? []) {
       if (e.type === 'legend_trial_started') {
-        const stages = Array.isArray(e.stages) ? e.stages.slice(0, LG.stages).map(x => legText(x, LG.textMax)) : [], final = legText(e.final, LG.textMax);
+        const stages = Array.isArray(e.stages) && e.stages.length === LG.stages ? e.stages.map(x => legText(x, LG.textMax)) : [], final = legText(e.final, LG.textMax);
         if (stages.length === LG.stages && stages.every(x => x !== null) && final && legendOpen({ level: lvl, date: d, held: heldFullSeason(advHist, d), lastFail: legFail, busy: !!legTrial || !!legend }))
           legTrial = { start: d, stages: stages as string[], final, done: Array(LG.stages).fill(false), finalDone: false };
       } else if (e.type === 'legend_stage_done') {
@@ -1392,7 +1392,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       if (!wk || !Array.isArray(raw)) return false;
       const keep = wk.qs.filter(w => weekProgress({ ...w, weekStart: ws }, d) >= w.target), ids = new Set(keep.map(w => w.id));
       const fresh = raw.filter(w => validWeekly(w) && !ids.has(w.id) && !!ids.add(w.id)).slice(0, wk.qs.length - keep.length)
-        .map(w => ({ ...w, weekStart: ws, xp: Math.min(BALANCE.legacy.weeklyXpMax, Math.max(0, Math.round(w.xp))) }));
+        .map(w => ({ ...w, weekStart: ws, xp: Math.min(ws >= BALANCE.finishSince ? BALANCE.legacy.weeklyXpMaxNew : BALANCE.legacy.weeklyXpMax, Math.max(0, Math.round(w.xp))) }));
       if (!fresh.length) return false;
       wk.qs = [...keep, ...fresh];
       const wd = ws === thisWeek ? today : addDays(ws, 6);   // строки недели — на wd ≥ d
@@ -1599,13 +1599,14 @@ export function replay(events: GameEvent[], now: number): GameState {
     rivalDay(d);
     closed.push({ date: d, done: dq.length, rest }); if (!rest) workDays.push(d);
     if (!rest) idleRun = realDone || (ritualsOn.get(d)?.done ?? 0) > 0 ? 0 : idleRun + 1; // ритуал — тоже активность
-    if (d >= BALANCE.finishSince && !gateMult) gateMult = { ...multipliers };
-    if (qs.length) tmplDays.push({ date: d, items: qs.filter(q => !q.legacy && (q.kind === 'daily' || q.kind === 'challenge' || q.kind === 'restore')).map(q => ({ tid: q.templateId, stat: q.stat, done: q.done })) });
+    if (d >= BALANCE.finishSince && (!weekMult || weekStart(d) === d)) weekMult = { ...multipliers };
+    if (qs.length && !rest) tmplDays.push({ date: d, items: qs.filter(q => !q.legacy && !q.dropped && (q.kind === 'daily' || q.kind === 'challenge' || q.kind === 'restore')).map(q => ({ tid: q.templateId, stat: q.stat, done: q.done })) });
     if (d >= BALANCE.finishSince && addDays(weekStart(d), 6) === d) {
       const wk = tmplDays.filter(x => x.date > addDays(d, -7)).flatMap(x => x.items);
+      for (const tid of tmplLow.keys()) if (!wk.some(x => x.tid === tid)) tmplLow.set(tid, 0);   // «две недели подряд»
       for (const tid of new Set(wk.map(x => x.tid))) {
         const its = wk.filter(x => x.tid === tid), rate = its.filter(x => x.done).length / its.length;
-        if (!tmplStart.has(tid)) tmplStart.set(tid, gateMult![its[0].stat] ?? 1);
+        if (!tmplStart.has(tid)) tmplStart.set(tid, weekMult![its[0].stat] ?? 1);
         const m = tmplMult.get(tid) ?? tmplStart.get(tid)!;
         tmplMult.set(tid, Math.min(CB.max, Math.max(CB.min, m * (rate >= CB.up ? CB.upK : rate < CB.down ? CB.downK : 1))));
         const low = rate < CB.dropBelow ? (tmplLow.get(tid) ?? 0) + 1 : 0;
@@ -1802,7 +1803,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     stats, statInfo, gold, streak: streakNow,
     className, cls: clsState, tier: tierFor(level), multipliers,
     calibration: { mult: Object.fromEntries(tmplMult), promoted: [...tmplMult].filter(([t, m]) => m >= CB.promote * tmplStart.get(t)!).map(([t]) => t),
-      rest: [...tmplRest].filter(([, until]) => until > today).map(([t]) => t) },
+      rest: [...tmplRest].filter(([, until]) => until >= today).map(([t]) => t) },
     today: {
       date: today, started: !!st, work: st?.work ?? null, wakeAt: st?.wakeAt ?? null,
       closesAt: closesAtTs(today, closeOf(today)), dayType: types.get(today) ?? null, energy: vitals.energy ?? BALANCE.energy.fallback, changed: !!st && dayChange.has(today),
