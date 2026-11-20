@@ -24,7 +24,6 @@ h1, h2, h3 { font-family: Manrope, sans-serif; font-weight: 700; }
 .content { flex: 1; overflow-y: auto; padding: 16px 16px calc(100px + env(safe-area-inset-bottom)); background: radial-gradient(120% 45% at 50% 0%, #16233f 0%, transparent 60%), radial-gradient(80% 40% at 90% 40%, #1a1640 0%, transparent 60%), var(--bg); }
 .panel {
   background: linear-gradient(180deg, rgba(255,255,255,0.05), transparent 40%), var(--card);
-  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
   box-shadow: 0 8px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07);
   border: 1px solid var(--line);
   border-radius: var(--r);

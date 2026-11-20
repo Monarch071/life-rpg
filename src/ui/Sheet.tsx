@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { useDialog } from './useDialog'
 
 /** Нижний лист в стиле приложения: фон закрывает, Escape закрывает, фокус внутрь. */
 export default function Sheet({ id, title, onClose, children }: { id: string; title: ReactNode; onClose: () => void; children: ReactNode }) {
   const dlg = useDialog<HTMLDivElement>(onClose)
-  return (
+  return createPortal(
     <div className="sheet-wrap" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="sheet" ref={dlg} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={id}>
         <div className="sheet-head">
@@ -14,6 +15,7 @@ export default function Sheet({ id, title, onClose, children }: { id: string; ti
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
