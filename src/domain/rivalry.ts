@@ -10,15 +10,16 @@ const pts = (p: number) => Math.min(L.maxPoints, Math.max(0, Number.isFinite(p) 
 
 /** Ранг недели по доле выполненных и XP против среднего 4 прошлых недель [P§5]. */
 export function weekRank(share: number, xp: number, avg4: number): WeekRank {
-  const s = r9(share);
-  if (s >= W.s && xp >= r9(W.sXp * avg4)) return 'S';
+  const s = r9(share), avg = avg4 > 0 ? avg4 : W.baseDayXp * 7;   // нулевые недели не дают S за любой XP
+  if (s >= W.s && xp >= r9(W.sXp * avg)) return 'S';
   return s >= W.a ? 'A' : s >= W.b ? 'B' : s >= W.c ? 'C' : 'D';
 }
 
-/** Среднее XP прошлых недель; null — неделя без выдачи; нет данных — baseDayXp × 7. */
+/** Среднее XP прошлых недель; null — неделя без выдачи; нет данных или ≤ 0 — baseDayXp × 7. */
 export function avgPrev(weeks: (number | null)[]): number {
   const v = weeks.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
-  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : W.baseDayXp * 7;
+  const avg = v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0;
+  return avg > 0 ? avg : W.baseDayXp * 7;
 }
 
 export const leagueTier = (points: number): 0 | 1 | 2 | 3 | 4 | 5 => Math.floor(pts(points) / L.perTier) as 0 | 1 | 2 | 3 | 4 | 5;

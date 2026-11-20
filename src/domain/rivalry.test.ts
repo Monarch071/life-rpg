@@ -19,3 +19,12 @@ test('сундук детерминирован и не повторяется',
   expect(RARE_POOL).toContain(a); expect(chestPick('2026-12-21', new Set(RARE_POOL))).toBeNull();
   expect(chestPick('2026-12-21', new Set([a!]))).not.toBe(a);
 });
+test('среднее ≤ 0 или NaN — база baseDayXp × 7; NaN не ломает ранг и лигу', () => {
+  expect(weekRank(0.95, 100, 0)).toBe('A'); expect(weekRank(0.95, 1260, 0)).toBe('S');
+  expect(weekRank(0.95, 1260, NaN)).toBe('S'); expect(weekRank(0.95, 100, -5)).toBe('A');
+  expect(weekRank(NaN, 5000, 1050)).toBe('D'); expect(weekRank(0.95, NaN, 1050)).toBe('A');
+  expect(avgPrev([0, 0, null, null])).toBe(1050); expect(avgPrev([NaN, Infinity, null])).toBe(1050);
+  expect(leagueTier(NaN)).toBe(0); expect(leagueTier(-3)).toBe(0); expect(leagueTier(1e9)).toBe(5);
+  expect(leagueAfter(NaN, 'S', false)).toBe(3); expect(leagueAfter(NaN, null, false)).toBe(0);
+  expect(softReset(NaN)).toBe(0);
+});

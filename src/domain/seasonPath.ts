@@ -1,15 +1,16 @@
 import { BALANCE as B } from './balance';
 import type { ISODate, SeasonKind } from './types';
 
-const dayNum = (d: ISODate) => { const [y, m, x] = d.split('-').map(Number); return Date.UTC(y, m - 1, x) / 864e5; };
+const dayNum = (d: ISODate) => { const [y, m, x] = d.split('-').map(Number); return Date.UTC(y, m - 1, x) / B.day.msPerDay; };
 const NAMES = { winter: 'Зимы', spring: 'Весны', summer: 'Лета', autumn: 'Осени' } as const;
 
-/** Цена ступени; поздний вход — пропорционально оставшимся дням, шаг 10, минимум minStepXp [S§8]. */
+/** Цена ступени; поздний вход — пропорционально оставшимся дням, шаг roundStep, минимум minStepXp [S§8]. */
 export function stepXpFor(season: { start: ISODate; end: ISODate }, firstActive: ISODate | null): number {
   const S = B.season;
   if (!firstActive || firstActive <= season.start) return S.stepXp;
   const total = dayNum(season.end) - dayNum(season.start) + 1, left = Math.max(0, dayNum(season.end) - dayNum(firstActive) + 1);
-  return Math.max(S.minStepXp, Math.round(S.stepXp * left / total / 10) * 10);
+  const price = Math.round(S.stepXp * left / total / S.roundStep) * S.roundStep;
+  return Number.isFinite(price) ? Math.max(S.minStepXp, price) : S.stepXp;
 }
 
 export function stepRewards(kind: Exclude<SeasonKind, 'prologue'>, step: number): { gold: number; items: string[]; title: string | null } {
