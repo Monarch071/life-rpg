@@ -40,3 +40,10 @@ test('после ранга D недельные облегчены', () => {
   const [d, s, st] = generateWeeklyQuests({ ...c, easy: true });
   expect(d.target).toBe(5); expect(s.target).toBe(9); expect(st.target).toBe(48000);   // 6−1; round(11×0,8); ceil(8000×7×1,05×0,8/1000)×1000
 });
+
+test('XP недельного: база ранга-потолка по уровню ×3; без уровня — 150', () => {
+  expect(generateWeeklyQuests(ctx({ level: 1 }))[0].xp).toBe(60)    // E 20 ×3
+  expect(generateWeeklyQuests(ctx({ level: 20 }))[0].xp).toBe(210)  // C 70 ×3
+  expect(generateWeeklyQuests(ctx({ level: 75 }))[0].xp).toBe(1050) // S 350 ×3
+  expect(generateWeeklyQuests(ctx())[0].xp).toBe(150)
+})

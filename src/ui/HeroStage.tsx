@@ -55,7 +55,7 @@ export default function HeroStage({ state, profile, image, cta, onCta, onVital, 
 
   return (
     <section className="stage" aria-label="Герой">
-      <div className={`stage-art${background ? ` bg-${background.split(':')[1]}` : ''}`} aria-hidden="true">
+      <div className={`stage-art${background ? ` bg-${background.split(':')[1]}` : ''}${state.cls.legend && state.cls.legend.since <= today.date ? ' legend' : ''}`} aria-hidden="true">
         {background && <i className="stage-bg" />}
         {image ? <img src={image} alt="" /> : <div className="stage-fallback"><Avatar params={state.avatar} tier={state.tier} size={360} decorative wear={state.cosmetics.equipped} /></div>}
       </div>
@@ -71,6 +71,7 @@ export default function HeroStage({ state, profile, image, cta, onCta, onVital, 
               <i style={{ width: `${pct}%` }} />
             </div>
             <small className="n"><em>{state.xpInto}</em> / {state.xpNeed} XP</small>
+            {state.cls.legend && <small className="legend-name">{state.cls.legend.title}</small>}
           </div>
         </div>
         <span className="glass coins-pill" aria-label={`Золото: ${state.gold}`}><Coins size={16} aria-hidden="true" />{state.gold}<small aria-hidden="true">Золото</small></span>

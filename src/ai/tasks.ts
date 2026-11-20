@@ -11,7 +11,7 @@ const STAT_KEYS = Object.keys(STATS) as Stat[]
 const statLine = (s: Stat, st: GameState) => `${STATS[s].name} ${st.stats[s]} (×${st.multipliers[s].toFixed(2)})`
 
 // Ключевые ответы анкеты для портрета: id → короткая подпись.
-export const KEY_ANSWERS: [string, string][] = [['weight', 'Вес, кг'], ['weight_goal', 'Комфортный вес, кг'], ['income', 'Доход в месяц, ₽'], ['savings', 'Накопления, ₽'],
+export const KEY_ANSWERS: [string, string][] = [['weight', 'Вес, кг'], ['weight_goal', 'Комфортный вес, кг'], ['income', 'Доход в месяц'], ['savings', 'Накопления'],
   ['money_goal', 'Финансовая цель'], ['money_goal_months', 'Срок цели, мес'], ['motivators', 'Мотивация'], ['limits', 'Ограничения здоровья'], ['games_hours', 'Игры, ч/день'],
   ['screen_hours', 'Телефон, ч/день'], ['year_goal', 'Главная цель года'], ['goal_hours', 'Часов в неделю на цели'], ['blockers', 'Что мешало'], ['sleep_hours', 'Сон, ч'], ['stress', 'Напряжение 1–5']]
 

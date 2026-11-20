@@ -21,15 +21,25 @@ export async function cardImage(a: CardAvatar): Promise<CanvasImageSource | null
   } catch { return null }
 }
 
+export type CardImages = Record<'before' | 'after', CanvasImageSource | null>
+
 /** Выполнить операции раскладки на canvas → PNG. Всё на устройстве. */
-export async function renderCard(ops: CardOp[], images: Record<'before' | 'after', CanvasImageSource | null>): Promise<Blob> {
+export async function renderCard(ops: CardOp[], images: CardImages): Promise<Blob> {
   const bg = ops[0] as Extract<CardOp, { op: 'rect' }>
   const cv = document.createElement('canvas')
   cv.width = bg.w; cv.height = bg.h
   const g = cv.getContext('2d')
   if (!g) throw new Error('canvas')
+  drawOps(g, ops, images)
+  return new Promise((ok, fail) => cv.toBlob(b => (b ? ok(b) : fail(new Error('toBlob'))), 'image/png'))
+}
+
+/** Нарисовать операции (первая — фон во весь холст); alpha — прозрачность операции. */
+export function drawOps(g: CanvasRenderingContext2D, ops: CardOp[], images: CardImages): void {
+  const bg = ops[0] as Extract<CardOp, { op: 'rect' }>
   const round = (x: number, y: number, w: number, h: number, r = 0) => { g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h) }
   for (const o of ops) {
+    g.globalAlpha = o.alpha ?? 1
     if (o.op === 'rect') {
       g.fillStyle = o.fill; round(o.x, o.y, o.w, o.h, o.r); g.fill()
       if (o.glow) {
@@ -57,5 +67,5 @@ export async function renderCard(ops: CardOp[], images: Record<'before' | 'after
       }
     }
   }
-  return new Promise((ok, fail) => cv.toBlob(b => (b ? ok(b) : fail(new Error('toBlob'))), 'image/png'))
+  g.globalAlpha = 1
 }

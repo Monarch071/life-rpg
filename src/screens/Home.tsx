@@ -16,6 +16,7 @@ import { InterviewCta } from './Interview'
 import { useDialog } from '../ui/useDialog'
 import { rerollCandidate } from '../domain/assemble'
 import { assembleCtx, buildQuests } from './issue'
+import { useCurrency } from './Finance'
 import { BALANCE } from '../domain/balance'
 import { legacyDayType } from '../domain/dayType'
 import Checkin from './Checkin'
@@ -48,6 +49,7 @@ type Sheet = null | 'quick' | 'busy' | 'checkin' | 'changed' | 'custom' | 'timer
 let deferredDay = false
 
 export default function Home({ state, profile, go, interview }: { state: GameState; profile: Profile; go: Go; interview: () => void }) {
+  const cur = useCurrency()
   const { today } = state
   const img = useBlobUrl(imageNameFor(state.avatarImages, state.tier))
   const [sheet, setSheet] = useState<Sheet>(null)
@@ -109,7 +111,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
     setErr(null)
     try {
       const wakeAt = today.wakeAt ?? hhmmNow()
-      const quests = buildQuests(state, today.dayType ?? legacyDayType(today.work, wakeAt, profile.sleep), wakeAt, today.energy ?? BALANCE.energy.fallback)
+      const quests = buildQuests(state, today.dayType ?? legacyDayType(today.work, wakeAt, profile.sleep), wakeAt, today.energy ?? BALANCE.energy.fallback, cur)
       await appendEvent({ type: 'quests_issued', date: today.date, quests })
     } catch {
       setErr('Не удалось получить задания, попробуй ещё раз')
@@ -184,7 +186,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
   }
   const ctxNow = () => {
     const wakeAt = today.wakeAt ?? hhmmNow()
-    return assembleCtx(state, today.dayType ?? legacyDayType(today.work, wakeAt, profile.sleep), wakeAt, today.energy ?? BALANCE.energy.fallback)
+    return assembleCtx(state, today.dayType ?? legacyDayType(today.work, wakeAt, profile.sleep), wakeAt, today.energy ?? BALANCE.energy.fallback, cur)
   }
   const [abQuest, setAbQuest] = useState<DayQuest | null>(null)
   const [ab2Quest, setAb2Quest] = useState<DayQuest | null>(null)

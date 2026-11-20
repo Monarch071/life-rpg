@@ -101,6 +101,10 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'ability_used'; date: ISODate; ability: AbilityId | AbilityId2; questId?: string; stat?: Stat; replacement?: Quest; quests?: WeeklyQuest[]; skill?: SkillId; facetId?: string }
   | { type: 'advanced_trial_started'; date: ISODate; classId: AdvancedId }
   | { type: 'advanced_trial_abandoned'; date: ISODate }
+  | { type: 'legend_trial_started'; date: ISODate; stages: string[]; final: string }
+  | { type: 'legend_stage_done'; date: ISODate; stage: number }   // 0–3 — недельные этапы, 4 — финал
+  | { type: 'legend_trial_abandoned'; date: ISODate }
+  | { type: 'legend_title_set'; date: ISODate; title: string }
   | { type: 'advanced_path_switched'; date: ISODate; classId: AdvancedId }
   | { type: 'ladder_created'; ladderId: string; title: string; kind: LadderKind; skill: SkillId; steps: LadderStep[]; suitable?: 'all' | 'workdays'; facetId?: string }
   | { type: 'ladder_updated'; ladderId: string; title?: string; steps?: LadderStep[] }
@@ -117,7 +121,9 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
 export type WeeklyKind = 'active_days' | 'stat_quests' | 'steps_total' | 'shadow_wins' | 'budget_week';
 export interface WeeklyQuest { id: string; weekStart: ISODate; kind: WeeklyKind; stat: Stat | null; target: number; title: string; xp: number }
 export interface Boss { id: string; title: string; stat: Stat; stages: string[]; done: number; defeated: boolean; abandoned: boolean }
-export interface WeeklyCtx { weekStart: ISODate; stats: Record<Stat, number>; multipliers: Record<Stat, number>; prevActiveDays: number; prevStatQuests: number; bestSteps7: number | null; themeStat: Stat | null; easy?: boolean; budget?: boolean }
+/** Калибровка шаблонов [S§6] (с finishSince, по воскресеньям): множитель параметра, повышенные на ранг, отдыхающие (2 недели < 40%). */
+export interface TemplateCalibration { mult: Record<string, number>; promoted: string[]; rest: string[] }
+export interface WeeklyCtx { level?: number; weekStart: ISODate; stats: Record<Stat, number>; multipliers: Record<Stat, number>; prevActiveDays: number; prevStatQuests: number; bestSteps7: number | null; themeStat: Stat | null; easy?: boolean; budget?: boolean }
 export interface AvatarParams { hair: string; hairColor: string; outfitColor: string; eyes: string }
 /** HP, Energy, Фокус, Усталость дня (спека §5, §14). */
 export interface Vitals { hp: number | null; energy: number | null; focus: number | null; fatigue: number;
@@ -138,9 +144,13 @@ export interface ClassState { id: ClassId; name: string; pair: [Stat, Stat] | nu
   advanced: { id: AdvancedId; name: string; since: ISODate; until: ISODate; passive: string;
     ability: { id: AbilityId2; name: string; desc: string; usedOn: ISODate | null; available: boolean } } | null;
   trial: { classId: AdvancedId; start: ISODate; day: number; counted: number; focusDone: number; need: { days: number; quests: number } } | null;
-  trialOptions: AdvancedId[]; nextTrial: ISODate | null }
+  trialOptions: AdvancedId[]; nextTrial: ISODate | null;
+  /** Легендарный (личная версия): навсегда; испытание 30 дней; open — можно начать сегодня. */
+  legend: { since: ISODate; title: string } | null;
+  legendTrial: { start: ISODate; day: number; stages: string[]; final: string; done: boolean[]; finalDone: boolean } | null;
+  legendOpen: boolean; legendFail: ISODate | null }
 export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss' | 'ritual' | 'ladder' | 'shadow' | 'chain' | 'week_rank' | 'season_step' | 'budget' | 'ghost' | 'record'
-    | 'ability' | 'invest';
+    | 'ability' | 'invest' | 'legend';
   questId?: string; base: number; k: number; bonus: number; penalty: number; mult: number; xp: number; gold: number;
   skills: [SkillId, number][]; stats: Partial<Record<Stat, number>>; verified: boolean }
 /** legacy — задание без ранга (старый журнал): XP как сохранено, без проверки и бонусов. */
@@ -157,6 +167,7 @@ export interface GameState {
   className: string; tier: 1|2|3|4;   // className = cls.name
   cls: ClassState;
   multipliers: Record<Stat, number>;
+  calibration: TemplateCalibration;
   today: { date: ISODate; started: boolean; work: {start:HHMM;end:HHMM}|null; wakeAt: HHMM|null;
            quests: DayQuest[]; xp: number;
            metrics: Partial<Record<Metric, number>>; checkedIn: boolean; lastEnergy: number|null;
@@ -228,7 +239,7 @@ export interface GameState {
   chainsDone: number;
   /** Враг-тень (спека §4): strength — среднее неизгнанных граней, нет — null; названия граней — только на экране владельца, не в ИИ. */
   shadow: { strength: number | null;
-    facets: { id: string; name: string; kind: FacetKind; strength: number; cleanRun: number; banished: boolean; relapsedToday: boolean }[];   // серьёзная зависимость гранью не становится
+    facets: { id: string; name: string; kind: FacetKind; strength: number; cleanRun: number; banished: boolean; banishedOn: ISODate | null; relapsedToday: boolean }[];   // серьёзная зависимость гранью не становится
     nextBattle: ISODate; lastBattle: { date: ISODate; strength: number; result: 'crush' | 'win' | 'draw' | 'lost'; xp: number; plan: string | null } | null };
   title: string;          // titleReward последнего достижения с титулом, иначе 'Новичок'
   statHistory: { date: ISODate; stats: Record<Stat, number> }[];   // Основа на конец каждого финализированного дня

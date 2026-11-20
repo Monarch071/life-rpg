@@ -225,3 +225,22 @@ test('шаблоны вредных привычек больше не канд�
   const ids = days.flatMap(date => assembleDay(ctx({ date, profile: { ...profile, badHabits: ['social', 'games', 'smoke'] } })).map(q => q.templateId));
   expect(ids.filter(id => ['no_social', 'no_games', 'no_smoke'].includes(id))).toEqual([]);
 });
+
+test('калибровка шаблонов: отдыхающий заменяется, множитель шаблона, повышенный — на потолке', () => {
+  const off = DEFAULT_DAY_TYPES[2], base = assembleDay(ctx({ dayType: off }));
+  const shared = (id: string) => QUEST_TEMPLATES.filter(t => t.skills[0] === tpl(id).skills[0] && !t.badHabit).length > 1;
+  const q0 = base.find(q => q.kind === 'daily' && shared(q.templateId))!;
+  const cal = (o: Partial<NonNullable<AssembleCtx['tmpl']>>) => ctx({ dayType: off, tmpl: { mult: {}, promoted: [], rest: [], ...o } });
+  expect(assembleDay(cal({ rest: [q0.templateId] })).map(q => q.templateId)).not.toContain(q0.templateId);
+  const num = (t: string) => Number(t.match(/\d+/)?.[0])
+  const m = base.find(q => q.kind === 'daily' && /\d/.test(q.title) && tpl(q.templateId).unit)!;
+  const m2 = assembleDay(cal({ mult: { [m.templateId]: 2 } })).find(q => q.templateId === m.templateId)!;
+  expect(num(m2.title)).toBeGreaterThan(num(m.title));
+  const below = base.find(q => q.kind === 'daily' && q.rank === 'D')!;
+  expect(assembleDay(cal({ promoted: [below.templateId] })).find(q => q.templateId === below.templateId)!.rank).toBe('C');
+});
+
+test('денежный шаблон: сумма и знак — в валюте устройства', () => {
+  const t = tpl('save');
+  expect(t.title(1500)).toContain('¤');
+});

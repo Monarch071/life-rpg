@@ -6,6 +6,7 @@ import Confirm from '../ui/Confirm'
 import Ladders from './Ladders'
 import { useWrite } from '../ui/useWrite'
 import type { GameState } from '../domain/types'
+import { BALANCE } from '../domain/balance'
 import SeasonBoss from './SeasonBoss'
 import Chain from './Chain'
 
@@ -21,7 +22,7 @@ export default function Quests({ state }: { state: GameState }) {
           <div key={q.id} className="card">
             <div className="row qhead">
               {q.stat && <StatIcon stat={q.stat} />}
-              <span className="grow">{q.title}</span><b className="xpchip">+{q.xp} XP</b>
+              <span className="grow">{q.title}</span><b className="xpchip">+{q.xp} XP{q.weekStart >= BALANCE.finishSince ? ' + сундук' : ''}</b>
             </div>
             <XpBar into={Math.min(q.progress, q.target)} need={q.target} label={q.title} unit="" />
             {q.done && <small className="ok"><Check size={14} aria-hidden="true" /> Выполнено</small>}

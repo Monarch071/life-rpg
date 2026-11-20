@@ -14,6 +14,17 @@ export const DEFAULT_SKILL_BY_STAT: Record<Stat, SkillId> =
   { str: 'strength', end: 'cardio', int: 'reading', dis: 'routine', cha: 'social', fin: 'budget', spi: 'mindfulness' };
 const dk = (stat: Stat): Skills => [DEFAULT_SKILL_BY_STAT[stat]];
 
+/** Знак валюты в шаблоне: сумма задана в тенге, при сборке — в валюте устройства. */
+export const MONEY = '¤';
+const MONEY_K: Record<string, number> = { '₸': 1, '₽': 0.2, '$': 0.002, '€': 0.002 };
+/** Сумма шаблона (в тенге) → в валюте устройства, 2 значащие цифры. */
+export const moneyIn = (n: number, cur = '₸'): number => {
+  const v = n * (MONEY_K[cur] ?? 1);
+  if (v < 10) return Math.max(1, Math.round(v));
+  const p = 10 ** (Math.floor(Math.log10(v)) - 1);
+  return Math.round(v / p) * p;
+};
+
 type Forms = [string, string, string];
 /** Русское склонение: 1/21 → one; 2–4/22–24 → few; остальное и 11–14 → many. */
 export const plural = (n: number, one: string, few: string, many: string): string => {
@@ -95,7 +106,7 @@ export const QUEST_TEMPLATES: QuestTemplate[] = [
   T('expenses', 'fin', 5, ['трату', 'траты', 'трат'], 'Записать', 1, ge('finEntries')),
   O('nobuy', 'fin', 'День без импульсных покупок', 0, { allDay: true }),
   O('budget', 'fin', 'Свериться с бюджетом на месяц', 10),
-  T('save', 'fin', 300, '₽', 'Отложить', 0, { skills: ['savings'] }),
+  T('save', 'fin', 1500, MONEY, 'Отложить', 0, { skills: ['savings'] }),
   T('finlearn', 'fin', 20, 'мин', 'Изучать финансы', 1, { skills: ['earning'] }),
   T('earnideas', 'fin', 5, ['идею заработка', 'идеи заработка', 'идей заработка'], 'Записать', 3, { skills: ['earning'] }),
   T('subs', 'fin', 2, ['подписку', 'подписки', 'подписок'], 'Проверить', 5),

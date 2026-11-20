@@ -526,10 +526,20 @@ test('босс: брошенный скрыт, XP остаётся', () => {
   expect(s.bosses).toEqual([]); expect(s.totalXp).toBe(100);
 });
 
+test('недельное с 23.11: сундук — вещь из редких; старые недели без сундука', () => {
+  const W2 = '2026-11-23', w2 = { id: `${W2}:w:active_days`, weekStart: W2, kind: 'active_days', stat: null, target: 1, title: 'x', xp: 210 };
+  const evs = [ev({ type: 'weekly_issued', weekStart: W2, quests: [w2], ts: at(W2, 7) }), issue(W2, [q('a', W2, 10)]), done(W2, 'a')];
+  const s = replay(evs, at('2026-11-24'));
+  expect(s.cosmetics.owned.filter(o => o.source === 'chest')).toHaveLength(1);
+  expect(s.ledger.find(r => r.source === 'weekly')).toMatchObject({ xp: 210, gold: 42 });
+  const old = replay([weekly([wq('active_days', 1)]), issue(W, [q('a', W, 10)]), done(W, 'a')], NOW);
+  expect(old.cosmetics.owned.filter(o => o.source === 'chest')).toHaveLength(0);
+});
+
 test('weekly_issued: дубли id оплачиваются раз, не-понедельник и мусор игнорируются, XP зажат', () => {
   const dup = replay([weekly([wq('active_days', 1, null, 5000), wq('active_days', 1, null, 5000)]), issue(W, [q('a', W, 10)]), done(W, 'a')], NOW);
   expect(dup.weekly.quests.length).toBe(1);
-  expect(dup.totalXp).toBe(1010 + 50);
+  expect(dup.totalXp).toBe(1210 + 50);
   const bad = replay([ev({ type: 'weekly_issued', weekStart: '2026-11-17', quests: [wq('active_days', 1)], ts: at(W, 7) })], NOW);
   expect(bad.weekly.quests).toEqual([]);
   expect(replay([weekly([wq('bogus', 1), wq('active_days', 1e12)])], NOW).weekly.quests).toEqual([]);
@@ -1762,4 +1772,18 @@ test('шаг босса: мусорный link → daily; шаг в правил
       ...((e as any).questId ? { questId: `${(e as any).questId}x` } : {}) }) as GameEvent)], at('2026-12-09'));
   expect(t.seasonBoss!.parts[0].status).toBe('defeated');
   expect(t.ledger.filter(r => r.source === 'boss').map(r => r.xp)).toEqual([300]);
+});
+
+test('калибровка шаблонов с 23.11: по воскресеньям ×1,1 / ×0,85, две недели < 40% — шаблон отдыхает', () => {
+  const days = Array.from({ length: 14 }, (_, i) => addDays('2026-11-23', i));
+  const evs = [onboard, ...days.flatMap((d, i) => [
+    issue(d, [nq(`p${i}`, d, 'E', ['strength'], { templateId: 'pushups' }), nq(`r${i}`, d, 'E', ['reading'], { templateId: 'read' })]),
+    done(d, `p${i}`)])];
+  const s = replay(evs, at('2026-12-07'));
+  expect(s.calibration.mult.pushups).toBeCloseTo(1.21, 6);
+  expect(s.calibration.mult.read).toBeCloseTo(0.7225, 6);
+  expect(s.calibration.rest).toEqual(['read']);
+  expect(s.calibration.promoted).toEqual([]);
+  const before = replay(evs, at('2026-11-29'));   // воскресенье ещё не закрыто
+  expect(before.calibration.mult).toEqual({});
 });
