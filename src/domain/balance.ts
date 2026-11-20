@@ -90,6 +90,20 @@ export const BALANCE = {
   trophies: { avatar: 'Знак привычки', rare: 'Осколок тени', legendary: 'Корона сезона' },
   dayTypes: DEFAULT_DAY_TYPES,
   rewards: DEFAULT_REWARDS,
+  rivalSince: '2026-11-23',   // игровая дата выхода этапа «Соперник и финансы»
+  rival:   { ghostWeekXp: 50, recordXp: 100, championRecordXp: 100, growthBaseDayXp: 150, growthMinDays: 14,
+             pagesDayMax: 500, focusDayMax: 960, cardDays: 7, decisionDate: '2027-01-31', decision: { openedShare: 25 / 31, completion: 0.6, baseGain: 3 } },
+  finance: { amountMax: 1e8, textMax: 60, titleMax: 30, patternMin: 2, patternMax: 40, categoriesMax: 40, rulesMax: 300,
+             importRowsMax: 1000, importFileMaxBytes: 2_000_000, importLinesMax: 5000, dedupeDays: 1,
+             weekMinDays: 3, monthMinDays: 15, saveShare: 0.1, warnShare: 0.8, autoShare: 0.5,
+             monthRank: 'A', saveRank: 'C' },
+  advanced: { level: 20, delayDays: 14, trialDays: 14, retryDays: 7, passDays: 10, passQuests: 8, switchDays: 7, passiveMult: 2,
+              crusader: { perDay: 0.03, cap: 0.6 }, guardianFreeze: 1, guardHp: 10, archmageSkill: 1.15, hermitDecay: 2,
+              architectChain: 0.2, treasurerGold: 0.15, magnateMult: 2.5, diplomat: 0.2, leader: 0.1, storyteller: 0.25, rangerCardio: 0.15,
+              ascetClean: 4, harmony: 0.1,
+              mult: { record: 3, alliance: 2, gather: 2, silence: 2, audit: 2, expedition: 2, balance: 2, chain: 2 },
+              pledge: { vow: { days: 7, k: 2 }, fast: { days: 3, k: 3 } }, guard: { wall: 3, bastion: 7 },
+              invest: { stake: 300, payout: 450, share: 0.7, days: 7 }, silenceMaxMin: 5 },
   legacyRank: { 1: 'E', 2: 'E', 3: 'D', 4: 'C', 5: 'B' },
   legacy:  { questXpMax: 10_000, weeklyXpMax: 1000, bossStageXp: 100, bossDefeatXp: 200 },   // старый журнал: XP как сохранено, в пределах
 } as const;

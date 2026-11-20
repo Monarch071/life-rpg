@@ -21,7 +21,7 @@ import { stepRewards, stepXpFor } from './seasonPath';
 import { cosmeticById, trophyItemId } from './cosmetics';
 import { isStat, STATS, tierFor } from './stats';
 import { cleanText } from './text';
-import type { Analysis, Answers, BossDraft, AutoMetric, ClassId, ClassState, PerkView, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, WeeklyQuest, WeekResult, WeekScore } from './types';
+import type { Analysis, Answers, BossDraft, AutoMetric, ClassId, ClassState, PerkView, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, FinPeriod, WeeklyQuest, WeekResult, WeekScore } from './types';
 import { weakestStat } from './weekly';
 import { energyScore, fatigueNext, focusScore, hpScore, intFocusMult, sessionMinutes, unionMinutes, workoutKind } from './vitals';
 import { levelFromXp } from './xp';
@@ -1381,6 +1381,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     week: { start: thisWeek, preview: weekScore(thisWeek, today), results: weekResults.slice(-12).reverse() },
     league: { tier: leagueTier(league.points), name: BALANCE.league.names[leagueTier(league.points)], points: league.points, seasonId: league.seasonId ?? season.id },
     cosmetics: { owned, equipped },
+    finance: { categories: [], rules: [], entries: [], month: emptyFinPeriod(today), week: emptyFinPeriod(thisWeek), months: [], uncategorized: 0 },   // stage 6: наполняется следующей задачей
     dayTypes, ledger, history, achievements: achs, title, statHistory, metricHistory,
     ladders: ladList.filter(l => l.status === 'active' || l.status === 'queued' || l.status === 'auto').map(l => {
       const st = l.steps[l.step - 1], wk = l.status === 'auto';
@@ -1415,3 +1416,5 @@ export function replay(events: GameEvent[], now: number): GameState {
     },
   };
 }
+
+function emptyFinPeriod(start: ISODate): FinPeriod { return { start, end: start, income: 0, expense: 0, saving: 0, loggedDays: 0, byCat: [] }; }

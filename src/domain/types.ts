@@ -52,8 +52,19 @@ export type Signal =
 export type Answers = Record<string, string | number | string[]>;
 export interface Analysis { archetype: string; summary: string; strengths: string[]; weaknesses: string[]; stats: Record<Stat, number>; focus: string[]; questGuidance: string;
   scores?: Record<Stat, number>; startLevel?: number; levelWhy?: Partial<Record<Stat, string>>; skillLevels?: Partial<Record<SkillId, number>> }
+export type FinKind = 'expense' | 'income' | 'saving';
+/** amount < 0 — списание, > 0 — поступление. */
+export interface ImportRow { key: string; date: ISODate; amount: number; text: string }
+export interface FinPeriod { start: ISODate; end: ISODate; income: number; expense: number; saving: number; loggedDays: number;
+  byCat: { id: string; spent: number; limit: number | null }[] }
 export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'onboarding_completed'; profile: Profile }
+  | { type: 'fin_category_set'; categoryId: string; title: string; kind: FinKind; limit: number | null; archived?: boolean }
+  | { type: 'fin_entry_added'; entryId: string; date: ISODate; kind: FinKind; amount: number; categoryId: string; note?: string }
+  | { type: 'fin_entry_edited'; entryId: string; categoryId?: string; amount?: number; date?: ISODate; removed?: boolean }
+  | { type: 'fin_rule_set'; ruleId: string; pattern: string; categoryId: string | null }   // null — удалить правило
+  | { type: 'fin_imported'; importId: string; rows: ImportRow[] }   // ≤ 1000 строк на событие
+  | { type: 'fin_import_removed'; importId: string }
   | { type: 'day_started'; date: ISODate; work: { start: HHMM; end: HHMM } | null; wakeAt: HHMM; dayType?: DayType; energy?: number /* 1–10 */ }
   | { type: 'day_types_set'; types: DayType[] }
   | { type: 'day_changed'; date: ISODate; dayType: DayType; at: HHMM }
@@ -199,6 +210,14 @@ export interface GameState {
   title: string;          // titleReward последнего достижения с титулом, иначе 'Новичок'
   statHistory: { date: ISODate; stats: Record<Stat, number> }[];   // Основа на конец каждого финализированного дня
   metricHistory: { date: ISODate; metrics: Partial<Record<Metric, number>> }[];   // даты ≤ сегодня с метриками, по возрастанию
+  finance: {
+    categories: { id: string; title: string; kind: FinKind; limit: number | null; archived: boolean }[];
+    rules: { id: string; pattern: string; categoryId: string }[];
+    entries: { id: string; date: ISODate; kind: FinKind; amount: number; categoryId: string; text: string;
+      source: 'manual' | 'wallet' | 'import' | 'legacy'; dup: boolean; uncategorized: boolean }[];   // по дате убыв.
+    month: FinPeriod; week: FinPeriod;
+    months: { month: string; income: number; expense: number; saving: number; inLimit: boolean | null }[];   // закрытые, до 24
+    uncategorized: number };
   genInputs: { bestSteps7: number|null; bossStats: Stat[]; bossStep: QuestStep | null; chainStep: QuestStep | null; lastSleepHours: number|null; recentTemplateIds: string[]; fatigue: number;
     recovery: { quests: 0 | 1 | 2 } | null; afterRecovery: boolean;
     recent: { date: ISODate; stats: Stat[]; templateIds: string[] }[] };
