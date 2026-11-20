@@ -1570,6 +1570,18 @@ test('лестницы: мусор не бросает, поздний паке�
   expect(s.ladders[0]).toMatchObject({ title: 'Книги', step: 2, label: 'каждый день' });
 });
 
+test('лестница отдаёт autoLe и ступени (последняя правка)', () => {
+  const soc = ladder('s', { title: 'Соцсети', kind: 'dont', skill: 'habits', steps: LADDER_PRESETS.social.steps });
+  const sw = ladder('w', { title: 'Сладкое', kind: 'dont', skill: 'habits', steps: LADDER_PRESETS.sweets.steps });
+  const harder = LADDER_PRESETS.read.steps.map(s => ({ ...s, label: 'моё' }));
+  const s = replay([onboard, soc, sw, ladder(), ev({ type: 'ladder_updated', ladderId: 'l1', steps: harder, ts: at('2026-12-02', 9) })], at('2026-12-03'));
+  const by = (id: string) => s.ladders.find(l => l.id === id)!;
+  expect(by('s').autoLe).toBe(true);
+  expect(by('w').autoLe).toBe(false);
+  expect(by('l1').autoLe).toBe(false);
+  expect(by('l1').steps.map(x => x.label)).toEqual(Array(5).fill('моё'));
+  expect(by('w').steps).toEqual(LADDER_PRESETS.sweets.steps);
+});
 test('день только с ритуалами — активность: без «Ослабления» у первых заданий', () => {
   const s = replay([onboard, ladder(), ...rits(['2026-12-01', '2026-12-02', '2026-12-03']),
     issue('2026-12-04', [nq('a', '2026-12-04', 'E', ['strength'])]), done('2026-12-04', 'a')], at('2026-12-05'));

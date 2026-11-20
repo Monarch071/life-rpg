@@ -2,10 +2,10 @@ import type { GameState, ISODate } from '../domain/types'
 
 type Ladder = GameState['ladders'][number]
 
-/** Чип ритуала на Главной: «не делать» засчитывается к вечеру (данные при закрытии дня или чек-ин). */
+/** Чип ритуала на Главной: «не делать» с авто «<=» засчитывается при закрытии дня, остальное — отметкой. Грань тени на Главной не называется. */
 export function ritualChip(l: Ladder): { text: string; sub: string; state: 'done' | 'auto' | 'later' | 'todo' } {
-  const state = l.todayDone ? (l.todayVerify === 'auto' ? 'auto' : 'done') : l.kind === 'dont' ? 'later' : 'todo'
-  return { text: `${l.title} · ${l.label}`, sub: `ступень ${l.step} · ${l.done}/${l.required}`, state }
+  const state = l.todayDone ? (l.todayVerify === 'auto' ? 'auto' : 'done') : l.kind === 'dont' && l.autoLe ? 'later' : 'todo'
+  return { text: l.facetId ? `Не делать · ступень ${l.step}` : `${l.title} · ${l.label}`, sub: `ступень ${l.step} · ${l.done}/${l.required}`, state }
 }
 
 const r2 = (x: number) => Math.round(x * 100) / 100
@@ -29,10 +29,10 @@ export function markBattleSeen(date: ISODate, store: Storage | null = ls()): voi
 }
 
 type Part = NonNullable<GameState['seasonBoss']>['parts'][number]
-const TONE: Record<Part['status'], 'muted' | 'active' | 'late' | 'won' | 'lost'> = { upcoming: 'muted', active: 'active', late: 'late', defeated: 'won', escaped: 'lost' }
+const TONE: Record<Part['status'], 'muted' | 'active' | 'late' | 'won' | 'lost'> = { upcoming: 'muted', active: 'active', late: 'late', defeated: 'won' }
 
 /** Карточка части босса: подпись с HP, тон по статусу, следующий шаг (у законченной — нет). */
 export function partView(p: Omit<Part, 'steps'> & { steps: readonly Part['steps'][number][] }): { label: string; tone: 'muted' | 'active' | 'late' | 'won' | 'lost'; next: string | null } {
-  const over = p.status === 'defeated' || p.status === 'escaped'
+  const over = p.status === 'defeated'
   return { label: `${p.title} · HP ${p.hp}`, tone: TONE[p.status], next: over ? null : p.steps.find(s => !s.done)?.title ?? null }
 }

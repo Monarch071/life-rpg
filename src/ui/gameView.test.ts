@@ -22,7 +22,9 @@ test('чип ритуала', () => {
   expect(ritualChip(l)).toEqual({ text: 'Чтение · 10 страниц', sub: 'ступень 1 · 2/6', state: 'todo' })
   expect(ritualChip({ ...l, todayDone: true, todayVerify: 'auto' }).state).toBe('auto')
   expect(ritualChip({ ...l, todayDone: true, todayVerify: 'honest' }).state).toBe('done')
-  expect(ritualChip({ ...l, kind: 'dont' }).state).toBe('later')
+  expect(ritualChip({ ...l, kind: 'dont', autoLe: true }).state).toBe('later')
+  expect(ritualChip({ ...l, kind: 'dont', autoLe: false }).state).toBe('todo')
+  expect(ritualChip({ ...l, kind: 'dont', facetId: 'f1', step: 3 }).text).toBe('Не делать · ступень 3')
 })
 
 test('битва показана: без хранилища и при исключении — false, без падения', () => {
@@ -51,6 +53,5 @@ test('вид части босса', () => {
   expect(partView(p)).toEqual({ label: 'Часть 1 · HP 52', tone: 'active', next: 'Б' })
   expect(partView({ ...p, status: 'late' }).tone).toBe('late')
   expect(partView({ ...p, status: 'upcoming' }).tone).toBe('muted')
-  expect(partView({ ...p, status: 'escaped' })).toMatchObject({ tone: 'lost', next: null })
   expect(partView({ ...p, hp: 0, status: 'defeated' })).toMatchObject({ tone: 'won', next: null })
 })

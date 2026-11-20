@@ -15,7 +15,7 @@ const B = BALANCE.boss
 const AI_TIMEOUT = 20_000
 const skillTitle = (id: string) => SKILL_CATALOG.find(s => s.id === id)?.title ?? id
 const STATUS: Record<NonNullable<GameState['seasonBoss']>['parts'][number]['status'], string> = {
-  upcoming: 'впереди', active: 'идёт', late: 'догоняем', defeated: 'побеждён', escaped: 'ушёл',
+  upcoming: 'впереди', active: 'идёт', late: 'догоняем', defeated: 'побеждён',
 }
 const dm = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`
 

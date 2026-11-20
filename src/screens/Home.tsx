@@ -269,7 +269,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       {sheet === 'quick' && <QuickInput state={state} onClose={() => setSheet(null)} />}
       {sheet === 'busy' && <BusyUntil date={today.date} onClose={() => setSheet(null)} />}
       {sheet === 'checkin' && <Checkin state={state} onClose={() => setSheet(null)} />}
-      {battle && battleOpen && <BattleSheet battle={battle} avatar={state.avatar} tier={state.tier} onClose={closeBattle} />}
+      {battle && battleOpen && (today.started || later) && <BattleSheet battle={battle} avatar={state.avatar} tier={state.tier} onClose={closeBattle} />}
       {sheet === 'changed' && <DayChanged state={state} onClose={() => setSheet(null)} />}
       {sheet === 'custom' && <CustomQuest state={state} onClose={() => setSheet(null)} />}
       {sheet === 'timer' && <Timer initial={timerKind} onClose={() => setSheet(null)} />}

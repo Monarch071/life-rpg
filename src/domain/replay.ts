@@ -1163,7 +1163,8 @@ export function replay(events: GameEvent[], now: number): GameState {
         windowStart: l.status === 'queued' ? null : l.windowStart, windowDays: l.win.length, done: l.done,
         required: wk ? reqOf(l.steps[L.steps - 2].per7, l.win, 7, 1) : reqOf(st.per7, l.win, L.windowDays, 2),
         todayDone: ladToday.has(l.id), todayVerify: ladToday.get(l.id) ?? null, label: st.label, xp: ritualXp(l.step),
-        ask: l.ask && !l.upd.some(u => u.date >= l.askFrom), facetId: l.facetId }; // «что мешает?» снимается правкой ступеней
+        ask: l.ask && !l.upd.some(u => u.date >= l.askFrom), facetId: l.facetId, // «что мешает?» снимается правкой ступеней
+        autoLe: st.auto?.op === '<=', steps: (l.upd.length ? l.upd[l.upd.length - 1].steps : l.steps).map(x => ({ ...x, ...(x.auto ? { auto: { ...x.auto } } : {}) })) };
     }),
     trophies,
     seasonBoss: sbNow && { seasonId: sbNow.seasonId, title: sbNow.title, skill: sbNow.skill, stat: sbNow.stat, defeated: sbNow.defeated,

@@ -162,12 +162,14 @@ export interface GameState {
   /** Лестницы привычек (кроме удалённых), в порядке создания; windowDays/done/required — текущее окно (ступень 5 — текущая неделя). */
   ladders: { id: string; title: string; kind: LadderKind; skill: SkillId; status: 'active' | 'queued' | 'auto';
     step: 1 | 2 | 3 | 4 | 5; attempt: 1 | 2; windowStart: ISODate | null; windowDays: number; done: number; required: number;
-    todayDone: boolean; todayVerify: 'auto' | 'honest' | null; label: string; xp: number; ask: boolean; facetId: string | null }[];
+    todayDone: boolean; todayVerify: 'auto' | 'honest' | null; label: string; xp: number; ask: boolean; facetId: string | null;
+    /** засчитывается при закрытии дня сам (авто «<=»); иначе — отметка вручную */ autoLe: boolean;
+    /** ступени последней правки (для «Что мешает?») */ steps: LadderStep[] }[];
   trophies: { id: string; kind: 'avatar' | 'rare' | 'legendary'; title: string; date: ISODate }[];   // спека §8.3, по дате
   /** Босс текущего сезона (спека §5.6); части — календарные месяцы сезона. */
   seasonBoss: { seasonId: string; title: string; skill: SkillId; stat: Stat; defeated: boolean;
     parts: { title: string; start: ISODate; end: ISODate; steps: { title: string; done: boolean }[]; hits: number; hp: number;
-      status: 'upcoming' | 'active' | 'late' | 'defeated' | 'escaped' }[] } | null;
+      status: 'upcoming' | 'active' | 'late' | 'defeated' }[] } | null;
   bossOptions: BossDraft[];   // правилами; UI заменяет на ИИ-варианты, если есть ключ
   chain: { id: string; title: string; skill: SkillId; stat: Stat; steps: { title: string; done: boolean }[]; current: number } | null;
   chainsDone: number;

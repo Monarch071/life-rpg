@@ -17,10 +17,6 @@ const L = BALANCE.ladder
 const STEP_NAMES = ['Проба', 'Закрепление', 'Рост', 'Мастерство', 'Автоматизм']
 const AI_TIMEOUT = 15_000
 
-/** Ступени для правки: шаблон с тем же названием, иначе общая лестница (своих ступеней в состоянии нет). */
-const baseSteps = (l: Pick<Ladder, 'title' | 'kind'>): LadderStep[] =>
-  (Object.values(LADDER_PRESETS).find(p => p.title === l.title && p.kind === l.kind) ?? genericLadder(l.title, l.kind)).steps
-
 export default function Ladders({ state }: { state: GameState }) {
   const w = useWrite()
   const [adding, setAdding] = useState(false)
@@ -47,7 +43,7 @@ export default function Ladders({ state }: { state: GameState }) {
       </>}
       {w.msg && <p role={w.msg.ok ? 'status' : 'alert'} className={w.msg.ok ? 'ok' : 'err'}>{w.msg.text}</p>}
       <button className="btn" onClick={() => setAdding(true)}><Plus size={18} aria-hidden="true" /> Новая лестница</button>
-      {adding && <NewLadder state={state} full={active.length >= L.maxActive} onClose={() => setAdding(false)} />}
+      {adding && <NewLadder state={state} full={active.length >= L.maxActive} queues={active.length >= L.maxActive || queued.length > 0} onClose={() => setAdding(false)} />}
       {ask && <AskSheet l={ask} onClose={() => setAsk(null)} />}
       {remove && <Confirm title={`Убрать лестницу «${remove.title}»?`} yes="Убрать" onNo={() => setRemove(null)}
         onYes={() => { const id = remove.id; setRemove(null); void w.write({ type: 'ladder_removed', ladderId: id }, 'Лестница убрана') }} />}
@@ -80,7 +76,7 @@ function LadderCard({ l, onAsk, onRemove }: { l: Ladder; onAsk: () => void; onRe
 
 /** «Что мешает?» — Мастер предлагает переформулировать ступени; действует со следующего окна. */
 function AskSheet({ l, onClose }: { l: Ladder; onClose: () => void }) {
-  const [steps, setSteps] = useState(() => baseSteps(l).map(s => ({ ...s })))
+  const [steps, setSteps] = useState(() => l.steps.map(s => ({ ...s })))
   const w = useWrite()
   const set = (i: number, p: Partial<LadderStep>) => setSteps(steps.map((s, j) => (j === i ? { ...s, ...p } : s)))
   const save = async () => {
@@ -106,7 +102,7 @@ function AskSheet({ l, onClose }: { l: Ladder; onClose: () => void }) {
   )
 }
 
-function NewLadder({ state, full, onClose }: { state: GameState; full: boolean; onClose: () => void }) {
+function NewLadder({ state, full, queues, onClose }: { state: GameState; full: boolean; queues: boolean; onClose: () => void }) {
   const w = useWrite()
   const [cfg, setCfg] = useState<AiConfig | null>(null)
   useEffect(() => { let on = true; getAiConfig().then(c => { if (on) setCfg(c) }, () => {}); return () => { on = false } }, [])
@@ -125,7 +121,7 @@ function NewLadder({ state, full, onClose }: { state: GameState; full: boolean; 
     .filter(id => !have.has(LADDER_PRESETS[id].title))
   const facets = state.shadow.facets.filter(f => !f.banished)
   const create = async (p: { title: string; kind: LadderKind; skill: Ladder['skill']; steps: LadderStep[] }, extra: { suitable?: 'workdays'; facetId?: string } = {}) => {
-    if (await w.write({ type: 'ladder_created', ladderId: crypto.randomUUID(), ...p, ...extra }, full ? 'Лестница в очереди' : 'Лестница начата')) onClose()
+    if (await w.write({ type: 'ladder_created', ladderId: crypto.randomUUID(), ...p, ...extra }, queues ? 'Лестница в очереди' : 'Лестница начата')) onClose()
   }
   const custom = () => {
     if (t.length < 2 || t.length > 40) return w.setMsg({ ok: false, text: 'Название — от 2 до 40 символов' })
