@@ -11,6 +11,7 @@ import { METRIC_INFO } from '../domain/metricInfo'
 import { STATS } from '../domain/stats'
 import type { GameState, Metric, Stat } from '../domain/types'
 import LineChart from '../ui/LineChart'
+import Finance from './Finance'
 
 const PERIODS = [7, 30, 90] as const
 const METRICS: Metric[] = ['steps', 'sleepHours', 'weightKg', 'mood', 'screenMin', 'spend', 'water', 'readPages']
@@ -18,7 +19,25 @@ const METRIC_ICONS: Record<Metric, LucideIcon> = { steps: Footprints, sleepHours
 const dm = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`
 const shift = (d: string, n: number) => new Date(Date.parse(d + 'T00:00:00Z') - n * 864e5).toISOString().slice(0, 10)
 
+// вкладка «Анализ» помнит выбор до перезапуска приложения
+let lastView: 'progress' | 'finance' = 'progress'
+
 export default function Analytics({ state }: { state: GameState }) {
+  const [view, setViewState] = useState(lastView)
+  const setView = (v: typeof view) => { lastView = v; setViewState(v) }
+  return (
+    <section className="analytics">
+      <h1>Анализ</h1>
+      <div className="seg-toggle" role="group" aria-label="Раздел анализа">
+        <button type="button" aria-pressed={view === 'progress'} onClick={() => setView('progress')}>Прогресс</button>
+        <button type="button" aria-pressed={view === 'finance'} onClick={() => setView('finance')}>Финансы</button>
+      </div>
+      {view === 'progress' ? <Progress state={state} /> : <Finance state={state} />}
+    </section>
+  )
+}
+
+function Progress({ state }: { state: GameState }) {
   const [days, setDays] = useState<(typeof PERIODS)[number]>(30)
   const [stat, setStat] = useState<Stat | null>(null)
   const [cfg, setCfg] = useState<AiConfig | null>(null)
@@ -50,8 +69,7 @@ export default function Analytics({ state }: { state: GameState }) {
     ['Серия', String(state.streak)],
   ]
   return (
-    <section className="analytics">
-      <h1>Анализ</h1>
+    <>
       <div className="scale" role="group" aria-label="Период">
         {PERIODS.map(p => <button key={p} className={`btn${p === days ? ' primary' : ''}`} aria-pressed={p === days} onClick={() => setDays(p)}>{p} дн</button>)}
       </div>
@@ -79,6 +97,6 @@ export default function Analytics({ state }: { state: GameState }) {
         {repErr && <p className="err" role="alert">{repErr}</p>}
         {msg && <p className={msg.ok ? 'muted' : 'err'} role={msg.ok ? 'status' : 'alert'}>{msg.text}</p>}
       </div>
-    </section>
+    </>
   )
 }

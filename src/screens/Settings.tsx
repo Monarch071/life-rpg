@@ -4,6 +4,8 @@ import { exportData, importData } from '../backup'
 import { getSetting, setSetting } from '../db'
 import { now } from '../now'
 import { saveBackup } from '../ui/saveFile'
+import { CURRENCIES } from '../ui/finView'
+import { useCurrency } from './Finance'
 import { useDialog } from '../ui/useDialog'
 import { useWrite } from '../ui/useWrite'
 import ConfirmSheet from '../ui/Confirm'
@@ -77,6 +79,7 @@ export default function Settings({ state, sync }: { state: GameState; sync: Sync
       </section>
       <DayTypes key={JSON.stringify(state.dayTypes)} saved={state.dayTypes} />
       <SeasonTheme state={state} />
+      <Currency />
       <div id="sync-panel"><SyncPanel state={state} sync={sync} /></div>
       <div id="ai-panel"><AiPanel /></div>
       <NotifyPanel sync={sync} />
@@ -165,6 +168,20 @@ function SeasonTheme({ state }: { state: GameState }) {
         })}
       </div>
       {w.msg && <p role={w.msg.ok ? 'status' : 'alert'} className={w.msg.ok ? 'ok' : 'err'}>{w.msg.text}</p>}
+    </section>
+  )
+}
+
+/** Валюта финансов — настройка этого устройства, в журнал не пишется. */
+function Currency() {
+  const cur = useCurrency()
+  return (
+    <section className="panel stack" aria-label="Валюта">
+      <h2>Валюта</h2>
+      <div className="chips" role="group" aria-label="Валюта финансов">
+        {CURRENCIES.map(c => <button key={c} type="button" className={`btn${c === cur ? ' primary' : ''}`} aria-pressed={c === cur}
+          onClick={() => void setSetting('currency', c).catch(() => {})}>{c}</button>)}
+      </div>
     </section>
   )
 }

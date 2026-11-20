@@ -164,3 +164,13 @@ test('aiWeeklyReport: промпт — только белый список, с 
   expect(user).toContain('ранг недели')
   for (const x of ['СекретнаяЦель', 'СекретнаяГрань', 'spend', '999']) expect(user).not.toContain(x)
 })
+
+test('questContext: финансы не уходят в ИИ', () => {
+  const t = new Date(2027, 0, 5, 12).getTime()
+  const s = replay([{ id: 'o', ts: 1, deviceId: 'd', type: 'onboarding_completed', profile } as GameEvent,
+    { id: 'f', ts: t, deviceId: 'd', type: 'fin_entry_added', entryId: 'x', date: '2027-01-05', kind: 'expense', amount: 4321, categoryId: 'default:other', note: 'СекретМагазин' } as GameEvent,
+    { id: 'w', ts: t, deviceId: 'shortcuts', type: 'signal_logged', at: t, signal: { kind: 'wallet', amount: 4321, merchant: 'СекретМагазин' } } as GameEvent], t)
+  expect(s.finance.entries.length).toBe(2)
+  const c = questContext(s, profile)
+  for (const bad of ['СекретМагазин', '4321', 'finance']) expect(c).not.toContain(bad)
+})

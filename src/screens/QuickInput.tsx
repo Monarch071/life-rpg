@@ -4,12 +4,14 @@ import { appendEvent } from '../db'
 import { useDialog } from '../ui/useDialog'
 import { METRIC_INFO } from '../domain/metricInfo'
 import type { GameState, Metric } from '../domain/types'
+import FinEntrySheet from './FinEntrySheet'
+import { useCurrency } from './Finance'
 
-const ICONS: Partial<Record<Metric, LucideIcon>> = { screenMin: Smartphone, spend: Wallet, readPages: BookOpen, workoutMin: Dumbbell, sleepHours: Moon, weightKg: Scale, steps: Footprints }
+const ICONS: Partial<Record<Metric, LucideIcon>> = { screenMin: Smartphone, readPages: BookOpen, workoutMin: Dumbbell, sleepHours: Moon, weightKg: Scale, steps: Footprints }
 type Field = { metric: Metric; icon: string; label: string; unit: string; mode: 'set' | 'add'; max: number }
 const F = (metric: Metric, mode: 'set' | 'add', max: number): Field => ({ metric, ...METRIC_INFO[metric], mode, max })
 const FIELDS: Field[] = [
-  F('screenMin', 'set', 1440), F('spend', 'add', 10_000_000), F('readPages', 'add', 2000),
+  F('screenMin', 'set', 1440), F('readPages', 'add', 2000),
   F('workoutMin', 'add', 1440), F('sleepHours', 'set', 24), F('weightKg', 'set', 500),
 ]
 
@@ -26,7 +28,9 @@ export default function QuickInput({ state, onClose }: { state: GameState; onClo
   const [vals, setVals] = useState<Partial<Record<Metric, string>>>({})
   const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(null)
   const [saving, setSaving] = useState(false)
-  const dlg = useDialog<HTMLDivElement>(onClose)
+  const [fin, setFin] = useState(false)
+  const cur = useCurrency()
+  const dlg = useDialog<HTMLDivElement>(fin ? undefined : onClose)   // Escape закрывает верхний лист
 
   const log = async (metric: Metric, value: number, mode: 'set' | 'add', label: string) => {
     if (saving) return
@@ -58,6 +62,7 @@ export default function QuickInput({ state, onClose }: { state: GameState; onClo
         <button className="btn big" disabled={saving} onClick={() => log('water', 1, 'add', 'вода +1 стакан')}>
           <GlassWater size={20} aria-hidden="true" /> Вода +1 стакан <span className="pill">{metrics.water ?? 0}</span>
         </button>
+        <button className="btn big" onClick={() => setFin(true)}><Wallet size={20} aria-hidden="true" /> Трата / доход</button>
         <div className="field">
           <span className="lbl"><Smile size={16} aria-hidden="true" /> Настроение {metrics.mood ? `(${metrics.mood}/5)` : ''}</span>
           <div className="scale">
@@ -78,6 +83,7 @@ export default function QuickInput({ state, onClose }: { state: GameState; onClo
         ))}
         {msg && <p className={msg.err ? 'err' : 'ok'} role="status">{msg.text}</p>}
       </div>
+      {fin && <FinEntrySheet state={state} cur={cur} onClose={() => setFin(false)} />}
     </div>
   )
 }

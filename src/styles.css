@@ -715,3 +715,32 @@ button.path-t:focus-visible { outline: 2px solid var(--fire2); outline-offset: 2
 .lvlup.framed { background: radial-gradient(circle at 50% 42%, #6fb2ff55, transparent 65%), rgba(6, 6, 9, 0.96); }
 .lvlup.framed .huge { background: linear-gradient(160deg, var(--ice2), var(--ice)); }
 .lvlup.framed .rays { background: repeating-conic-gradient(#a9d1ff22 0 6deg, transparent 6deg 18deg); }
+
+/* финансы (этап 6) */
+.check { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.check input { width: 22px; height: 22px; accent-color: var(--fire); }
+.field select { min-height: 44px; width: 100%; padding: 0 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg2); color: var(--text); font: inherit; }
+.month-nav { align-items: center; }
+.month-nav h2 { margin: 0; text-transform: capitalize; }
+.fin .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.fin-cat { display: flex; flex-direction: column; gap: 4px; }
+.fin-cat .row { align-items: baseline; }
+.fin-cat small { font-variant-numeric: tabular-nums; }
+.bar.t-warn i { background: linear-gradient(var(--fire2), var(--cha)); }
+.bar.t-over i { background: var(--str); box-shadow: 0 0 6px var(--str); }
+.fin-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.fin-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 6px 0; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); text-align: left; font: inherit; }
+.fin-row .grow { display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.fin-row small { color: var(--muted); }
+.fin-row.dup { opacity: 0.55; }
+.fin-row .amt { flex: none; font-weight: 800; font-variant-numeric: tabular-nums; }
+.amt.k-income { color: var(--up); } .amt.k-saving { color: var(--fire2); }
+.fin-cats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.fin-cats .card.archived { opacity: 0.6; }
+.fin-cats .row { flex-wrap: wrap; }
+.fin-cats .lim { flex: 0 1 120px; }
+.fin-sum { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; }
+.fin-sum li { display: flex; flex-direction: column; padding: 8px 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.fin-sum b { font: 900 20px Manrope, sans-serif; }
+.fin-sum small { color: var(--muted); font-size: 11px; }
+.cards .card b { overflow-wrap: anywhere; }
