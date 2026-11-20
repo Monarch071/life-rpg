@@ -106,7 +106,7 @@ export interface DayResult { date: ISODate; xp: number; completed: number; issue
   hp: number | null; energy: number | null; focus: number | null; fatigue: number }
 export interface StatInfo { base: number; into: number; need: number; xp: number; form: number | null; status: 'new' | 'in_form' | 'sagging' | 'abandoned'; norm: number; xp14: number; lastRestore: ISODate | null }
 export interface SkillState { level: number; into: number; need: number; xp: number; start: number; lastDate: ISODate | null;
-  idleDays: number | null; rusty: boolean; perks: PerkView[] }   // perks — открытые; idleDays — незамороженные дни простоя на начало сегодня
+  idleDays: number | null; rusty: boolean; perks: PerkView[] }   // perks — открытые; idleDays — незамороженные дни простоя до сегодня; задание или ритуал сегодня → 0
 export interface PerkView { id: string; level: 3 | 6 | 10; title: string; desc: string; kind: 'pct' | 'flat'; power: 0 | 0.5 | 1; why: 'rust' | 'form' | null }
 /** Класс (спека §4): pair — пара, давшая класс (у Странника null); since — дата присвоения. */
 export interface ClassState { id: ClassId; name: string; pair: [Stat, Stat] | null; since: ISODate | null; weights: Record<Stat, number>;

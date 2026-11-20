@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { flatPerks, idleDays, isRusty, mainSkillPerks, perkPower, PERKS, skillForm } from './perks';
+import { flatPerks, isRusty, mainSkillPerks, perkPower, PERKS, skillForm } from './perks';
 import { SKILL_IDS, type SkillId } from './skillCatalog';
 import { questReward, streakBonus } from './progression';
 import { facetDay } from './shadow';
@@ -31,14 +31,8 @@ test('постоянные перки суммируются', () => {
   expect(flatPerks(lv({ mobility: 6, sleep: 7, mindfulness: 10, habits: 3, routine: 10 }), F)).toEqual({ relapse: 5, streakMiss: 0.75, fatigueDecay: 9 });
   expect(flatPerks(lv({}), F)).toEqual({ relapse: 8, streakMiss: 0.5, fatigueDecay: 0 });
 });
-test('ржавчина [S§4]: 30 незамороженных дней; никогда не качался — нет', () => {
-  const none = () => false;
-  expect(idleDays('2026-11-20', '2026-12-20', none)).toBe(29);
-  expect(idleDays('2026-11-20', '2026-12-21', none)).toBe(30);
-  expect(isRusty(29)).toBe(false); expect(isRusty(30)).toBe(true);
-  const rec = new Set(['2026-12-01', '2026-12-02', '2026-12-03']);
-  expect(idleDays('2026-11-20', '2026-12-21', d => rec.has(d))).toBe(27);
-  expect(idleDays(null, '2026-12-21', none)).toBeNull(); expect(isRusty(null)).toBe(false);
+test('ржавчина [S§4]: с 30 дней простоя; никогда не качался — нет', () => {
+  expect(isRusty(29)).toBe(false); expect(isRusty(30)).toBe(true); expect(isRusty(null)).toBe(false);
 });
 test('хуки: золото с бонусом, серия Паладина, срыв 5, спад усталости, Режим 10', () => {
   expect(questReward({ rank: 'C', verify: 'auto', bonuses: [], penalties: [], goldBonus: 0.1 })).toMatchObject({ xp: 70, gold: 15 });

@@ -1,7 +1,6 @@
 import { BALANCE as B } from './balance';
-import { addDays } from './day';
 import { SKILL_CATALOG, SKILL_IDS, type SkillId } from './skillCatalog';
-import type { ISODate, Stat } from './types';
+import type { Stat } from './types';
 
 const P = B.perks;
 const r9 = (x: number) => Math.round(x * 1e9) / 1e9;
@@ -69,14 +68,6 @@ export function flatPerks(skills: Record<SkillId, { level: number; rusty: boolea
     else if (e.kind === 'fatigueDecay') out.fatigueDecay += e.points;
   }
   return out;
-}
-
-/** Незамороженные дни строго после lastDate и до before; null — навык ни разу не качался. */
-export function idleDays(lastDate: ISODate | null, before: ISODate, frozen: (d: ISODate) => boolean): number | null {
-  if (!lastDate) return null;
-  let n = 0;
-  for (let d = addDays(lastDate, 1); d < before; d = addDays(d, 1)) if (!frozen(d)) n++;
-  return n;
 }
 
 export const isRusty = (idle: number | null): boolean => idle !== null && idle >= B.rust.days;

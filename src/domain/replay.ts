@@ -1024,11 +1024,12 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (sd) { top += sd[strong]; for (const k of STAT_KEYS) total += sd[k]; }
       }
       const imbalance = total >= BALANCE.penalty.imbalanceMinXp && top > BALANCE.penalty.imbalanceShare * total;
-      // ржавчина: +bonus первому по времени выполнения заданию дня с тегом ржавого навыка
+      // ржавчина: +bonus первому по времени выполнения заданию дня с тегом ржавого навыка; ритуал этого навыка раньше — снимает без бонуса
       const rustFirst = new Set<string>();
       if (snap) {
         const byTime = qs.filter(q => q.done && !q.legacy).map((q, i) => ({ q, t: completedAt.get(q.id) ?? issuedTs.get(d) ?? 0, i })).sort((a, b) => a.t - b.t || a.i - b.i);
-        for (const id of SKILL_IDS) if (snap.skills[id].rusty) { const x = byTime.find(x => x.q.skills.includes(id)); if (x) rustFirst.add(x.q.id); }
+        const ritTs = (id: SkillId) => Math.min(...ladList.filter(l => l.skill === id && l.status !== 'gone' && l.status !== 'queued' && l.created <= d && l.rit.has(d)).map(l => l.rit.get(d)!));
+        for (const id of SKILL_IDS) if (snap.skills[id].rusty) { const x = byTime.find(x => x.q.skills.includes(id)); if (x && x.t < ritTs(id)) rustFirst.add(x.q.id); }
       }
       const rows = qs.filter(q => q.done).map(q => {
         if (q.legacy) return { q, gb: 0, r: { base: q.xp, k: 1, bonus: 0, penalty: 0, mult: 1, xp: q.xp, gold: goldFor(q.xp) } };
