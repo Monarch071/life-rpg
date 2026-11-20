@@ -14,10 +14,11 @@ import { bossOptionsByRules, partHp, partWindows, validBossDraft, validChainStep
 import { banished, battleOutcome, facetDay, isSerious, lastSunday, masterPlan } from './shadow';
 import { startProfile } from './startProfile';
 import { dayOutcome, nextStreak } from './streak';
-import { classNameOf } from './classes';
+import { CLASSES, classWeights, passivePower, pickClass, questBonuses } from './classes';
+import { flatPerks, isRusty, mainSkillPerks, PERKS, perkPower, skillForm } from './perks';
 import { isStat, STATS, tierFor } from './stats';
 import { cleanText } from './text';
-import type { Analysis, Answers, BossDraft, AutoMetric, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, WeeklyQuest } from './types';
+import type { Analysis, Answers, BossDraft, AutoMetric, ClassId, ClassState, PerkView, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, WeeklyQuest } from './types';
 import { weakestStat } from './weekly';
 import { energyScore, fatigueNext, focusScore, hpScore, intFocusMult, sessionMinutes, unionMinutes, workoutKind } from './vitals';
 import { levelFromXp } from './xp';
@@ -707,7 +708,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     statByDate.set(r.date, sd);
     for (const [id, v] of r.skills) {
       const before = skillFromXp(start.skills[id], skillXp[id]).level;
-      skillXp[id] += v; skillLast[id] = r.date;
+      skillXp[id] += v; if (r.source === 'quest' || r.source === 'ritual') skillLast[id] = r.date;   // практика: задание или ритуал (спека §3.3)
       if (before < 2 && skillFromXp(start.skills[id], skillXp[id]).level >= 2) bump(r.date, 'skills');
     }
   };
@@ -803,7 +804,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       // срыв: честная отметка или данные группы приложений (те же правила, что у «<=»-заданий)
       const m = f.kind === 'social' || f.kind === 'games' ? appMin(d, f.kind) : null;
       const relapse = honest !== undefined || (m !== null && m > S.dataRelapseMin);
-      Object.assign(f, facetDay(f, relapse, assist.has(`${f.id}|${d}`)));
+      Object.assign(f, facetDay(f, relapse, assist.has(`${f.id}|${d}`), snap?.flat.relapse));
       if (relapse) relapsesOn.set(d, (relapsesOn.get(d) ?? 0) + 1);
       if (banished(f)) { f.banished = true; bump(d, 'facetsBanished'); }
     }
@@ -898,6 +899,38 @@ export function replay(events: GameEvent[], now: number): GameState {
   const firstFacet = [...facetMap.values()].map(f => f.added).filter(d => d <= today).sort()[0] as ISODate | undefined;
   if (firstFacet) for (let d = firstFacet; d <= today; d = addDays(d, 1)) dates.add(d);
   const recAll = [...recSpans, ...(recOn ? [{ from: recOn.since, to: addDays(today, 1) }] : [])];
+  // Форма по закрытым дням без отдыха (на момент вызова — все < at): окно 14; норма — из плана первые 30 дней, потом из факта за 60 дней.
+  const workDays: ISODate[] = [];
+  const xpOn = (ds: ISODate[], k: Stat) => ds.reduce((a, d) => a + (statByDate.get(d)?.[k] ?? 0), 0);
+  const formsAt = (at: ISODate): Record<Stat, { form: number | null; norm: number; xp14: number }> => {
+    const win = workDays.slice(-BALANCE.form.window), past = workDays.slice(-BALANCE.form.normDays);
+    const plan = !!firstDay && at < addDays(firstDay, BALANCE.form.planDays), planXp = fill(0);
+    if (plan) for (const d of workDays) for (const q of issued.get(d) ?? []) if (!q.dropped)
+      for (const [k, v] of Object.entries(splitXp(q.xp, q.skills).stats)) planXp[k as Stat] += v ?? 0;
+    return Object.fromEntries(STAT_KEYS.map(k => {
+      const avg = plan ? (workDays.length ? planXp[k] / workDays.length : 0) : past.length ? xpOn(past, k) / past.length : 0;
+      const norm = formNorm(avg), xp14 = xpOn(win, k);
+      return [k, { form: formOf(xp14, win.length, norm), norm, xp14 }];
+    })) as Record<Stat, { form: number | null; norm: number; xp14: number }>;
+  };
+  const formMap = (f: ReturnType<typeof formsAt>) => Object.fromEntries(STAT_KEYS.map(k => [k, f[k].form])) as Record<Stat, number | null>;
+  // Простой навыка: незамороженные дни строго между lastDate и at; frozenList растёт по датам (отдых, восстановление, день без заданий).
+  const frozenList: ISODate[] = [];
+  const freezeDay = (d: ISODate) => { if (frozenList.at(-1) !== d) frozenList.push(d); };
+  const dayNum = (d: ISODate) => { const [y, m, x] = d.split('-').map(Number); return Date.UTC(y, m - 1, x) / BALANCE.day.msPerDay; };
+  const idleOf = (last: ISODate | undefined, at: ISODate): number | null => {
+    if (!last) return null;
+    let n = Math.max(0, dayNum(at) - dayNum(last) - 1);
+    for (let i = frozenList.length - 1; i >= 0 && frozenList[i] > last; i--) if (frozenList[i] < at) n--;
+    return Math.max(0, n);
+  };
+  // Класс: первый — на firstDay без гистерезиса, пересчёт — на начало каждого 1-го числа; история смен — по датам.
+  let cls: { id: ClassId; pair: [Stat, Stat] | null } | null = null;
+  const clsHist: { date: ISODate; id: ClassId; pair: [Stat, Stat] | null }[] = [];
+  // Снимок на начало дня d ≥ depthSince: Форма, навыки (уровень, ржавчина), сила пассива, постоянные перки.
+  type Snap = { forms: Record<Stat, number | null>; skills: Record<SkillId, { level: number; rusty: boolean }>; power: 0 | 0.5 | 1;
+    flat: ReturnType<typeof flatPerks> };
+  let snap: Snap | null = null;
   for (const p of recAll) for (let d = p.from; d < p.to && d <= today; d = addDays(d, 1)) dates.add(d);
   for (const d of [...dates].sort()) {
     const qs = issued.get(d) ?? [];
@@ -911,6 +944,20 @@ export function replay(events: GameEvent[], now: number): GameState {
     // До трат дня: день без заданий на замороженный день отклоняется без списания, как на день отдыха.
     if (d <= today && recAll.some(p => d >= p.from && d < p.to) && !restDays.has(d) && (restInMonth.get(rm) ?? 0) < BALANCE.streak.restDaysPerMonth) {
       restDays.add(d); restInMonth.set(rm, (restInMonth.get(rm) ?? 0) + 1);
+    }
+    if (restDays.has(d)) freezeDay(d);
+    snap = null;
+    if (firstDay && d >= firstDay && d <= today && (d >= BALANCE.depthSince || d === firstDay || d.endsWith('-01'))) {
+      const forms = formMap(formsAt(d));
+      if (!cls || d.endsWith('-01')) {
+        const next = pickClass(classWeights(baseNow(), forms), cls);
+        if (next.id !== cls?.id) clsHist.push({ date: d, ...next });
+        cls = next;
+      }
+      if (d >= BALANCE.depthSince) {
+        const sk = Object.fromEntries(SKILL_IDS.map(id => [id, { level: skillFromXp(start.skills[id], skillXp[id]).level, rusty: isRusty(idleOf(skillLast[id], d)) }])) as Snap['skills'];
+        snap = { forms, skills: sk, power: passivePower(cls, forms), flat: flatPerks(sk, forms) };
+      }
     }
     // HP/Energy/Фокус/Усталость дня — до его строк леджера; Усталость: F(d) = f(F(d−1), день d−1, ночь d)
     let vit: Vitals | null = null;
@@ -926,7 +973,7 @@ export function replay(events: GameEvent[], now: number): GameState {
           lowEvening: yh.feel !== undefined && yh.feel <= F.lowEveningMax, relapses: relapsesOn.get(y.date) ?? 0 };
       }
       // до старта Автоматики Усталость 0, штрафа и множителя Фокуса нет: закрытые дни старого журнала не меняются
-      fatigue = d < BALANCE.automationSince ? 0 : fatigueNext(fatigue, day, hv(d).sleep ?? null);
+      fatigue = d < BALANCE.automationSince ? 0 : fatigueNext(fatigue, day, hv(d).sleep ?? null, snap?.flat.fatigueDecay ?? 0);
       vit = vitalsOn(d, fatigue);
       if (d === today) todayVit = vit;
     }
@@ -956,7 +1003,7 @@ export function replay(events: GameEvent[], now: number): GameState {
           : restDays.has(d) || dayOff.has(d) || nr >= BALANCE.streak.restDaysPerMonth) continue;
         if (avail < r.price) continue;
         acceptedFx.add(s.id); paidSum += r.price;
-        if (r.effect === 'streak_freeze') { freezes++; freezeMonth.set(m, nf + 1); } else { dayOff.add(d); restInMonth.set(m, nr + 1); }
+        if (r.effect === 'streak_freeze') { freezes++; freezeMonth.set(m, nf + 1); } else { dayOff.add(d); freezeDay(d); restInMonth.set(m, nr + 1); }
       }
     }
     // «День изменился»: при меньшем числе слотов последние по выдаче невыполненные — dropped (вне знаменателя 60%); свои не трогаются.
@@ -977,13 +1024,24 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (sd) { top += sd[strong]; for (const k of STAT_KEYS) total += sd[k]; }
       }
       const imbalance = total >= BALANCE.penalty.imbalanceMinXp && top > BALANCE.penalty.imbalanceShare * total;
-      const rows = qs.filter(q => q.done).map(q => ({ q, r: q.legacy
-        ? { base: q.xp, k: 1, bonus: 0, penalty: 0, mult: 1, xp: q.xp, gold: goldFor(q.xp) }
-        : questReward({ rank: q.rank, verify: q.verify!,
+      // ржавчина: +bonus первому по времени выполнения заданию дня с тегом ржавого навыка
+      const rustFirst = new Set<string>();
+      if (snap) {
+        const byTime = qs.filter(q => q.done && !q.legacy).map((q, i) => ({ q, t: completedAt.get(q.id) ?? issuedTs.get(d) ?? 0, i })).sort((a, b) => a.t - b.t || a.i - b.i);
+        for (const id of SKILL_IDS) if (snap.skills[id].rusty) { const x = byTime.find(x => x.q.skills.includes(id)); if (x) rustFirst.add(x.q.id); }
+      }
+      const rows = qs.filter(q => q.done).map(q => {
+        if (q.legacy) return { q, gb: 0, r: { base: q.xp, k: 1, bonus: 0, penalty: 0, mult: 1, xp: q.xp, gold: goldFor(q.xp) } };
+        const themeOk = themeBonusApplies(theme, q.stat, q.skills), main = q.skills[0];
+        const b = snap ? questBonuses({ skills: q.skills, stat: q.stat, verify: q.verify!, streak, theme: themeOk, weakest: q.stat === weak,
+          cls: cls && { id: cls.id, power: snap.power },
+          perk: mainSkillPerks(main, snap.skills[main].level, skillForm(main, snap.forms), snap.skills[main].rusty), rust: rustFirst.has(q.id), inspire: false })
+          : { bonuses: [streakBonus(streak), themeOk ? BALANCE.bonus.theme : 0, q.stat === weak ? BALANCE.bonus.weakest : 0], goldBonus: 0 };   // до depthSince — прежний набор
+        return { q, gb: b.goldBonus, r: questReward({ rank: q.rank, verify: q.verify!, bonuses: b.bonuses, goldBonus: b.goldBonus,
           mult: (q.kind === 'restore' ? BALANCE.restore.mult : 1) * (q.stat === 'int' && d >= BALANCE.automationSince ? intFocusMult(vit?.focus ?? null) : 1),
-          bonuses: [streakBonus(streak), themeBonusApplies(theme, q.stat, q.skills) ? BALANCE.bonus.theme : 0, q.stat === weak ? BALANCE.bonus.weakest : 0],
           penalties: [weakening ? BALANCE.penalty.weakening : 0, imbalance && q.stat === strong ? BALANCE.penalty.imbalance : 0,
-            fatiguePenalty(vit?.fatigue ?? 0)] }) }));
+            fatiguePenalty(vit?.fatigue ?? 0)] }) };
+      });
       // свои ≤ dayShare XP дня: min(Σ своих, round(Σ остальных × share / (1 − share))); урезание пропорционально, остаток — последней строке
       const own = rows.filter(x => x.q.kind === 'custom'), ownXp = own.reduce((a, x) => a + x.r.xp, 0);
       const share = BALANCE.custom.dayShare;
@@ -991,7 +1049,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       let left = allowed;
       if (allowed < ownXp) own.forEach((x, i) => {
         const v = i === own.length - 1 ? left : Math.floor(x.r.xp * allowed / ownXp);
-        left -= v; x.r = { ...x.r, xp: v, gold: goldFor(v) };
+        left -= v; x.r = { ...x.r, xp: v, gold: goldFor(v, x.gb) };
       });
       for (const { q, r } of rows) {
         const split = splitXp(r.xp, q.skills);
@@ -1013,9 +1071,9 @@ export function replay(events: GameEvent[], now: number): GameState {
     const real = qs.filter(q => q.kind !== 'custom'), realDone = real.filter(q => q.done).length;
     const freeze = !o.neutral && !o.counted && freezes > 0 && streak > 0; // при нулевой серии заморозка не тратится
     if (freeze) freezes--;
-    streak = nextStreak(streak, o, freeze);
+    streak = nextStreak(streak, o, freeze, snap?.flat.streakMiss);
     if (o.perfect) add(flatRow(`perfect:${d}`, closesAtTs(d, closeOf(d)), d, 'perfect_day', BALANCE.streak.perfectXp, null));
-    closed.push({ date: d, done: dq.length, rest });
+    closed.push({ date: d, done: dq.length, rest }); if (!rest) workDays.push(d);
     if (!rest) idleRun = realDone || (ritualsOn.get(d)?.done ?? 0) > 0 ? 0 : idleRun + 1; // ритуал — тоже активность
     dayOf(d).streak = streak;
     if (!qs.length) continue;
@@ -1072,18 +1130,11 @@ export function replay(events: GameEvent[], now: number): GameState {
   const { level, into, need } = levelFromXp(totalXp, startLevel);
   const season = seasonOf(today), theme = themeOn(today);
   const seasonXp = season.kind === 'prologue' ? 0 : ledger.filter(r => seasonOf(r.date).id === season.id).reduce((a, r) => a + r.xp, 0);
-  // Форма по закрытым дням без отдыха: окно 14; норма — из плана первые 30 дней, потом из фактического за 60 дней.
-  const work = closed.filter(c => !c.rest), win = work.slice(-BALANCE.form.window), past = work.slice(-BALANCE.form.normDays);
-  const plan = !!firstDay && today < addDays(firstDay, BALANCE.form.planDays);
-  const planXp = fill(0), lastRestore: Partial<Record<Stat, ISODate>> = {};
-  if (plan) for (const c of work) for (const q of issued.get(c.date) ?? []) if (!q.dropped)
-    for (const [k, v] of Object.entries(splitXp(q.xp, q.skills).stats)) planXp[k as Stat] += v ?? 0;
+  const lastRestore: Partial<Record<Stat, ISODate>> = {};
   for (const [d, qs] of issued) if (d <= today) for (const q of qs) if (q.kind === 'restore' && !(lastRestore[q.stat]! >= d)) lastRestore[q.stat] = d;
-  const xpOn = (cs: typeof closed, k: Stat) => cs.reduce((a, c) => a + (statByDate.get(c.date)?.[k] ?? 0), 0);
+  const formsNow = formsAt(today), forms = formMap(formsNow);
   const statInfo = Object.fromEntries(STAT_KEYS.map(k => {
-    const b = baseFromXp(start.base[k], statXp[k]);
-    const avg = plan ? (work.length ? planXp[k] / work.length : 0) : past.length ? xpOn(past, k) / past.length : 0;
-    const norm = formNorm(avg), xp14 = xpOn(win, k), form = formOf(xp14, win.length, norm);
+    const b = baseFromXp(start.base[k], statXp[k]), { form, norm, xp14 } = formsNow[k];
     return [k, { base: b.value, into: b.into, need: b.need, xp: statXp[k], form, status: formStatus(form), norm, xp14, lastRestore: lastRestore[k] ?? null } satisfies StatInfo];
   })) as Record<Stat, StatInfo>;
   const st = dayStart.get(today);
@@ -1097,8 +1148,14 @@ export function replay(events: GameEvent[], now: number): GameState {
     : recOn && span(today, 1 - R.exitDays, 0).every(x => ((x === today ? vitals.hp : vitalsOn(x, 0).hp) ?? 0) > R.exitHp) ? 'recovery_exit'
     : !recOn && (types.get(today)?.kind === 'off' || types.get(today)?.kind === 'rest') && sigs.some(x => x.kind === 'arrive' && x.place === 'work' && x.d === today) ? 'day_change_work'
     : null;
-  const skills = Object.fromEntries(SKILL_IDS.map(id => [id,
-    { ...skillFromXp(start.skills[id], skillXp[id]), xp: skillXp[id], start: start.skills[id], lastDate: skillLast[id] ?? null } satisfies SkillState])) as Record<SkillId, SkillState>;
+  const skills = Object.fromEntries(SKILL_IDS.map(id => {
+    const sk = skillFromXp(start.skills[id], skillXp[id]), idle = idleOf(skillLast[id], today), rusty = isRusty(idle), f = skillForm(id, forms);
+    const perks = PERKS.filter(p => p.skill === id && p.level <= sk.level).map((p): PerkView => {
+      const power = perkPower(p, f, rusty);
+      return { id: p.id, level: p.level, title: p.title, desc: p.desc, kind: p.kind, power, why: rusty ? 'rust' : power < 1 ? 'form' : null };
+    });
+    return [id, { ...sk, xp: skillXp[id], start: start.skills[id], lastDate: skillLast[id] ?? null, idleDays: idle, rusty, perks } satisfies SkillState];
+  })) as Record<SkillId, SkillState>;
   const rewards = [...shop.values()].filter(r => !r.deleted).map(({ id, title, price, effect }) => ({ id, title, price, effect }));
   const rerollsUsed = rerollsOn.get(today) ?? 0;
   const metricHistory = [...metrics].filter(([d]) => d <= today).sort(([a], [b]) => (a < b ? -1 : 1)).map(([date, m]) => ({ date, metrics: { ...m } }));
@@ -1116,7 +1173,12 @@ export function replay(events: GameEvent[], now: number): GameState {
   const yearGoal = interview?.answers.year_goal;
   const bossOptions = bossOptionsByRules({ goals: profile?.goals ?? [], legacy: legacyBosses, yearGoal: typeof yearGoal === 'string' ? yearGoal : null, theme });
 
-  const className = classNameOf(stats);   // временно: до снимка форм (задача 4)
+  const c0 = cls ?? pickClass(classWeights(stats, forms), null), cdef = CLASSES[c0.id], last = clsHist.at(-1), prevCls = clsHist.at(-2);
+  const clsState: ClassState = { id: c0.id, name: cdef.name, pair: c0.pair, since: last?.date ?? null, weights: classWeights(stats, forms),
+    passive: { text: cdef.passive, power: passivePower(c0, forms) },
+    ability: { id: cdef.ability, name: cdef.abilityName, desc: cdef.abilityDesc, target: cdef.target, usedOn: null, available: today >= BALANCE.depthSince },
+    nextRecalc: `${addDays(`${today.slice(0, 7)}-28`, 4).slice(0, 7)}-01`, changedFrom: prevCls && last ? { id: prevCls.id, date: last.date } : null };
+  const className = clsState.name;
   const a = interview?.analysis;
   const character: GameState['character'] = interview && {
     archetype: a?.archetype ?? className, summary: a?.summary ?? '', strengths: a?.strengths ?? [], weaknesses: a?.weaknesses ?? [],
@@ -1127,7 +1189,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     profile, avatar, avatarImages, totalXp, level, xpInto: into, xpNeed: need, startLevel,
     start: { source: start.source, scores: start.scores, levelWhy: start.levelWhy },
     stats, statInfo, gold, streak: streakNow,
-    className, tier: tierFor(level), multipliers,
+    className, cls: clsState, tier: tierFor(level), multipliers,
     today: {
       date: today, started: !!st, work: st?.work ?? null, wakeAt: st?.wakeAt ?? null,
       closesAt: closesAtTs(today, closeOf(today)), dayType: types.get(today) ?? null, energy: vitals.energy ?? BALANCE.energy.fallback, changed: !!st && dayChange.has(today),

@@ -13,7 +13,7 @@ import { weakestStat } from './weekly';
 
 export interface AssembleCtx {
   date: ISODate; dayType: DayType; wakeAt: HHMM; energy: number; level: number;
-  skills: Record<SkillId, { level: number; lastDate: ISODate | null }>;
+  skills: Record<SkillId, { level: number; lastDate: ISODate | null; idleDays: number | null }>;   // idleDays — незамороженные дни простоя
   stats: Record<Stat, number>; statInfo: Record<Stat, Pick<StatInfo, 'form' | 'status' | 'lastRestore'>>;
   theme: ThemeId | null; bossStats: Stat[]; recent: { date: ISODate; stats: Stat[]; templateIds: string[] }[];
   profile: Profile; multipliers: Record<Stat, number>; bestSteps7: number | null; busy: Win[];
@@ -133,7 +133,7 @@ export function assembleDay(ctx: AssembleCtx): Quest[] {
     if (c) { take(c, true, `Вернуть форму: ${STATS[st].name}, ×${B.restore.mult} XP`); break; }
   }
   const rusty = (Object.keys(ctx.skills) as SkillId[])
-    .map(id => ({ id, d: ctx.skills[id].lastDate ? daysSince(ctx.skills[id].lastDate!, ctx.date) : -1 }))
+    .map(id => ({ id, d: ctx.skills[id].idleDays ?? -1 }))
     .filter(x => x.d >= B.rust.warnDays).sort((a, b) => b.d - a.d);
   for (const r of rusty) {
     const c = cands.find(c => c.skill === r.id && can(c));

@@ -105,7 +105,14 @@ export interface Vitals { hp: number | null; energy: number | null; focus: numbe
 export interface DayResult { date: ISODate; xp: number; completed: number; issued: number; counted: boolean; perfect: boolean; rest: boolean; streak: number;
   hp: number | null; energy: number | null; focus: number | null; fatigue: number }
 export interface StatInfo { base: number; into: number; need: number; xp: number; form: number | null; status: 'new' | 'in_form' | 'sagging' | 'abandoned'; norm: number; xp14: number; lastRestore: ISODate | null }
-export interface SkillState { level: number; into: number; need: number; xp: number; start: number; lastDate: ISODate | null }
+export interface SkillState { level: number; into: number; need: number; xp: number; start: number; lastDate: ISODate | null;
+  idleDays: number | null; rusty: boolean; perks: PerkView[] }   // perks — открытые; idleDays — незамороженные дни простоя на начало сегодня
+export interface PerkView { id: string; level: 3 | 6 | 10; title: string; desc: string; kind: 'pct' | 'flat'; power: 0 | 0.5 | 1; why: 'rust' | 'form' | null }
+/** Класс (спека §4): pair — пара, давшая класс (у Странника null); since — дата присвоения. */
+export interface ClassState { id: ClassId; name: string; pair: [Stat, Stat] | null; since: ISODate | null; weights: Record<Stat, number>;
+  passive: { text: string; power: 0 | 0.5 | 1 };
+  ability: { id: AbilityId; name: string; desc: string; target: 'quest' | 'day' | 'week'; usedOn: ISODate | null; available: boolean };
+  nextRecalc: ISODate; changedFrom: { id: ClassId; date: ISODate } | null }
 export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss' | 'ritual' | 'ladder' | 'shadow' | 'chain';
   questId?: string; base: number; k: number; bonus: number; penalty: number; mult: number; xp: number; gold: number;
   skills: [SkillId, number][]; stats: Partial<Record<Stat, number>>; verified: boolean }
@@ -120,7 +127,8 @@ export interface GameState {
   stats: Record<Stat, number>;          // Основа 1–100
   statInfo: Record<Stat, StatInfo>;
   gold: number; streak: number;
-  className: string; tier: 1|2|3|4;
+  className: string; tier: 1|2|3|4;   // className = cls.name
+  cls: ClassState;
   multipliers: Record<Stat, number>;
   today: { date: ISODate; started: boolean; work: {start:HHMM;end:HHMM}|null; wakeAt: HHMM|null;
            quests: DayQuest[]; xp: number;

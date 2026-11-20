@@ -181,7 +181,7 @@ test('перемешанный журнал даёт тот же state', () => {
 test('skill_unlocked игнорируется; навыки 24 со стартом 1', () => {
   const s = replay([ev({ type: 'skill_unlocked', skillId: 'str1' })], NOW);
   expect(Object.keys(s.skills)).toHaveLength(24);
-  expect(s.skills.strength).toEqual({ level: 1, into: 0, need: 100, xp: 0, start: 1, lastDate: null });
+  expect(s.skills.strength).toEqual({ level: 1, into: 0, need: 100, xp: 0, start: 1, lastDate: null, idleDays: null, rusty: false, perks: [] });
 });
 
 test('first_skill: навык достиг 2 уровня', () => {

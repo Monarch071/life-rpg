@@ -16,7 +16,7 @@ const profile: Profile = {
   energy: { morning: 4, day: 3, evening: 3, night: 1 }, selfRating: fill(5),
 };
 type Info = Pick<StatInfo, 'form' | 'status' | 'lastRestore'>;
-const skills = (): AssembleCtx['skills'] => Object.fromEntries(SKILL_CATALOG.map(s => [s.id, { level: 3, lastDate: null }])) as AssembleCtx['skills'];
+const skills = (): AssembleCtx['skills'] => Object.fromEntries(SKILL_CATALOG.map(s => [s.id, { level: 3, lastDate: null, idleDays: null }])) as AssembleCtx['skills'];
 const allRecent = (d1 = '2026-11-19', d2 = '2026-11-18') => [d2, d1].map(date => ({ date, stats: [...STAT_KEYS], templateIds: [] as string[] }));
 const ctx = (over: Partial<AssembleCtx> = {}): AssembleCtx => ({
   date: '2026-11-20', dayType: DEFAULT_DAY_TYPES[0], wakeAt: '08:00', energy: 50, level: 25, skills: skills(), stats: fill(30),
@@ -26,7 +26,7 @@ const ctx = (over: Partial<AssembleCtx> = {}): AssembleCtx => ({
 const twoDaysWithout = (s: Stat) => allRecent().map(r => ({ ...r, stats: r.stats.filter(x => x !== s) }));
 const withForm = (s: Stat, form: number, status: Info['status'] = 'sagging', lastRestore: string | null = null) =>
   ({ ...fill<Info>({ form: 1, status: 'in_form', lastRestore: null }), [s]: { form, status, lastRestore } });
-const withLast = (id: SkillId, lastDate: string) => ({ ...skills(), [id]: { level: 3, lastDate } });
+const withLast = (id: SkillId, lastDate: string, idleDays: number | null = null) => ({ ...skills(), [id]: { level: 3, lastDate, idleDays } });
 const withTemplate = (id: string, date = '2026-11-30') => [{ date, stats: [...STAT_KEYS], templateIds: [id] }];
 const tpl = (id: string) => QUEST_TEMPLATES.find(t => t.id === id)!;
 const rel = (h: string, wake: string) => (toMin(h) - toMin(wake) + 1440) % 1440;
@@ -81,14 +81,21 @@ test('обязательные: если шаблон занят, берётся
   // самый ржавый навык — «Переговоры» (шаблон занят) → берётся следующий, «Выступления»
   const yest = QUEST_TEMPLATES.filter(t => primaryStat(t.skills) === 'cha' && t.id !== 'negotiate').map(t => t.id);
   const qs = assembleDay(ctx({ statInfo: withForm('cha', 0.1, 'abandoned'), recent: [{ date: '2026-11-19', stats: [...STAT_KEYS], templateIds: yest }],
-    skills: { ...skills(), negotiation: { level: 3, lastDate: '2026-09-01' }, speaking: { level: 3, lastDate: '2026-10-01' } } }));
+    skills: { ...skills(), negotiation: { level: 3, lastDate: '2026-09-01', idleDays: 80 }, speaking: { level: 3, lastDate: '2026-10-01', idleDays: 50 } } }));
   expect(qs.find(q => q.kind === 'restore')!.templateId).toBe('negotiate');
   expect(qs.some(q => q.skills![0] === 'speaking')).toBe(true);
 });
 
 test('навык на грани ржавчины попадает в день', () => {
-  const qs = assembleDay(ctx({ skills: withLast('negotiation', '2026-10-20') }));
+  const qs = assembleDay(ctx({ skills: withLast('negotiation', '2026-10-20', 31) }));
   expect(qs.some(q => q.skills![0] === 'negotiation')).toBe(true);
+});
+
+test('на грани ржавчины — по дням простоя, а не по календарю', () => {
+  const c = ctx({ skills: { ...skills(), mobility: { level: 3, lastDate: '2026-10-01', idleDays: 22 } } });
+  expect(assembleDay(c).some(q => q.kind === 'daily' && q.why?.includes('ржав'))).toBe(false);
+  const c2 = ctx({ skills: { ...skills(), mobility: { level: 3, lastDate: '2026-11-01', idleDays: 23 } } });
+  expect(assembleDay(c2)[0].skills).toEqual(['mobility']);
 });
 
 test('приоритет: P = 3·босс + 2·(1−форма) + 1,5·тема + min(1, дни/7) − 2·повтор', () => {
@@ -138,7 +145,7 @@ describe('переброс', () => {
   });
   test('переброс не поднимает ранг выше потолка нового навыка (+1 только для вызова)', () => {
     const sk = { ...skills() };
-    for (const id of Object.keys(sk) as SkillId[]) sk[id] = { level: id === 'reading' || id === 'strength' ? 3 : 1, lastDate: null };
+    for (const id of Object.keys(sk) as SkillId[]) sk[id] = { level: id === 'reading' || id === 'strength' ? 3 : 1, lastDate: null, idleDays: null };
     let checked = 0;
     for (let i = 0; i < 10; i++) { // выбор зависит от банка шаблонов — несколько дат
       const c = ctx({ date: `2026-11-${20 + i}`, energy: 80, skills: sk });
