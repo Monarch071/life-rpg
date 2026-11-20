@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { BALANCE } from './balance';
-import { addDays } from './day';
+import { addDays, weekStart } from './day';
 import { replay } from './replay';
 import type { SkillId } from './skillCatalog';
 import type { AdvancedId, GameEvent, Profile, Quest, Rank, Stat } from './types';
@@ -120,4 +120,33 @@ test('«Аудит» Казначея: задания Финансов дня ×
     issue(d, [nq('f', d, 'C', ['budget']), nq('r', d, 'C', ['reading'])]), ev({ type: 'ability_used', date: d, ability: 'audit', ts: at(d, 9) }), done(d, 'f'), done(d, 'r')], at('2027-02-09', 12));
   expect(s.cls.advanced!.id).toBe('treasurer');
   expect(s.ledger.find(r => r.id === `ability:audit:${d}`)!.xp).toBe(s.ledger.find(r => r.id === 'quest:f')!.xp);
+});
+test('nextTrial: ниже уровня 20 — null', () => {
+  const onb = lvl20('str', 'end')[0] as unknown as { type: string; profile: Profile };
+  const low = [ev({ ...onb, id: 'onb-low', profile: { ...onb.profile, selfRating: Object.fromEntries(STATS.map(x => [x, 1])) } }), ...doneDays('2026-12-20', 2, 'strength')];
+  const s = replay(low, at('2027-01-28', 12));
+  expect(s.level).toBeLessThan(BALANCE.advanced.level);
+  expect(s.cls.nextTrial).toBeNull();
+});
+test('производительность: смешанный год — задания, шаги, финансы, импорты, соперник, испытание', () => {
+  const evs: GameEvent[] = [...lvl20('str', 'end'), ev({ type: 'fin_category_set', categoryId: 'food', title: 'Еда', kind: 'expense', limit: 30000, ts: at('2026-11-01') }),
+    ev({ type: 'fin_rule_set', ruleId: 'r', pattern: 'магазин 1', categoryId: 'food', ts: at('2026-11-01') }), trial(T0, 'champion')];
+  const D = '2026-12-01';
+  for (let i = 0; i < 365; i++) {
+    const d = addDays(D, i), qs = [0, 1, 2, 3, 4].map(k => nq(`q${i}-${k}`, d, 'C', ['strength']));
+    evs.push(issue(d, qs), ...qs.slice(0, 4).map(q => done(d, q.id)), steps(d, 6000 + i * 10),
+      ev({ type: 'signal_logged', deviceId: 'shortcuts', at: at(d, 13), ts: at(d, 13), signal: { kind: 'wallet', amount: 100 + i, merchant: 'Магазин 1' } }),
+      ev({ type: 'fin_entry_added', entryId: `pm${i}`, date: d, kind: 'expense', amount: 50, categoryId: 'food', ts: at(d, 14) }));
+    if (d === weekStart(d)) evs.push(ev({ type: 'weekly_issued', weekStart: d, ts: at(d, 8), quests: [{ id: `${d}:w:budget_week`, weekStart: d, kind: 'budget_week', stat: 'fin', target: 1, title: 'x', xp: 150 }] }));
+  }
+  for (let k = 0; k < 4; k++) evs.push(ev({ type: 'fin_imported', importId: `i${k}`, ts: at(addDays(D, 90 * k + 89)),
+    rows: Array.from({ length: 1000 }, (_, j) => ({ key: `k${k}-${j}`, date: addDays(D, 90 * k + (j % 90)), amount: -(100 + j), text: 'магазин 1' })) }));
+  const now = at(addDays(D, 365));
+  const s = replay(evs, now);   // прогрев JIT
+  expect(s.ledger.some(r => r.id.startsWith('record:') || r.id.startsWith('ghost:'))).toBe(true);
+  const t = performance.now(); replay(evs, now);
+  const ms = performance.now() - t;
+  console.log(`mixed replay: ${Math.round(ms)} ms`);
+  // ~350 мс на десктопе; порог с запасом под нагруженный CI
+  expect(ms).toBeLessThan(1500);
 });

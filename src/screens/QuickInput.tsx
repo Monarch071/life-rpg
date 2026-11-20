@@ -30,6 +30,7 @@ export default function QuickInput({ state, onClose }: { state: GameState; onClo
   const [saving, setSaving] = useState(false)
   const [fin, setFin] = useState(false)
   const cur = useCurrency()
+  const unitOf = (f: Field) => (f.metric === 'spend' ? cur : f.unit)
   const dlg = useDialog<HTMLDivElement>(onClose)
 
   const log = async (metric: Metric, value: number, mode: 'set' | 'add', label: string) => {
@@ -49,7 +50,7 @@ export default function QuickInput({ state, onClose }: { state: GameState; onClo
   const submit = (f: Field) => {
     const n = parseAmount(vals[f.metric] ?? '', f)
     if (n === null) return setMsg({ text: `${f.label}: введи число ${f.mode === 'add' ? 'больше 0' : 'от 0'} и не больше ${f.max}`, err: true })
-    void log(f.metric, n, f.mode, `${f.label} ${f.mode === 'add' ? '+' : ''}${n} ${f.unit}`)
+    void log(f.metric, n, f.mode, `${f.label} ${f.mode === 'add' ? '+' : ''}${n} ${unitOf(f)}`)
   }
 
   return (
@@ -75,7 +76,7 @@ export default function QuickInput({ state, onClose }: { state: GameState; onClo
         {FIELDS.map(f => (
           <form key={f.metric} className="qi-row" onSubmit={e => { e.preventDefault(); submit(f) }}>
             <label className="field">
-              <span className="lbl">{(() => { const I = ICONS[f.metric]; return I && <I size={16} aria-hidden="true" /> })()} {f.label}{f.mode === 'add' ? ' +' : ''} <small>({f.unit}){metrics[f.metric] !== undefined ? ` · сейчас ${metrics[f.metric]}` : ''}</small></span>
+              <span className="lbl">{(() => { const I = ICONS[f.metric]; return I && <I size={16} aria-hidden="true" /> })()} {f.label}{f.mode === 'add' ? ' +' : ''} <small>({unitOf(f)}){metrics[f.metric] !== undefined ? ` · сейчас ${metrics[f.metric]}` : ''}</small></span>
               <input inputMode="decimal" placeholder="0" value={vals[f.metric] ?? ''} onChange={e => setVals(v => ({ ...v, [f.metric]: e.target.value }))} />
             </label>
             <button className="btn primary" disabled={saving} aria-label={`Сохранить: ${f.label}`}>Сохранить</button>

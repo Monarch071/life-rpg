@@ -2,7 +2,14 @@ import { BALANCE } from '../domain/balance'
 import { matchWallet } from '../domain/csvImport'
 import type { GameState, ImportRow } from '../domain/types'
 
-export const CURRENCIES = ['₽', '₸', '$', '€', '₴', 'Br'] as const
+export const CURRENCIES = { KZT: '₸', RUB: '₽', USD: '$', EUR: '€' } as const
+export type Currency = keyof typeof CURRENCIES
+export const DEFAULT_CURRENCY: Currency = 'KZT'
+const SYMBOLS: string[] = Object.values(CURRENCIES)
+
+/** Настройка 'currency' (код; раньше хранился знак) → знак для money(); неизвестное — тенге. */
+export const curSymbol = (v: unknown): string =>
+  typeof v === 'string' && v in CURRENCIES ? CURRENCIES[v as Currency] : typeof v === 'string' && SYMBOLS.includes(v) ? v : CURRENCIES[DEFAULT_CURRENCY]
 const NB = ' '
 
 /** «1 234,50 €»: разряды и валюта через неразрывный пробел, минус — «−». */

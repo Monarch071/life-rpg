@@ -195,3 +195,22 @@ test('enableSync на новом сервере повторно отправл�
   expect(r).toMatchObject({ ok: true, pushed: 1 })
   expect(calls.filter((c) => c.path === '/events' && c.body?.events?.length).length).toBeGreaterThan(1)
 })
+
+test('push режет пачки по размеру: 10 событий по 200 КБ проходят под лимит воркера', async () => {
+  for (let i = 0; i < 10; i++) await appendEvent({ type: 'busy_until', date: '2026-11-17', until: 'x'.repeat(200_000) + i } as any)
+  const r = await enableSync(URL_)
+  expect(r).toMatchObject({ ok: true, pushed: 10 })
+  expect(await db.events.where('pending').equals(1).count()).toBe(0)
+  expect(calls.filter((c) => c.path === '/events' && c.body?.events?.length).length).toBeGreaterThan(1)
+})
+
+test('событие больше лимита воркера не блокирует sync: помечается и пропускается', async () => {
+  await appendEvent(ev(1))
+  await appendEvent({ type: 'busy_until', date: '2026-11-17', until: 'x'.repeat(1_100_000) } as any)
+  await appendEvent(ev(2))
+  const r = await enableSync(URL_)
+  expect(r).toMatchObject({ ok: true, pushed: 2 })
+  expect(await db.events.where('pending').equals(1).count()).toBe(0)
+  expect((await store.eventsSince(0, 100)).length).toBe(2)
+  expect((await syncNow()).ok).toBe(true)
+})

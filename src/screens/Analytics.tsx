@@ -63,6 +63,7 @@ function Progress({ state }: { state: GameState }) {
   const hist = state.history.filter(h => h.date >= from)
   const sh = state.statHistory.filter(h => h.date >= from)
   const mh = state.metricHistory.filter(h => h.date >= from)
+  const cur = useCurrency()
   const metricCharts = METRICS.map(m => ({ m, values: mh.map(h => h.metrics[m] ?? null) })).filter(c => c.values.filter(v => v !== null).length >= 3)
   const best = (Object.keys(STATS) as Stat[]).reduce((a, b) => (state.stats[b] > state.stats[a] ? b : a))
   const sel = stat ?? best
@@ -90,9 +91,9 @@ function Progress({ state }: { state: GameState }) {
           {(Object.keys(STATS) as Stat[]).map(s => <button key={s} className={`btn${s === sel ? ' primary' : ''}`} aria-pressed={s === sel} onClick={() => setStat(s)}><StatIcon stat={s} size={16} />{STATS[s].name}</button>)}
         </div>
         <LineChart title={STATS[sel].name} labels={sh.map(h => dm(h.date))} series={[{ label: STATS[sel].name, color: STAT_COLORS[sel], values: sh.map(h => h.stats[sel] ?? null) }]} /></div>}
-      {metricCharts.map(({ m, values }) => { const i = METRIC_INFO[m]; const Ic = METRIC_ICONS[m]; return (
-        <div key={m} className="panel"><h2><Ic size={18} aria-hidden="true" /> {i.label} <small className="muted">({i.unit})</small></h2>
-          <LineChart title={i.label} unit={i.unit} labels={mh.map(h => dm(h.date))} series={[{ label: i.label, color: 'var(--fire)', values }]} /></div>
+      {metricCharts.map(({ m, values }) => { const i = METRIC_INFO[m], Ic = METRIC_ICONS[m], u = m === 'spend' ? cur : i.unit; return (
+        <div key={m} className="panel"><h2><Ic size={18} aria-hidden="true" /> {i.label} <small className="muted">({u})</small></h2>
+          <LineChart title={i.label} unit={u} labels={mh.map(h => dm(h.date))} series={[{ label: i.label, color: 'var(--fire)', values }]} /></div>
       ) })}
       <Rival state={state} />
       <div className="panel"><h2><Bot size={18} aria-hidden="true" /> Недельный отчёт ИИ</h2>

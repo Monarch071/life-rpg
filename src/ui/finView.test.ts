@@ -24,3 +24,13 @@ test('сводка импорта: новые, дубли Wallet, уже был�
   expect(importSummary([{ key: 'k1', date: '2027-01-04', amount: -50, text: 'x' }, { key: 'k2', date: '2027-01-05', amount: -100, text: 'магазин 1' }, { key: 'k3', date: '2027-01-05', amount: -7, text: 'y' }], st))
     .toEqual({ fresh: 1, walletDup: 1, seen: 1 })
 })
+
+test('валюта: код → знак; по умолчанию тенге; старые сохранённые знаки понимаются', async () => {
+  const { curSymbol, CURRENCIES } = await import('./finView')
+  expect(Object.keys(CURRENCIES)).toEqual(['KZT', 'RUB', 'USD', 'EUR'])
+  expect(curSymbol(undefined)).toBe('₸')
+  expect(curSymbol('KZT')).toBe('₸')
+  expect(curSymbol('USD')).toBe('$')
+  expect(curSymbol('₽')).toBe('₽')
+  expect(curSymbol('junk')).toBe('₸')
+})

@@ -2,7 +2,7 @@ import Dexie, { type Table } from 'dexie'
 import type { DistributiveOmit, GameEvent } from './domain/types'
 import { now } from './now'
 
-export type StoredEvent = GameEvent & { pending: 1 | 0; seq?: number }
+export type StoredEvent = GameEvent & { pending: 1 | 0 | 2; seq?: number } // 2 — больше лимита воркера, не отправляется
 
 export const db = new Dexie('life-rpg') as Dexie & {
   events: Table<StoredEvent, string>

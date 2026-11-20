@@ -19,7 +19,9 @@ export default function CardSheet({ model, name, onClose }: { model: CardModel; 
     let dead = false, url: string | null = null
     void (async () => {
       const [before, after] = await Promise.all([cardImage(model.before.avatar), cardImage(model.after.avatar)])
-      const blob = await renderCard(cardOps(model), { before, after })
+      const ops = cardOps(model)
+      // испорченный (tainted) canvas в Safari: toBlob падает — рисуем силуэты без картинок
+      const blob = await renderCard(ops, { before, after }).catch(() => renderCard(ops, { before: null, after: null }))
       if (!dead) setPng({ blob, url: (url = URL.createObjectURL(blob)) })
     })().catch(() => { if (!dead) setMsg({ ok: false, text: 'Не удалось нарисовать карточку' }) })
     return () => { dead = true; if (url) URL.revokeObjectURL(url) }

@@ -143,3 +143,8 @@ test('производительность: год Wallet и ручных зап
   // цель ~150 мс; порог с запасом под нагруженный CI
   expect(ms).toBeLessThan(450);
 });
+test('лимит 0 = «без лимита»: переименование не теряется', () => {
+  const s = replay([cat('food', 500, at('2026-12-01')), ev({ type: 'fin_category_set', categoryId: 'food', title: 'Продукты', kind: 'expense', limit: 0, ts: at('2026-12-02') }),
+    spend('2027-01-05', 10)], at('2027-01-06'));
+  expect(s.finance.categories.find(c => c.id === 'food')).toMatchObject({ title: 'Продукты', limit: null });
+});

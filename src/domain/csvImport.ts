@@ -19,6 +19,11 @@ export function detectDelimiter(line: string): Delim {
   return best;
 }
 
+/** Байты файла → текст: UTF-8, а если он невалиден — Windows-1251 (частая кодировка выписок). */
+export function decodeCsv(bytes: ArrayBuffer | Uint8Array): string {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { return new TextDecoder('windows-1251').decode(bytes); }
+}
+
 export function parseCsv(text: string): string[][] { return parseCsvLines(text).rows; }
 
 /** Строки CSV и номер строки файла (с 1), с которой каждая начинается. */

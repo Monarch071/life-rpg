@@ -47,7 +47,7 @@ export const RECORDS: { id: RecordId; title: string; unit: string }[] = [
   { id: 'week_xp',       title: 'Лучшая неделя по XP',      unit: 'XP' },
   { id: 'pages_week',    title: 'Страниц за неделю',        unit: 'стр.' },
   { id: 'focus_day',     title: 'Минут фокуса за день',     unit: 'мин' },
-  { id: 'savings_month', title: 'Месяц с наибольшими накоплениями', unit: '₽' },
+  { id: 'savings_month', title: 'Месяц с наибольшими накоплениями', unit: '¤' },
 ];
 
 /** Новый рекорд — строго больше прошлого лучшего, который есть и > 0 (первое значение — без награды). */

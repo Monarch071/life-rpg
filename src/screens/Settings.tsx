@@ -179,8 +179,8 @@ function Currency() {
     <section className="panel stack" aria-label="Валюта">
       <h2>Валюта</h2>
       <div className="chips" role="group" aria-label="Валюта финансов">
-        {CURRENCIES.map(c => <button key={c} type="button" className={`btn${c === cur ? ' primary' : ''}`} aria-pressed={c === cur}
-          onClick={() => void setSetting('currency', c).catch(() => {})}>{c}</button>)}
+        {Object.entries(CURRENCIES).map(([code, sym]) => <button key={code} type="button" className={`btn${sym === cur ? ' primary' : ''}`} aria-pressed={sym === cur}
+          onClick={() => void setSetting('currency', code).catch(() => {})}>{sym} {code}</button>)}
       </div>
     </section>
   )

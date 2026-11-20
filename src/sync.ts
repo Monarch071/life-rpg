@@ -8,6 +8,8 @@ export interface SyncConfig { url: string; token: string }
 export type SyncResult = { ok: true; pushed: number; pulled: number } | { ok: false; error: string }
 
 const BATCH = 40 // лимит запросов D1 на бесплатном тарифе за один вызов
+const BATCH_BYTES = 800 * 1024 // воркер отвечает 413 на тело > 1 МБ
+const bytes = (x: unknown) => new TextEncoder().encode(JSON.stringify(x)).length
 const enc = encodeURIComponent
 
 class SyncError extends Error {}
@@ -61,12 +63,22 @@ async function run(): Promise<SyncResult> {
     let pushed = 0
     let pulled = 0
     const pending = await db.events.where('pending').equals(1).sortBy('ts')
-    for (let i = 0; i < pending.length; i += BATCH) {
-      const batch = pending.slice(i, i + BATCH)
-      await call(cfg, 'POST', '/events', { events: batch.map(({ pending: _p, seq: _s, ...e }) => e) })
+    const send = async (batch: StoredEvent[], body: unknown[]) => {
+      if (!batch.length) return
+      await call(cfg, 'POST', '/events', { events: body })
       await db.events.where('id').anyOf(batch.map((e) => e.id)).modify({ pending: 0 })
       pushed += batch.length
     }
+    let batch: StoredEvent[] = [], body: unknown[] = [], size = 0
+    for (const ev of pending) {
+      const { pending: _p, seq: _s, ...e } = ev
+      const n = bytes(e) + 1
+      // одно событие больше лимита воркера: не шлём никогда, иначе sync встанет навсегда
+      if (n > BATCH_BYTES) { await db.events.update(ev.id, { pending: 2 }); continue }
+      if (batch.length >= BATCH || size + n > BATCH_BYTES) { await send(batch, body); batch = []; body = []; size = 0 }
+      batch.push(ev); body.push(e); size += n
+    }
+    await send(batch, body)
     for (let more = true; more; ) {
       const since = await getSetting<number>('syncCursor', 0)
       const page = await call(cfg, 'GET', `/events?since=${since}`)

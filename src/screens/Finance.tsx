@@ -6,7 +6,7 @@ import { addDays } from '../domain/day'
 import { periodTotals } from '../domain/finance'
 import type { GameState } from '../domain/types'
 import LineChart from '../ui/LineChart'
-import { catTone, money, pace } from '../ui/finView'
+import { catTone, curSymbol, DEFAULT_CURRENCY, money, pace } from '../ui/finView'
 import FinCategories from './FinCategories'
 import FinEntrySheet from './FinEntrySheet'
 import FinImport from './FinImport'
@@ -18,8 +18,8 @@ const shiftMonth = (m: string, n: number) => { const d = new Date(Date.UTC(+m.sl
 const lastDay = (m: string) => addDays(`${shiftMonth(m, 1)}-01`, -1)
 const PAGE = 50
 
-/** Валюта — настройка устройства (по умолчанию ₽). */
-export const useCurrency = (): string => useLiveQuery(() => getSetting('currency', '₽')) ?? '₽'
+/** Знак валюты — настройка устройства 'currency' (код, по умолчанию KZT). */
+export const useCurrency = (): string => curSymbol(useLiveQuery(() => getSetting<string>('currency', DEFAULT_CURRENCY)))
 
 /** Анализ → Финансы (спека §7.8). */
 export default function Finance({ state }: { state: GameState }) {

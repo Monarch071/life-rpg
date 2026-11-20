@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { FileUp, Trash2 } from 'lucide-react'
 import { getSetting, setSetting } from '../db'
 import { BALANCE } from '../domain/balance'
-import { guessColumns, importChunks, parseCsvLines, toImportRows, type ColumnMap } from '../domain/csvImport'
+import { guessColumns, importChunks, parseCsvLines, decodeCsv, toImportRows, type ColumnMap } from '../domain/csvImport'
 import type { GameState } from '../domain/types'
 import Confirm from '../ui/Confirm'
 import Sheet from '../ui/Sheet'
@@ -45,7 +45,7 @@ export default function FinImport({ state, onClose }: { state: GameState; onClos
     if (!f) return
     if (f.size > F.importFileMaxBytes) return w.setMsg({ ok: false, text: `Файл больше ${F.importFileMaxBytes / 1e6} МБ — выгрузи выписку за меньший период` })
     try {
-      const c = parseCsvLines(await f.text())
+      const c = parseCsvLines(decodeCsv(await f.arrayBuffer()))
       if (c.rows.length < 2) return w.setMsg({ ok: false, text: 'В файле нет строк с данными' })
       const g = guessColumns(c.rows[0]), saved = (await getSetting<Record<string, Draft>>('csvMapping', {}))[headKey(c.rows[0])]
       setCsv(c)

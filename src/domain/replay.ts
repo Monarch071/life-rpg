@@ -557,9 +557,10 @@ export function replay(events: GameEvent[], now: number): GameState {
         break;
       }
       case 'fin_category_set': {
-        const def = DEFAULT_CATEGORIES.find(c => c.id === e.categoryId), title = cleanText(e.title, FB.titleMax), limit = e.limit === null ? null : validAmount(e.limit);
+        const def = DEFAULT_CATEGORIES.find(c => c.id === e.categoryId), title = cleanText(e.title, FB.titleMax);
+        const lim = e.limit === 0 ? null : e.limit, limit = lim === null ? null : validAmount(lim);   // 0 = «без лимита»
         if (!ID(e.categoryId) || !title || !FIN_KINDS.includes(e.kind) || (def ? def.kind !== e.kind : e.categoryId.startsWith('default:'))
-          || (e.limit !== null && (limit === null || limit < 0))) break;
+          || (lim !== null && (limit === null || limit < 0))) break;
         if (!def && !finCatIds.has(e.categoryId)) { if (finCatIds.size >= FB.categoriesMax) break; finCatIds.add(e.categoryId); }
         finCats.push({ ts: e.ts, month: gd(e.ts).slice(0, 7), id: e.categoryId, title, kind: e.kind, limit: e.kind === 'expense' ? limit : null, archived: e.archived === true });
         break;
@@ -775,7 +776,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   // Окно [from − dedupeDays, to + dedupeDays] по дате записи (после правок): вердикт периода не перебирает весь журнал.
   const finMemo = new Map<string, { entries: FinEntry[]; cats: Map<string, FinCat> }>();
   const finAt = (cut: number, from: ISODate = '', to: ISODate = '9999-12-31') => {
-    const mk = `${cut}|${from}`, hit = finMemo.get(mk);
+    const mk = `${cut}|${from}|${to}`, hit = finMemo.get(mk);
     if (hit) return hit;
     const lo = from && addDays(from, -FB.dedupeDays), hi = to < '9999' ? addDays(to, FB.dedupeDays) : to;
     const cats = new Map<string, FinCat>(DEFAULT_CATEGORIES.map(c => [c.id, { ...c, limit: null, archived: false }]));
@@ -1708,7 +1709,7 @@ export function replay(events: GameEvent[], now: number): GameState {
         ability: { id: a.ability, name: a.abilityName, desc: a.abilityDesc, usedOn: used, available: used === null && advAt(today) === adv.id } }; })(),
     trial: trialSt && { ...trialSt, need: { days: AV.passDays, quests: AV.passQuests } },
     trialOptions: cls ? pathsOf(cls.id).filter(id => trialOpen({ level: dayStartCaps?.level ?? level, date: today, firstDay: firstDay ?? null, lastFail, active: !!trialSt || !!adv, base: cls!.id, classId: id })) : [],
-    nextTrial: trialSt || adv || !firstDay ? null : [addDays(firstDay, AV.delayDays), lastFail ? addDays(lastFail, AV.retryDays) : '', BALANCE.rivalSince].sort().at(-1)! };
+    nextTrial: trialSt || adv || !firstDay || (dayStartCaps?.level ?? level) < AV.level ? null : [addDays(firstDay, AV.delayDays), lastFail ? addDays(lastFail, AV.retryDays) : '', BALANCE.rivalSince].sort().at(-1)! };
   const className = clsState.name;
   const a = interview?.analysis;
   const character: GameState['character'] = interview && {

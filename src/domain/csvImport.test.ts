@@ -54,3 +54,9 @@ describe('csvImport', () => {
     expect(detectDelimiter('a;5";b;c,d')).toBe(';');
   });
 });
+
+test('decodeCsv: UTF-8 как есть, cp1251 → кириллица', async () => {
+  const { decodeCsv } = await import('./csvImport');
+  expect(decodeCsv(new TextEncoder().encode('Дата;Сумма'))).toBe('Дата;Сумма');
+  expect(decodeCsv(new Uint8Array([0xc4, 0xe0, 0xf2, 0xe0, 0x3b, 0xd1, 0xf3, 0xec, 0xec, 0xe0]))).toBe('Дата;Сумма');
+});
