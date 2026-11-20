@@ -16,9 +16,12 @@ import { startProfile } from './startProfile';
 import { dayOutcome, nextStreak } from './streak';
 import { CLASSES, classWeights, passivePower, pickClass, questBonuses, TRAINING } from './classes';
 import { flatPerks, isRusty, mainSkillPerks, PERKS, perkPower, skillForm } from './perks';
+import { avgPrev, chestPick, leagueAfter, leagueTier, softReset, weekRank } from './rivalry';
+import { stepRewards, stepXpFor } from './seasonPath';
+import { cosmeticById, trophyItemId } from './cosmetics';
 import { isStat, STATS, tierFor } from './stats';
 import { cleanText } from './text';
-import type { Analysis, Answers, BossDraft, AutoMetric, ClassId, ClassState, PerkView, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, WeeklyQuest } from './types';
+import type { Analysis, Answers, BossDraft, AutoMetric, ClassId, ClassState, PerkView, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, WeeklyQuest, WeekResult, WeekScore } from './types';
 import { weakestStat } from './weekly';
 import { energyScore, fatigueNext, focusScore, hpScore, intFocusMult, sessionMinutes, unionMinutes, workoutKind } from './vitals';
 import { levelFromXp } from './xp';
@@ -27,6 +30,7 @@ export const DEFAULT_AVATAR: AvatarParams = { hair: 'short', hairColor: '#2b1d14
 
 const STAT_KEYS = Object.keys(STATS) as Stat[];
 const ABILITY_IDS: readonly string[] = Object.values(CLASSES).map(c => c.ability);
+const SLOTS: readonly string[] = ['head', 'neck', 'cloak', 'emblem', 'background', 'frame', 'look'];
 const fill = (n: number) => Object.fromEntries(STAT_KEYS.map(s => [s, n])) as Record<Stat, number>;
 const WEEKLY_KINDS = ['active_days', 'stat_quests', 'steps_total', 'shadow_wins'];
 const validWeekly = (w: any): w is WeeklyQuest => !!w && typeof w.id === 'string' && typeof w.title === 'string' && w.title.length >= 1 && w.title.length <= 120 && WEEKLY_KINDS.includes(w.kind)
@@ -232,14 +236,15 @@ export function replay(events: GameEvent[], now: number): GameState {
   const tunings = new Map<ISODate, { factors: Partial<Record<Stat, number>>; note: string }>();
   const reports = new Map<ISODate, string>();
   const bossEvents: Extract<GameEvent, { type: 'boss_created' | 'boss_stage_done' | 'boss_abandoned' }>[] = [];
-  const shopEvents: Extract<GameEvent, { type: 'reward_created' | 'reward_deleted' | 'reward_purchased' }>[] = [];
+  const shopEvents: Extract<GameEvent, { type: 'reward_created' | 'reward_deleted' | 'reward_purchased' | 'cosmetic_bought' }>[] = [];
+  const equips: Extract<GameEvent, { type: 'cosmetic_equipped' }>[] = [];
   const days = new Map<ISODate, Delta>(); // счётчики достижений по игровым датам
   const dayOf = (d: ISODate) => { const x = days.get(d) ?? {}; days.set(d, x); return x; };
   const bump = (d: ISODate, k: Exclude<keyof Delta, 'steps' | 'streak'>, n = 1) => { const x = dayOf(d); x[k] = (x[k] ?? 0) + n; };
   const checkinDates = new Set<ISODate>();
   const checkins = new Map<ISODate, { ts: number; energy: number }[]>(); // вечерняя энергия — самочувствие HP и Усталость
   // Платные траты (переброс, покупка с эффектом) принимаются в цикле дней по золоту прошлых дней.
-  type ShopItem = { id: string; title: string; price: number; effect: RewardEffect | null; deleted: boolean };
+  type ShopItem = { id: string; title: string; price: number; effect: RewardEffect | null; deleted: boolean; cosmetic?: boolean };
   // способности (кроме «Прозрения») — в той же очереди по ts: «Сделка» освобождает следующие перебросы, «Рывок» видит замену
   type Spend = { id: string; ts: number; date: ISODate } & ({ orig: string; repl: DayQuest; insight?: boolean } | { reward: ShopItem }
     | { ab: Extract<GameEvent, { type: 'ability_used' }> });
@@ -508,7 +513,8 @@ export function replay(events: GameEvent[], now: number): GameState {
         break;
       }
       case 'boss_created': case 'boss_stage_done': case 'boss_abandoned': bossEvents.push(e); break;
-      case 'reward_created': case 'reward_deleted': case 'reward_purchased': shopEvents.push(e); break;
+      case 'reward_created': case 'reward_deleted': case 'reward_purchased': case 'cosmetic_bought': shopEvents.push(e); break;
+      case 'cosmetic_equipped': equips.push(e); break;
       // skill_unlocked (легаси) и неизвестные типы игнорируются
     }
   }
@@ -680,7 +686,13 @@ export function replay(events: GameEvent[], now: number): GameState {
   // Магазин: создание/удаление по ts; покупки — кандидаты; с эффектом — ещё и платная трата дня.
   const shop = new Map<string, ShopItem>();
   const buys: { id: string; ts: number; r: ShopItem }[] = [];
+  const cosAsked = new Set<string>();
   for (const e of shopEvents) {
+    if (e.type === 'cosmetic_bought') {
+      const c = typeof e.itemId === 'string' ? cosmeticById(e.itemId) : null;
+      if (c && c.price !== null && !cosAsked.has(c.id)) { cosAsked.add(c.id); buys.push({ id: e.id, ts: e.ts, r: { id: c.id, title: c.title, price: c.price, effect: null, deleted: false, cosmetic: true } }); }
+      continue;
+    }
     if (e.type === 'reward_created') {
       const title = typeof e.title === 'string' ? e.title.trim() : '';
       if (typeof e.rewardId === 'string' && !shop.has(e.rewardId) && title.length > 0 && title.length <= 60
@@ -714,6 +726,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const skillLast: Partial<Record<SkillId, ISODate>> = {};
   const baseNow = () => Object.fromEntries(STAT_KEYS.map(k => [k, baseFromXp(start.base[k], statXp[k]).value])) as Record<Stat, number>;
   const ledger: LedgerEntry[] = [];
+  const seasonXpBy = new Map<string, number>();   // XP строк по сезону даты строки
   for (const [d, m] of metrics) if (plausibleSteps(m.steps) !== undefined) dayOf(d).steps = plausibleSteps(m.steps); // до цикла: золото достижений прошлых дней
   let goldSoFar = 0, xpSoFar = 0; // цикл идёт по датам: на начало дня d — строки с датой < d
   const statByDate = new Map<ISODate, Record<Stat, number>>(); // XP характеристик по датам — для «Перекоса» и Формы
@@ -723,6 +736,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     const sd = statByDate.get(r.date) ?? fill(0);
     for (const k of STAT_KEYS) { statXp[k] += r.stats[k] ?? 0; sd[k] += r.stats[k] ?? 0; }
     statByDate.set(r.date, sd);
+    if (r.xp) { const sid = seasonOf(r.date).id; seasonXpBy.set(sid, (seasonXpBy.get(sid) ?? 0) + r.xp); }
     for (const [id, v] of r.skills) {
       const before = skillFromXp(start.skills[id], skillXp[id]).level;
       skillXp[id] += v; if (r.source === 'quest' || r.source === 'ritual') skillLast[id] = r.date;   // практика: задание или ритуал (спека §3.3)
@@ -901,6 +915,61 @@ export function replay(events: GameEvent[], now: number): GameState {
     }
     for (const op of ops) if (op.ts >= cut) applyOp(op, d);
   };
+  // Инвентарь: вещи пути и сундуков — в цикле дней (сундук не повторяет полученное), магазин и трофеи — после.
+  const owned: GameState['cosmetics']['owned'] = [], ownedIds = new Set<string>();
+  const own = (id: string, date: ISODate, source: GameState['cosmetics']['owned'][number]['source']) => { if (!ownedIds.has(id)) { ownedIds.add(id); owned.push({ id, date, source }); } };
+  // Путь сезона (спека §6): в конце дня d ≥ depthSince — новые ступени сезона даты d; пройденные раньше depthSince — датой первого такого дня.
+  const pathGot = new Map<string, GameState['season']['rewards']>(), pathTitles: { t: string; date: ISODate; sid: string }[] = [];
+  const pathDay = (d: ISODate) => {
+    const sn = seasonOf(d);
+    if (d < BALANCE.depthSince || d > today || sn.kind === 'prologue') return;
+    const got = pathGot.get(sn.id) ?? [], price = stepXpFor(sn, firstDay ?? null);
+    const step = Math.min(BALANCE.season.steps, Math.floor((seasonXpBy.get(sn.id) ?? 0) / price));
+    for (let k = got.length + 1; k <= step; k++) {
+      const rw = stepRewards(sn.kind, k);
+      add({ ...flatRow(`path:${sn.id}:${k}`, ledger.at(-1)?.ts ?? closesAtTs(d, closeOf(d)), d, 'season_step', 0, null), gold: rw.gold });
+      for (const it of rw.items) own(it, d, 'path');
+      if (rw.title) pathTitles.push({ t: rw.title, date: d, sid: sn.id });
+      got.push({ step: k, gold: rw.gold, items: rw.items, date: d });
+    }
+    pathGot.set(sn.id, got);
+  };
+  // Ранг недели (спека §5): доля — без своих, перенесённых и замороженных дней; XP — строки дат недели; среднее — 4 прошлые недели с выдачей.
+  const WK = BALANCE.week, weekResults: WeekResult[] = [];
+  const league = { points: 0, seasonId: null as string | null };
+  const realOn = (x: ISODate) => (issued.get(x) ?? []).filter(q => q.kind !== 'custom' && !q.dropped);
+  const weekXp = (ws: ISODate): number | null => {
+    let xp = 0, any = false;
+    for (let i = 0; i < 7; i++) { const x = addDays(ws, i); any ||= realOn(x).length > 0; xp += days.get(x)?.xp ?? 0; }
+    return any ? xp : null;
+  };
+  const weekScore = (ws: ISODate, upTo: ISODate): WeekScore => {
+    let n = 0, all = 0, ok = 0, xp = 0;
+    for (let i = 0; i < 7; i++) {
+      const x = addDays(ws, i);
+      if (x > upTo) break;
+      xp += days.get(x)?.xp ?? 0;
+      const qs = realOn(x);
+      if (restDays.has(x) || dayOff.has(x) || !qs.length) continue;
+      n++; all += qs.length; ok += qs.filter(q => q.done).length;
+    }
+    const share = all ? ok / all : 0, avg4 = avgPrev(Array.from({ length: WK.avgWeeks }, (_, k) => weekXp(addDays(ws, -7 * (k + 1)))));
+    return { share, xp, avg4, days: n, rank: n >= WK.minDays ? weekRank(share, xp, avg4) : null };
+  };
+  /** Закрытие воскресенья d: награда, сундук, очки лиги (мягкий сброс перед первой неделей нового сезона; восстановление гасит минус). */
+  const rankWeek = (d: ISODate) => {
+    const ws = addDays(d, -6), sc = weekScore(ws, d), sn = seasonOf(d);
+    let gold = sc.rank ? WK.gold[sc.rank] : 0, chest: string | null = null, points = 0;
+    if (sc.rank === 'S') { chest = chestPick(ws, ownedIds); if (chest) own(chest, d, 'chest'); else gold += WK.chestFallbackGold; }
+    if (sn.kind !== 'prologue') {
+      if (league.seasonId !== sn.id) { league.points = softReset(league.points); league.seasonId = sn.id; }
+      const before = league.points;
+      league.points = leagueAfter(before, sc.rank, recAll.some(p => p.from <= d && p.to > ws));
+      points = league.points - before;
+    }
+    if (gold > 0) add({ ...flatRow(`week:${ws}`, closesAtTs(d, closeOf(d)), d, 'week_rank', 0, null), gold });
+    weekResults.push({ ...sc, weekStart: ws, points, gold, chest });
+  };
   let dayStartCaps: GameState['today']['dayStart'] | null = null; // потолки рангов сегодня (переброс, своё задание) — на начало дня
   const history: DayResult[] = [], statHistory: GameState['statHistory'] = [];
   const finalized: { stat: Stat; done: boolean }[][] = [];
@@ -953,6 +1022,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const abUsed = new Map<string, ISODate>();   // `${weekStart}|${ability}` → дата принятия
   let abToday: GameState['today']['ability'] = { rush: null, shield: false, inspire: false, march: false, freeRerolls: 0 };
   for (const p of recAll) for (let d = p.from; d < p.to && d <= today; d = addDays(d, 1)) dates.add(d);
+  if (today >= BALANCE.depthSince) dates.add(today);   // путь сезона догоняется и без событий сегодня
   for (const d of [...dates].sort()) {
     const qs = issued.get(d) ?? [];
     // платные траты дня: золото строк прошлых дней − обычные покупки раньше по ts − ранее принятые платные траты ≥ цена
@@ -1122,7 +1192,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     if (d <= today) gameDay(d, qs);
     if (firstLadder && d >= firstLadder && d <= today) ladderDay(d);
     if (firstFacet && d >= firstFacet && d <= today) shadowDay(d);
-    if (!firstDay || d < firstDay || d >= today) continue;
+    if (!firstDay || d < firstDay || d >= today) { pathDay(d); continue; }
     // закрытие дня: серия (заморозка гасит ближайший пропуск), идеальный день; история — для дней с выдачей
     const o = outcomeOf(d), rest = restDays.has(d) || dayOff.has(d), dq = qs.filter(q => q.done);
     const real = qs.filter(q => q.kind !== 'custom'), realDone = real.filter(q => q.done).length;
@@ -1131,6 +1201,9 @@ export function replay(events: GameEvent[], now: number): GameState {
     if (freeze) freezes--;
     streak = nextStreak(streak, o, freeze || ab.shield, snap?.flat.streakMiss);
     if (o.perfect) add(flatRow(`perfect:${d}`, closesAtTs(d, closeOf(d)), d, 'perfect_day', BALANCE.streak.perfectXp, null));
+    // порядок конца дня: задания → недельные → ступени пути → ранг недели (золото — в goldSoFar следующего дня)
+    pathDay(d);
+    if (d >= BALANCE.depthSince && addDays(weekStart(d), 6) === d) rankWeek(d);
     closed.push({ date: d, done: dq.length, rest }); if (!rest) workDays.push(d);
     if (!rest) idleRun = realDone || (ritualsOn.get(d)?.done ?? 0) > 0 ? 0 : idleRun + 1; // ритуал — тоже активность
     dayOf(d).streak = streak;
@@ -1171,9 +1244,15 @@ export function replay(events: GameEvent[], now: number): GameState {
   // Магазин: покупки — после всех строк леджера, когда известен весь заработок.
   const earned = ledger.reduce((a, r) => a + r.gold, 0);
   const purchases: GameState['purchases'] = [];
-  let spent = 0, ri = 0;
+  let spent = 0, ri = 0, cosSpent = 0;
   for (const { id, ts, r } of buys) {
     while (ri < rerollPaid.length && rerollPaid[ri].ts <= ts) spent += rerollPaid[ri++].price;
+    if (r.cosmetic) {
+      if (!ownedIds.has(r.id) && earned + BALANCE.achievementGold * (achs.length + (purchases.length ? 1 : 0)) - spent >= r.price) {
+        spent += r.price; cosSpent += r.price; own(r.id, gd(ts), 'shop');
+      }
+      continue;
+    }
     // весь заработок + золото first_purchase (если покупка уже была) − потраченное = то, что показывается в gold;
     // покупки с эффектом приняты в цикле дней и здесь не перепроверяются
     const bonus = BALANCE.achievementGold * (achs.length + (purchases.length ? 1 : 0));
@@ -1182,12 +1261,25 @@ export function replay(events: GameEvent[], now: number): GameState {
   for (; ri < rerollPaid.length; ri++) spent += rerollPaid[ri].price;
   achs = earnAchievements(days, today, startLevel);
   const gold = earned + BALANCE.achievementGold * achs.length - spent;
-  const title = achs.map(x => ACHIEVEMENTS.find(d => d.id === x.id)!.titleReward).filter((t): t is string => !!t).at(-1) ?? 'Новичок';
+  // титул — самый поздний по дате из достижений и пути сезона
+  const titles = [...achs.flatMap(x => { const t = ACHIEVEMENTS.find(d => d.id === x.id)!.titleReward; return t ? [{ t, date: x.date }] : []; }), ...pathTitles];
+  const title = titles.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)).at(-1)?.t ?? 'Новичок';
+  for (const t of trophies) own(trophyItemId(t.id), t.date, 'trophy');
+  owned.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  // надеть: по ts, только своё и в свой слот; null — снять
+  const equipped: GameState['cosmetics']['equipped'] = {};
+  for (const e of equips) {
+    if (!SLOTS.includes(e.slot)) continue;
+    if (e.itemId === null) { delete equipped[e.slot]; continue; }
+    const c = typeof e.itemId === 'string' && ownedIds.has(e.itemId) ? cosmeticById(e.itemId) : null;
+    if (c && c.slot === e.slot) equipped[e.slot] = c.id;
+  }
 
   const totalXp = ledger.reduce((a, r) => a + r.xp, 0);
   const { level, into, need } = levelFromXp(totalXp, startLevel);
   const season = seasonOf(today), theme = themeOn(today);
   const seasonXp = season.kind === 'prologue' ? 0 : ledger.filter(r => seasonOf(r.date).id === season.id).reduce((a, r) => a + r.xp, 0);
+  const stepXp = season.kind === 'prologue' ? BALANCE.season.stepXp : stepXpFor(season, firstDay ?? null);
   const lastRestore: Partial<Record<Stat, ISODate>> = {};
   for (const [d, qs] of issued) if (d <= today) for (const q of qs) if (q.kind === 'restore' && !(lastRestore[q.stat]! >= d)) lastRestore[q.stat] = d;
   const formsNow = formsAt(today), forms = formMap(formsNow);
@@ -1255,7 +1347,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       restDaysLeft: Math.max(0, BALANCE.streak.restDaysPerMonth - (restInMonth.get(today.slice(0, 7)) ?? 0)),
       // то же правило, что у платных трат: золото строк и достижений прошлых дней − принятые обычные покупки − принятые платные траты
       spendable: Math.max(0, ledger.reduce((a, r) => a + (r.date < today ? r.gold : 0), 0) + achGoldBefore(today)
-        - purchases.reduce((a, p) => a + (shop.get(p.rewardId)?.effect ? 0 : p.price), 0) - paidSum),
+        - purchases.reduce((a, p) => a + (shop.get(p.rewardId)?.effect ? 0 : p.price), 0) - cosSpent - paidSum),
       freezesLeft: Math.max(0, BALANCE.shop.freezePerMonth - (freezeMonth.get(today.slice(0, 7)) ?? 0)), dayOff: dayOff.has(today),
       data: data.get(today) ?? { flags: [] }, vitals, suggest,
       dayStart: dayStartCaps ?? { level, skills: skillLevels() }, // сегодня не в цикле — сегодняшних строк нет
@@ -1274,9 +1366,14 @@ export function replay(events: GameEvent[], now: number): GameState {
     weekly: { weekStart: thisWeek, quests: weeklyNow },
     bosses: [...bossMap.values()].filter(b => !b.abandoned),
     reports: [...reports].map(([weekStart, text]) => ({ weekStart, text })).sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1)),
-    genWeekly: { weekStart: thisWeek, stats, multipliers, prevActiveDays, prevStatQuests, bestSteps7: best7(metrics, today, 'steps'), themeStat: theme ? THEMES[theme].stats[0] : null },
+    genWeekly: { weekStart: thisWeek, stats, multipliers, prevActiveDays, prevStatQuests, bestSteps7: best7(metrics, today, 'steps'), themeStat: theme ? THEMES[theme].stats[0] : null,
+      easy: weekResults.find(r => r.weekStart === addDays(thisWeek, -7))?.rank === 'D' },
     season: { id: season.id, kind: season.kind, name: season.name, start: season.start, end: season.end, theme, xp: seasonXp,
-      step: Math.min(BALANCE.season.steps, Math.floor(seasonXp / BALANCE.season.stepXp)) },
+      step: Math.min(BALANCE.season.steps, Math.floor(seasonXp / stepXp)), stepXp, joined: firstDay ?? null,
+      rewards: pathGot.get(season.id) ?? [], title: pathTitles.filter(x => x.sid === season.id).at(-1)?.t ?? null },
+    week: { start: thisWeek, preview: weekScore(thisWeek, today), results: weekResults.slice(-12).reverse() },
+    league: { tier: leagueTier(league.points), name: BALANCE.league.names[leagueTier(league.points)], points: league.points, seasonId: league.seasonId ?? season.id },
+    cosmetics: { owned, equipped },
     dayTypes, ledger, history, achievements: achs, title, statHistory, metricHistory,
     ladders: ladList.filter(l => l.status === 'active' || l.status === 'queued' || l.status === 'auto').map(l => {
       const st = l.steps[l.step - 1], wk = l.status === 'auto';

@@ -13,7 +13,7 @@ const dayNum = (d: ISODate) => { const [y, m, x] = d.split('-').map(Number); ret
 
 /** Подпись пути сезона: Пролог — дни до следующего сезона; сезон — ступень N/30 и XP до следующей. */
 export function pathLabel(season: GameState['season'], today: ISODate): { title: string; sub: string; pct: number } {
-  const { stepXp, steps } = BALANCE.season
+  const { steps } = BALANCE.season, { stepXp } = season   // цена ступени — с поздним входом
   if (season.kind === 'prologue') {
     const next = addDays(season.end, 1)
     return { title: `Пролог · до ${seasonOf(next).name === 'Зима' ? 'Зимы' : seasonOf(next).name} ${dayNum(next) - dayNum(today)} дн.`,

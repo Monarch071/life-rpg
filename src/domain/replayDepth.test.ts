@@ -1,8 +1,11 @@
 import { expect, test } from 'vitest';
 import { BALANCE } from './balance';
+import { seasonOf } from './calendar';
+import { cosmeticById, SHOP_COSMETICS } from './cosmetics';
 import { addDays, weekStart } from './day';
 import { LADDER_PRESETS } from './ladder';
 import { replay } from './replay';
+import { stepXpFor } from './seasonPath';
 import type { SkillId } from './skillCatalog';
 import type { GameEvent, Profile, Quest, Rank, Stat } from './types';
 
@@ -216,4 +219,89 @@ test('План: невыполненные недельные заменяютс
 test('Рывок + Вернуть форму → ×4, не больше', () => {
   const s = replay([onb(rating('str', 'int')), issue(T, [nq('a', T, 'E', ['strength'], { kind: 'restore' })]), use(T, 'rush', { questId: 'a' }), done(T, 'a')], at(T, 22));
   expect(xpOf(s, 'a').mult).toBe(4);
+});
+
+// ---- Ранг недели, лига, путь сезона, инвентарь ----
+const week = (from: string, perDay = 1, doneShare = 1) => span(from, 7).flatMap(d => {
+  const qs = Array.from({ length: perDay }, (_, i) => nq(`${d}-${i}`, d, 'E', ['reading']));
+  return [issue(d, qs), ...qs.slice(0, Math.round(perDay * doneShare)).map(x => done(d, x.id))];
+});
+const SUN = addDays(MON, 6), NEXT = addDays(MON, 7);
+test('ранг недели решается при закрытии воскресенья [P§5]', () => {
+  const evs = [onb(rating('str', 'int')), ...week(MON)];
+  const open = replay(evs, at(SUN, 12));
+  expect(open.week.results).toEqual([]); expect(open.week.preview).toMatchObject({ rank: 'A', share: 1, avg4: 1050 });
+  const s = replay(evs, at(NEXT, 12));
+  expect(s.week.results[0]).toMatchObject({ weekStart: MON, rank: 'A', points: 2, gold: 300, chest: null, days: 7 });
+  expect(s.ledger.filter(r => r.id === `week:${MON}`)).toMatchObject([{ source: 'week_rank', xp: 0, gold: 300, date: SUN }]);
+  expect(s.league).toMatchObject({ tier: 0, name: 'Бронза', points: 2 });
+  expect(s.gold - replay(evs, at(SUN, 23)).gold).toBeGreaterThanOrEqual(300);
+});
+test('неделя < 3 дней с выдачей — без ранга', () => {
+  const s = replay([onb(rating('str', 'int')), ...week(MON).slice(0, 4)], at(NEXT, 12));
+  expect(s.week.results[0]).toMatchObject({ rank: null, points: 0, gold: 0 });
+  expect(s.ledger.some(r => r.source === 'week_rank')).toBe(false);
+});
+test('D → следующая неделя облегчена', () => {
+  const s = replay([onb(rating('str', 'int')), ...week(MON, 2, 0)], at(NEXT, 12));
+  expect(s.week.results[0].rank).toBe('D'); expect(s.genWeekly.easy).toBe(true);
+  expect(s.league.points).toBe(0);
+});
+test('сезонный путь: ступени, золото по 50 один раз, вещь на 3-й, ранние — датой depthSince', () => {
+  const sn = seasonOf(BASE), n = Math.max(20, Math.round((Date.parse(D0) - Date.parse(sn.start)) / 864e5) + 5);
+  const now = addDays(sn.start, n);
+  const s = replay([onb(rating('str', 'int')), ...doneDays(sn.start, n, 'reading', 'S')], at(now, 12));
+  expect(s.season.stepXp).toBe(600); expect(s.season.step).toBeGreaterThanOrEqual(3);
+  expect(s.season.rewards).toHaveLength(s.season.step);
+  expect(s.season.rewards.every(r => r.gold === 50)).toBe(true);
+  expect(s.season.rewards.find(r => r.step === 3)!.items).toEqual([`season:${sn.kind}:3`]);
+  expect(s.season.rewards.filter(r => r.date < D0)).toEqual([]);
+  expect(new Set(s.ledger.filter(r => r.source === 'season_step').map(r => r.id)).size).toBe(s.season.step);
+  expect(s.cosmetics.owned.map(o => o.id)).toContain(`season:${sn.kind}:3`);
+  // повторный replay позже — те же ступени с теми же датами
+  const later = replay([onb(rating('str', 'int')), ...doneDays(sn.start, n, 'reading', 'S')], at(addDays(now, 1), 12));
+  expect(later.season.rewards.slice(0, s.season.rewards.length)).toEqual(s.season.rewards);
+});
+test('поздний вход: цена ступени от первой активности', () => {
+  const ns = seasonOf(addDays(seasonOf(BASE).end, 1)), mid = addDays(ns.start, 45);
+  const s = replay([onb(rating('str', 'int')), ...doneDays(mid, 2, 'reading')], at(addDays(mid, 1), 12));
+  expect(s.season).toMatchObject({ stepXp: stepXpFor(ns, mid), joined: mid });
+  expect(s.season.stepXp).toBeLessThan(600);
+});
+test('мягкий сброс лиги на стыке сезонов', () => {
+  // 7 недель A (14 очков, Золото) до конца сезона → первая неделя нового сезона: сброс до 6 + очки недели
+  const ns = seasonOf(addDays(seasonOf(addDays(BASE, 56)).end, 1)), first = weekStart(ns.start);
+  const evs = [onb(rating('str', 'int')), ...Array.from({ length: 8 }, (_, k) => week(addDays(first, 7 * (k - 7)))).flat()];
+  expect(replay(evs, at(first, 12)).league).toMatchObject({ points: 14, tier: 2, name: 'Золото' });
+  const s = replay(evs, at(addDays(first, 7), 12));
+  expect(s.week.results[0]).toMatchObject({ weekStart: first, rank: 'A', points: 2 });
+  expect(s.league).toMatchObject({ points: 8, tier: 1, seasonId: ns.id });
+});
+test('D в неделе с днём восстановления очко не снимает', () => {
+  const W3 = addDays(MON, 14), R = addDays(W3, 2);
+  const evs = [onb(rating('str', 'int')), ...week(MON, 4, 0.75), ...week(addDays(MON, 7), 4, 0.75), ...week(W3, 2, 0)];
+  const plain = replay(evs, at(addDays(W3, 7), 12));
+  expect(plain.week.results.map(r => r.rank)).toEqual(['D', 'B', 'B']); expect(plain.league.points).toBe(1);
+  const s = replay([...evs, ev({ type: 'recovery_started', date: R, quests: 0, ts: at(R, 9) }), ev({ type: 'recovery_ended', date: addDays(R, 1), ts: at(addDays(R, 1), 9) })], at(addDays(W3, 7), 12));
+  expect(s.week.results[0]).toMatchObject({ rank: 'D', points: 0 }); expect(s.league.points).toBe(2);
+});
+test('вещи: покупка один раз по цене каталога, надеть только своё', () => {
+  const item = SHOP_COSMETICS[0], price = cosmeticById(item)!.price!, day = addDays(D0, 5);
+  const base = [onb(rating('str', 'int')), ...doneDays(D0, 5, 'reading', 'S')];
+  const before = replay(base, at(day, 14));
+  expect(before.today.spendable).toBeGreaterThanOrEqual(price);
+  const s = replay([...base,
+    ev({ type: 'cosmetic_bought', itemId: item, ts: at(day, 9) }), ev({ type: 'cosmetic_bought', itemId: item, ts: at(day, 10) }),
+    ev({ type: 'cosmetic_bought', itemId: 'nope', ts: at(day, 11) }), ev({ type: 'cosmetic_bought', itemId: 'rare:cloak-star', ts: at(day, 11) }),
+    ev({ type: 'cosmetic_equipped', slot: cosmeticById(item)!.slot, itemId: item, ts: at(day, 12) }),
+    ev({ type: 'cosmetic_equipped', slot: 'frame', itemId: 'frame:winter', ts: at(day, 13) }),
+    ev({ type: 'cosmetic_equipped', slot: 'cloak', itemId: item, ts: at(day, 13) })], at(day, 14));
+  expect(s.cosmetics.owned.filter(o => o.id === item)).toEqual([{ id: item, date: day, source: 'shop' }]);
+  expect(s.cosmetics.owned.some(o => o.id === 'rare:cloak-star')).toBe(false);
+  expect(s.cosmetics.equipped).toEqual({ [cosmeticById(item)!.slot]: item });
+  expect(s.gold).toBe(before.gold - price); expect(s.today.spendable).toBe(before.today.spendable - price);
+  const off = replay([...base, ev({ type: 'cosmetic_bought', itemId: item, ts: at(day, 9) }),
+    ev({ type: 'cosmetic_equipped', slot: cosmeticById(item)!.slot, itemId: item, ts: at(day, 12) }),
+    ev({ type: 'cosmetic_equipped', slot: cosmeticById(item)!.slot, itemId: null, ts: at(day, 13) })], at(day, 14));
+  expect(off.cosmetics.equipped).toEqual({});
 });

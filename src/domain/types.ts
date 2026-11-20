@@ -1,6 +1,8 @@
 import type { RewardEffect } from './balance';
 import type { ThemeId } from './calendar';
+import type { CosmeticSlot } from './cosmetics';
 import type { DayType } from './dayType';
+import type { WeekRank } from './rivalry';
 import type { SkillId } from './skillCatalog';
 export type Stat = 'str'|'end'|'int'|'dis'|'cha'|'fin'|'spi';
 export type HHMM = string;            // '09:30'
@@ -81,6 +83,8 @@ export type GameEvent = { id: string; ts: number; deviceId: string } & (
   | { type: 'timer_logged'; timer: 'focus' | 'reading'; start: number; end: number }
   | { type: 'recovery_started'; date: ISODate; quests: 0 | 1 | 2 }
   | { type: 'recovery_ended'; date: ISODate }
+  | { type: 'cosmetic_bought'; itemId: string }
+  | { type: 'cosmetic_equipped'; slot: CosmeticSlot; itemId: string | null }
   | { type: 'ability_used'; date: ISODate; ability: AbilityId; questId?: string; stat?: Stat; replacement?: Quest; quests?: WeeklyQuest[] }
   | { type: 'ladder_created'; ladderId: string; title: string; kind: LadderKind; skill: SkillId; steps: LadderStep[]; suitable?: 'all' | 'workdays'; facetId?: string }
   | { type: 'ladder_updated'; ladderId: string; title?: string; steps?: LadderStep[] }
@@ -114,7 +118,7 @@ export interface ClassState { id: ClassId; name: string; pair: [Stat, Stat] | nu
   passive: { text: string; power: 0 | 0.5 | 1 };
   ability: { id: AbilityId; name: string; desc: string; target: 'quest' | 'day' | 'week'; usedOn: ISODate | null; available: boolean };
   nextRecalc: ISODate; changedFrom: { id: ClassId; date: ISODate } | null }
-export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss' | 'ritual' | 'ladder' | 'shadow' | 'chain';
+export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss' | 'ritual' | 'ladder' | 'shadow' | 'chain' | 'week_rank' | 'season_step';
   questId?: string; base: number; k: number; bonus: number; penalty: number; mult: number; xp: number; gold: number;
   skills: [SkillId, number][]; stats: Partial<Record<Stat, number>>; verified: boolean }
 /** legacy — задание без ранга (старый журнал): XP как сохранено, без проверки и бонусов. */
@@ -163,8 +167,13 @@ export interface GameState {
   weekly: { weekStart: ISODate; quests: (WeeklyQuest & { progress: number; done: boolean })[] };   // неделя сегодняшней игровой даты; без выдачи — []
   bosses: Boss[];         // кроме брошенных
   reports: { weekStart: ISODate; text: string }[];   // недельные отчёты ИИ, по убыванию недели
-  genWeekly: WeeklyCtx;   // контекст для generateWeeklyQuests текущей недели
-  season: { id: string; kind: 'prologue' | 'winter' | 'spring' | 'summer' | 'autumn'; name: string; start: ISODate; end: ISODate; theme: ThemeId | null; xp: number; step: number };
+  genWeekly: WeeklyCtx & { easy: boolean };   // easy — прошлая неделя закрыта рангом D   // контекст для generateWeeklyQuests текущей недели
+  season: { id: string; kind: 'prologue' | 'winter' | 'spring' | 'summer' | 'autumn'; name: string; start: ISODate; end: ISODate; theme: ThemeId | null; xp: number; step: number;
+    stepXp: number; joined: ISODate | null; rewards: { step: number; gold: number; items: string[]; date: ISODate }[]; title: string | null };   // путь сезона: цена ступени, первая игровая дата, полученные ступени
+  /** Ранг недели (спека §5): preview — «если сегодня закроется так»; results — закрытые недели ≥ depthSince, по убыванию, до 12. */
+  week: { start: ISODate; preview: WeekScore; results: WeekResult[] };
+  league: { tier: 0 | 1 | 2 | 3 | 4 | 5; name: string; points: number; seasonId: string };
+  cosmetics: { owned: { id: string; date: ISODate; source: 'path' | 'chest' | 'shop' | 'trophy' }[]; equipped: Partial<Record<CosmeticSlot, string>> };
   dayTypes: DayType[];    // шаблоны дней: последний day_types_set, иначе умолчания
   ledger: LedgerEntry[];  // начисления XP/золота, по дате
   history: DayResult[];   // финализированные дни, по возрастанию
@@ -196,6 +205,8 @@ export interface GameState {
     // для сборки дня: лучший 7‑дневный средний по шагам (из metric_logged steps), сон за последний день с данными,
     // templateId заданий за 2 прошлых дня; recent — те же 2 дня (только с выдачей): характеристики и шаблоны
 }
+export interface WeekScore { share: number; xp: number; avg4: number; days: number; rank: WeekRank | null }
+export interface WeekResult extends WeekScore { weekStart: ISODate; points: number; gold: number; chest: string | null }
 export type DistributiveOmit<T, K extends keyof any> = T extends any ? Omit<T, K> : never;
 
 export type Rank = 'E' | 'D' | 'C' | 'B' | 'A' | 'S';

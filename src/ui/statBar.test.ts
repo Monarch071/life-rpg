@@ -3,7 +3,7 @@ import type { GameState } from '../domain/types'
 import { pathLabel, statBar } from './statBar'
 
 const season = (o: Partial<GameState['season']>): GameState['season'] =>
-  ({ id: 'winter-2026', kind: 'winter', name: 'Зима', start: '2026-12-01', end: '2027-02-28', theme: 'mind_spirit', xp: 0, step: 0, ...o })
+  ({ id: 'winter-2026', kind: 'winter', name: 'Зима', start: '2026-12-01', end: '2027-02-28', theme: 'mind_spirit', xp: 0, step: 0, stepXp: 600, joined: null, rewards: [], title: null, ...o })
 
 describe('statBar', () => {
   it('base — Основа, form — Основа × Форма; без формы — как Основа', () => {
