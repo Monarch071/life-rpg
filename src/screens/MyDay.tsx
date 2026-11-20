@@ -15,9 +15,11 @@ import { BALANCE } from '../domain/balance'
 import { energyScore } from '../domain/vitals'
 import { DAY_ICONS } from '../ui/icons'
 import { buildQuests } from './issue'
+import { useCurrency } from './Finance'
 
 /** Модальное «Мой день»: тип дня и (необязательно) утренняя энергия → day_started, затем выдача заданий (если их ещё нет). */
 export default function MyDay({ state, onLater }: { state: GameState; onLater: () => void }) {
+  const currency = useCurrency()
   const [energy, setEnergy] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -53,7 +55,7 @@ export default function MyDay({ state, onLater }: { state: GameState; onLater: (
       const morning = energy !== null ? energy : cur.today.lastEnergy !== null ? Math.min(10, Math.max(1, Math.round(cur.today.lastEnergy))) : null
       if (cur.today.quests.length === 0) {
         const ei = cur.today.vitals.energyInputs
-        quests = buildQuests(cur, dayType, wakeAt, energyScore({ sleepLast: ei.sleep, hp: ei.hp, weekMorning: ei.weekMorning, morning }) ?? BALANCE.energy.fallback)
+        quests = buildQuests(cur, dayType, wakeAt, energyScore({ sleepLast: ei.sleep, hp: ei.hp, weekMorning: ei.weekMorning, morning }) ?? BALANCE.energy.fallback, currency)
         const cfg = await getAiConfig().catch(() => null)
         if (cfg) {
           let timer: ReturnType<typeof setTimeout> | undefined

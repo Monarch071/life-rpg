@@ -150,3 +150,43 @@ test('производительность: смешанный год — зад
   // ~350 мс на десктопе; порог с запасом под нагруженный CI
   expect(ms).toBeLessThan(1500);
 });
+
+// ---- легендарный (личная версия) ----
+const lvl45 = (): GameEvent[] => lvl20('str', 'end').map(e => e.type === 'interview_completed'
+  ? { ...e, analysis: { ...(e as { analysis: object }).analysis, stats: { str: 20, end: 20, int: 10, dis: 10, cha: 10, fin: 10, spi: 10 }, startLevel: 45 } } as GameEvent : e);
+const L0 = '2027-06-01';
+const legend = (d: string, type: string, o: Record<string, unknown> = {}, h = 10) => ev({ type, date: d, ts: at(d, h), ...o });
+const stages = { stages: ['этап 1', 'этап 2', 'этап 3', 'этап 4'], final: 'финал' };
+/** Чемпион с 3 февраля, весь сезон «Весна» в продвинутом, задания Силы каждый день по 2 июля. */
+const legendBase = () => [...lvl45(), ...doneDays('2026-12-20', 195, 'strength', 'C'), trial(T0, 'champion')];
+
+test('легендарное: сезон в продвинутом и уровень 40 → испытание; 3 этапа + финал → легенда и +5% XP', () => {
+  const evs = [...legendBase(), legend(L0, 'legend_trial_started', stages),
+    legend(L0, 'legend_stage_done', { stage: 0 }), legend('2027-06-09', 'legend_stage_done', { stage: 1 }),
+    legend('2027-06-09', 'legend_stage_done', { stage: 3 }),   // вне окна — игнор
+    legend('2027-06-16', 'legend_stage_done', { stage: 2 }), legend('2027-06-29', 'legend_stage_done', { stage: 4 })];
+  const mid = replay(evs, at('2027-06-20'));
+  expect(mid.cls.legendTrial).toMatchObject({ start: L0, day: 20, done: [true, true, true, false], finalDone: false });
+  const s = replay(evs, at('2027-07-02'));
+  expect(s.cls.legend).toEqual({ since: '2027-07-01', title: 'Несокрушимый Чемпион' });
+  expect(s.ledger.filter(r => r.source === 'legend').map(r => r.xp)).toEqual([200, 200, 200, 350]);
+  const q = (st: typeof s, d: string) => st.ledger.find(r => r.source === 'quest' && r.date === d)!;
+  const noLegend = replay(legendBase(), at('2027-07-02'));
+  expect(q(s, '2027-07-01').bonus).toBeCloseTo(q(noLegend, '2027-07-01').bonus + 0.05, 9);
+  const named = replay([...evs, legend('2027-07-02', 'legend_title_set', { title: '  Несокрушимый   Чемпион Алматы ' })], at('2027-07-02', 12));
+  expect(named.cls.legend?.title).toBe('Несокрушимый Чемпион Алматы');
+});
+
+test('легендарное: без полного сезона, без финала, отказ — повтор через 30 дней', () => {
+  expect(replay([...legendBase(), legend('2027-05-20', 'legend_trial_started', stages)], at('2027-05-21')).cls.legendTrial).toBeNull();
+  expect(replay([...legendBase(), legend(L0, 'legend_trial_started', { ...stages, final: ' ' })], at('2027-06-02')).cls.legendTrial).toBeNull();
+  expect(replay([...legendBase(), legend(L0, 'legend_trial_started', { ...stages, stages: [...stages.stages, 'лишний'] })], at('2027-06-02')).cls.legendTrial).toBeNull();
+  expect(() => replay([...legendBase(), legend(L0, 'legend_trial_started', stages), legend(L0, 'legend_stage_done', { stage: '0' }),
+    legend(L0, 'legend_stage_done', { stage: NaN }), legend(L0, 'legend_title_set', { title: 5 })], at('2027-06-02'))).not.toThrow();
+  const fail = [...legendBase(), legend(L0, 'legend_trial_started', stages), ...[0, 1, 2, 3].map(k => legend(addDays(L0, 7 * k), 'legend_stage_done', { stage: k }))];
+  const f = replay(fail, at('2027-07-02'));
+  expect(f.cls.legend).toBeNull(); expect(f.cls.legendFail).toBe('2027-06-30'); expect(f.cls.legendOpen).toBe(false);
+  const ab = [...legendBase(), legend(L0, 'legend_trial_started', stages), legend('2027-06-02', 'legend_trial_abandoned')];
+  expect(replay([...ab, legend('2027-07-01', 'legend_trial_started', stages)], at('2027-07-01', 12)).cls.legendTrial).toBeNull();
+  expect(replay([...ab, legend('2027-07-02', 'legend_trial_started', stages)], at('2027-07-02', 12)).cls.legendTrial).toMatchObject({ start: '2027-07-02' });
+});

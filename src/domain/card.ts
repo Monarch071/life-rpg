@@ -14,10 +14,10 @@ export interface CardPoint { date: ISODate; level: number; avatar: CardAvatar }
 export interface CardModel { kind: 'month' | 'season' | 'week'; title: string; before: CardPoint; after: CardPoint; index: number | null;
   record: { title: string; value: string } | null; gains: { stat: Stat; delta: number }[]; streak: number; step: number | null }
 export type CardOp =
-  | { op: 'rect'; x: number; y: number; w: number; h: number; fill: string; glow?: string; r?: number }
-  | { op: 'text'; x: number; y: number; text: string; size: number; color: string; weight?: number; align?: 'left' | 'center' | 'right' }
-  | { op: 'image'; slot: 'before' | 'after'; x: number; y: number; w: number; h: number }
-  | { op: 'bar'; x: number; y: number; w: number; h: number; pct: number; color: string }
+  | { op: 'rect'; x: number; y: number; w: number; h: number; fill: string; glow?: string; r?: number; alpha?: number }
+  | { op: 'text'; x: number; y: number; text: string; size: number; color: string; weight?: number; align?: 'left' | 'center' | 'right'; alpha?: number }
+  | { op: 'image'; slot: 'before' | 'after'; x: number; y: number; w: number; h: number; alpha?: number }
+  | { op: 'bar'; x: number; y: number; w: number; h: number; pct: number; color: string; alpha?: number }
 
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь']
 export const monthTitle = (m: string) => `${MONTHS[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}`

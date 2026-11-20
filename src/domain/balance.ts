@@ -60,9 +60,10 @@ export const BALANCE = {
              gold: { S: 500, A: 300, B: 150, C: 50, D: 0 }, points: { S: 3, A: 2, B: 1, C: 0, D: -1 }, chestFallbackGold: 200,
              easy: { daysMinus: 1, share: 0.8, minQuests: 2 } },
   league:  { names: ['Бронза', 'Серебро', 'Золото', 'Платина', 'Алмаз', 'Легенда'], perTier: 6, maxPoints: 35 },
-  calibration: { up: 0.85, down: 0.6, upK: 1.1, downK: 0.85, startK: 1.1 },
+  calibration: { up: 0.85, down: 0.6, upK: 1.1, downK: 0.85, startK: 1.1, min: 0.5, max: 3, promote: 1.5, dropBelow: 0.4, dropWeeks: 2, restDays: 14 },
   shop:    { freezePerMonth: 2 },
-  achievementGold: 25, weeklyXp: 150,
+  achievementGold: 25, weeklyXp: 150, weeklyRankMult: 3, weeklyChestGold: 100,
+  finishSince: '2026-11-23',   // игровая дата выхода «Доводки»: сундуки недельных, калибровка шаблонов, легендарный класс
   vitals: {
     hp:      { w: { sleep: 0.4, steps: 0.3, rhr: 0.2, feel: 0.1 }, windowDays: 3, sleepMin: 7, sleepMax: 9, sleepPerHour: 20,
                rhrPerBeat: 10, rhrDays: 30, rhrMinSamples: 5, feelFull: 8, stepsGoalDefault: 6000 },
@@ -104,8 +105,9 @@ export const BALANCE = {
               mult: { record: 3, alliance: 2, gather: 2, silence: 2, audit: 2, expedition: 2, balance: 2, chain: 2 },
               pledge: { vow: { days: 7, k: 2 }, fast: { days: 3, k: 3 } }, guard: { wall: 3, bastion: 7 },
               invest: { stake: 300, payout: 450, share: 0.7, days: 7 }, silenceMaxMin: 5 },
+  legend:   { level: 40, days: 30, stages: 4, finalDays: 2, need: 3, retryDays: 30, stageXp: 200, finalXp: 350, xpBonus: 0.05, textMax: 80, titleMax: 40 },
   legacyRank: { 1: 'E', 2: 'E', 3: 'D', 4: 'C', 5: 'B' },
-  legacy:  { questXpMax: 10_000, weeklyXpMax: 1000, bossStageXp: 100, bossDefeatXp: 200 },   // старый журнал: XP как сохранено, в пределах
+  legacy:  { questXpMax: 10_000, weeklyXpMax: 1000, weeklyXpMaxNew: 1200, bossStageXp: 100, bossDefeatXp: 200 },   // старый журнал: XP как сохранено, в пределах
 } as const;
 
 export const RANKS: readonly Rank[] = ['E', 'D', 'C', 'B', 'A', 'S'];

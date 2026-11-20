@@ -6,6 +6,7 @@ import { BALANCE } from '../domain/balance'
 import { seasonOf } from '../domain/calendar'
 import { weekCard, type CardModel } from '../domain/card'
 import { addDays, weekStart } from '../domain/day'
+import { canMark, stageWindow } from '../domain/legend'
 import { SKILL_CATALOG, type SkillId } from '../domain/skillCatalog'
 import CardSheet from '../screens/CardSheet'
 import { STATS } from '../domain/stats'
@@ -78,6 +79,7 @@ export default function ClassCard({ state }: { state: GameState }) {
       </ul>
       <small className="muted">{cls.trial || cls.advanced ? 'Пока идёт испытание или выбран продвинутый путь, класс не пересчитывается' : `Пересчёт класса ${dm(cls.nextRecalc)}`} · вес = Основа с поправкой на форму.</small>
       <AdvancedPath state={state} />
+      <LegendPath state={state} />
       {ask && <Confirm title={`Применить «${ab.name}» сегодня? Следующий раз — в понедельник.`} yes="Применить" onNo={() => setAsk(false)}
         onYes={() => { setAsk(false); void a.use() }} />}
       {plan && <PlanSheet state={state} onClose={() => setPlan(false)} />}
@@ -255,5 +257,59 @@ export function QuestAbility2({ state, q, onClose }: { state: GameState; q: DayQ
       <button className="btn primary big" disabled={a.busy} onClick={() => void a.use({ questId: q.id }).then(ok => { if (ok) onClose() })}>Применить «{ab.name}»</button>
       <div aria-live="polite">{a.msg && !a.msg.ok && <p role="alert" className="err">{a.msg.text}</p>}</div>
     </Sheet>
+  )
+}
+
+const LG = BALANCE.legend
+
+/** Легендарный класс (личная версия): испытание 30 дней — 4 недельных этапа по целям на годы и финал; потом своё название. */
+function LegendPath({ state }: { state: GameState }) {
+  const { cls, today, profile } = state, t = cls.legendTrial, lg = cls.legend
+  const w = useWrite()
+  const [form, setForm] = useState<null | { stages: string[]; final: string }>(null)
+  const [title, setTitle] = useState<string | null>(null)
+  const [ask, setAsk] = useState(false)
+  if (!lg && !t && !cls.legendOpen && !cls.advanced) return null
+  const goals = [...(profile?.goals ?? [])].sort((a, b) => b.months - a.months).map(g => g.text)
+  const open = () => setForm({ stages: Array.from({ length: LG.stages }, (_, i) => goals.length ? `Шаг к цели «${goals[i % goals.length]}»` : ''), final: goals[0] ? `Главный шаг к цели «${goals[0]}»` : '' })
+  const ok = form && form.stages.every(s => s.trim()) && form.final.trim()
+  const start = async () => { if (form && await w.write({ type: 'legend_trial_started', date: today.date, stages: form.stages, final: form.final }, 'Легендарное испытание началось')) setForm(null) }
+  const mark = (k: number) => void w.write({ type: 'legend_stage_done', date: today.date, stage: k }, k === LG.stages ? 'Финал засчитан' : `Этап ${k + 1} засчитан`)
+  const saveTitle = async () => { if (title !== null && await w.write({ type: 'legend_title_set', date: today.date, title }, 'Название сохранено')) setTitle(null) }
+  return (
+    <div className="card adv-path" role="group" aria-label="Легендарный класс">
+      <b>Легендарный класс</b>
+      {lg ? <>
+        <p className="legend-name">{lg.title}</p>
+        <small>Навсегда: +{Math.round(LG.xpBonus * 100)}% XP за задания и сияющий аватар. С {dm(lg.since)}.</small>
+        {title === null ? <button className="btn ghost" onClick={() => setTitle(lg.title)}>Изменить название</button> : <>
+          <label className="field">Название (можно дописать город)<input value={title} maxLength={LG.titleMax} onChange={e => setTitle(e.target.value)} /></label>
+          <button className="btn primary" disabled={w.busy || !title.trim()} onClick={() => void saveTitle()}>Сохранить</button>
+        </>}
+      </> : t ? <>
+        <small>День {Math.min(t.day, LG.days)} из {LG.days}. Нужно {LG.need} этапа из {LG.stages} и финал.</small>
+        <ul className="perk-list">{[...t.stages, t.final].map((s, k) => {
+          const [a, b] = stageWindow(t.start, k), done = k === LG.stages ? t.finalDone : t.done[k], can = canMark({ ...t, done: [...t.done] }, k, today.date)
+          return (<li key={k}><span className="grow"><b>{k === LG.stages ? 'Финал (ранг S)' : `Этап ${k + 1}`}</b><small>{s}</small>
+            <small className="muted">{done ? 'выполнено' : `${dm(a)}–${dm(b)}`}</small>
+            {can && <button className="btn primary" disabled={w.busy} onClick={() => mark(k)}>Выполнено (+{k === LG.stages ? LG.finalXp : LG.stageXp} XP)</button>}</span></li>)
+        })}</ul>
+        <button className="btn ghost" disabled={w.busy} onClick={() => setAsk(true)}>Отказаться</button>
+      </> : cls.legendOpen ? <>
+        <small>Испытание на {LG.days} дней: {LG.stages} недельных этапа по твоим целям на годы и финальное задание ранга S. Награда — своё легендарное название, сияющий аватар и +{Math.round(LG.xpBonus * 100)}% XP за задания навсегда.</small>
+        <button className="btn primary" disabled={w.busy} onClick={open}>Начать легендарное испытание</button>
+      </> : <small className="muted">{cls.legendFail ? `Повтор испытания — с ${dm(addDays(cls.legendFail, LG.retryDays))}` : `Откроется с уровня ${LG.level}, когда продвинутый класс будет с тобой целый сезон`}</small>}
+      <div aria-live="polite">{w.msg && <p role={w.msg.ok ? 'status' : 'alert'} className={w.msg.ok ? 'ok' : 'err'}>{w.msg.text}</p>}</div>
+      {form && <Sheet id="legend-title" title="Легендарное испытание" onClose={() => setForm(null)}>
+        <p className="muted">Опиши, что сделаешь за каждую неделю. Отмечаешь честно, только в неделю этапа.</p>
+        {form.stages.map((s, i) => <label key={i} className="field">Этап {i + 1} (неделя {i + 1})
+          <input value={s} maxLength={LG.textMax} onChange={e => setForm({ ...form, stages: form.stages.map((x, j) => (j === i ? e.target.value : x)) })} /></label>)}
+        <label className="field">Финал — задание ранга S (последние {LG.finalDays} дня)
+          <input value={form.final} maxLength={LG.textMax} onChange={e => setForm({ ...form, final: e.target.value })} /></label>
+        <button className="btn primary big" disabled={!ok || w.busy} onClick={() => void start()}>Начать ({LG.days} дней)</button>
+      </Sheet>}
+      {ask && <Confirm title={`Отказаться от испытания? Повтор — через ${LG.retryDays} дней.`} yes="Отказаться" onNo={() => setAsk(false)}
+        onYes={() => { setAsk(false); void w.write({ type: 'legend_trial_abandoned', date: today.date }, 'Испытание прервано') }} />}
+    </div>
   )
 }

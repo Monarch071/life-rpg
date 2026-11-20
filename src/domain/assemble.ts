@@ -3,12 +3,12 @@ import { themeBonusApplies, type ThemeId } from './calendar';
 import { addDays, fromMin, toMin } from './day';
 import type { DayType } from './dayType';
 import { questReward, rankCap, rankShift } from './progression';
-import { paramFor, QUEST_TEMPLATES, type QuestTemplate } from './questBank';
+import { MONEY, moneyIn, paramFor, QUEST_TEMPLATES, type QuestTemplate } from './questBank';
 import { seededRng } from './rng';
 import { freeWindows, latestEnd, placeQuests, type Win } from './schedule';
 import { primaryStat, SKILL_CATALOG, type SkillId } from './skillCatalog';
 import { STATS } from './stats';
-import type { HHMM, ISODate, Profile, Quest, QuestKind, QuestStep, Rank, Stat, StatInfo } from './types';
+import type { HHMM, ISODate, Profile, Quest, QuestKind, QuestStep, Rank, Stat, StatInfo, TemplateCalibration } from './types';
 import { weakestStat } from './weekly';
 
 export interface AssembleCtx {
@@ -19,6 +19,8 @@ export interface AssembleCtx {
   profile: Profile; multipliers: Record<Stat, number>; bestSteps7: number | null; busy: Win[];
   fatigue: number; recovery: { quests: 0 | 1 | 2 } | null; afterRecovery: boolean;
   bossStep: QuestStep | null; chainStep: QuestStep | null;   // первый несделанный шаг босса/цепочки (переносится, пока не сделан)
+  currency?: string;   // знак валюты устройства для денежных шаблонов; нет — тенге
+  tmpl?: TemplateCalibration;   // калибровка шаблонов; нет — множитель характеристики
 }
 
 const STAT_KEYS = Object.keys(STATS) as Stat[];
@@ -56,7 +58,10 @@ interface Cand { t: QuestTemplate; stat: Stat; skill: SkillId; p: number; cap: R
 /** Кандидаты по убыванию P; ничьи — сидированный rng(date). */
 function candidates(ctx: AssembleCtx): Cand[] {
   const rng = seededRng(ctx.date);
-  return QUEST_TEMPLATES.filter(t => !t.badHabit) // вредные привычки — в Тени и «не делать»-лестницах (спека §7)
+  const rest = new Set(ctx.tmpl?.rest ?? []);
+  // отдыхающий шаблон заменяется другим того же навыка; другого нет — остаётся
+  const resting = (t: QuestTemplate) => rest.has(t.id) && QUEST_TEMPLATES.some(o => o.id !== t.id && !o.badHabit && o.skills[0] === t.skills[0] && !rest.has(o.id));
+  return QUEST_TEMPLATES.filter(t => !t.badHabit && !resting(t)) // вредные привычки — в Тени и «не делать»-лестницах (спека §7)
     .map(t => {
       const skill = t.skills[0], stat = primaryStat(t.skills);
       // при Energy < 40 физические — не выше D
@@ -81,10 +86,11 @@ const skillTitle = (id: SkillId) => SKILL_CATALOG.find(s => s.id === id)!.title;
 function build(c: Cand, rank: Rank, kind: QuestKind, why: string, ctx: AssembleCtx, id = `${ctx.date}:${c.t.id}`): Omit<Quest, 'window'> {
   const t = c.t.id === 'steps'
     ? { ...c.t, base: Math.max(ctx.profile.stepsUsual || 0, Math.round((ctx.bestSteps7 ?? 0) * B.calibration.startK), 1) } : c.t;
-  const n = Math.max(1, paramFor(t, rank, ctx.multipliers[c.stat] ?? 1));
+  const n0 = Math.max(1, paramFor(t, rank, ctx.tmpl?.mult[t.id] ?? ctx.multipliers[c.stat] ?? 1)), money = t.unit === MONEY;
+  const n = money ? moneyIn(n0, ctx.currency) : n0;
   const bonuses = [themeBonusApplies(ctx.theme, c.stat, t.skills) ? B.bonus.theme : 0, weakestStat(ctx.stats) === c.stat ? B.bonus.weakest : 0];
   const xp = questReward({ rank, verify: t.auto ? 'auto' : 'honest', bonuses, penalties: [], mult: kind === 'restore' ? B.restore.mult : 1 }).xp;
-  return { id, date: ctx.date, title: t.title(n), stat: c.stat, minutes: t.allDay ? 0 : t.minutes(n), xp, auto: t.auto?.(n) ?? null,
+  return { id, date: ctx.date, title: money ? t.title(n).replace(MONEY, ctx.currency ?? '₸') : t.title(n), stat: c.stat, minutes: t.allDay ? 0 : t.minutes(n), xp, auto: t.auto?.(n) ?? null,
     templateId: t.id, rank, skills: [...t.skills] as Quest['skills'], kind, why };
 }
 
@@ -168,7 +174,8 @@ export function assembleDay(ctx: AssembleCtx): Quest[] {
   const rankOf = new Map<typeof chosen[number], { rank: Rank; kind: QuestKind }>();
   for (const x of order) {
     if (x === ch) rankOf.set(x, { rank: rankShift(x.c.cap, 1), kind: 'challenge' });
-    else rankOf.set(x, { rank: rankShift(minRank(own-- > 0 ? x.c.cap : rankShift(x.c.cap, -1), x.c.limit), ctx.afterRecovery ? -1 : 0), kind: 'daily' });
+    // повышенный калибровкой шаблон — всегда на потолке, не занимая долю «своего ранга»
+    else rankOf.set(x, { rank: rankShift(minRank(ctx.tmpl?.promoted.includes(x.c.t.id) || own-- > 0 ? x.c.cap : rankShift(x.c.cap, -1), x.c.limit), ctx.afterRecovery ? -1 : 0), kind: 'daily' });
   }
   const built = chosen.map(x => {
     if (x.restore) return build(x.c, minRank(ri(x.c.cap) >= ri('D') ? 'D' : 'E', x.c.limit), 'restore', x.why!, ctx);

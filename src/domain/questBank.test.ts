@@ -28,3 +28,13 @@ test('параметр по рангу', () => {
   const read = QUEST_TEMPLATES.find(t => t.id === 'read')!;
   expect(paramFor(read, 'D', 1)).toBe(read.base * 2);
 });
+
+import { moneyIn } from './questBank'
+test('moneyIn: тенге как есть, другие валюты — по курсу, 2 значащие цифры', () => {
+  expect(moneyIn(1500)).toBe(1500)
+  expect(moneyIn(1500, '₽')).toBe(300)
+  expect(moneyIn(1650, '₽')).toBe(330)
+  expect(moneyIn(1500, '$')).toBe(3)
+  expect(moneyIn(10, '$')).toBe(1)
+  expect(moneyIn(12345, '₸')).toBe(12000)
+})

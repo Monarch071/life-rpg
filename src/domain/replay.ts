@@ -27,6 +27,7 @@ import { cleanText } from './text';
 import { ghostAt, ghostWeek, growthIndex, prevMonthSameDay, recordStep, RECORDS, streakRecord, type RecordId } from './rival';
 import type { AbilityId2, AdvancedId, Analysis, Answers, BossDraft, AutoMetric, ClassId, ClassState, PerkView, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, FinKind, FinPeriod, ImportRow, WeeklyQuest, WeekResult, WeekScore } from './types';
 import { weakestStat } from './weekly';
+import { canMark, cleanText as legText, heldFullSeason, legendOpen, legendPassed, legendTitle, type LegendTrial } from './legend';
 import { energyScore, fatigueNext, focusScore, hpScore, intFocusMult, sessionMinutes, unionMinutes, workoutKind } from './vitals';
 import { levelFromXp } from './xp';
 
@@ -295,7 +296,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const lads = new Map<string, Lad>();
   // Враг-тень (спека §4): грани принимаются (лимит) и снимаются в цикле дней — операции по игровой дате в порядке событий.
   const S = BALANCE.shadow;
-  type Facet = { id: string; name: string; kind: FacetKind; added: ISODate; strength: number; cleanRun: number; banished: boolean; status: 'new' | 'on' | 'gone' };
+  type Facet = { id: string; name: string; kind: FacetKind; added: ISODate; strength: number; cleanRun: number; banished: boolean; banishedOn?: ISODate; status: 'new' | 'on' | 'gone' };
   const facetMap = new Map<string, Facet>(), facetOps = new Map<ISODate, { f: Facet; add: boolean; ts: number }[]>();
   const facetOp = (d: ISODate, f: Facet, add: boolean, ts: number) => facetOps.set(d, [...(facetOps.get(d) ?? []), { f, add, ts }]);
   const relapseAt = new Map<string, number>(); // `${facetId}|${date}` → ts первой честной отметки
@@ -312,6 +313,7 @@ export function replay(events: GameEvent[], now: number): GameState {
 
   // Соперник: дни открытия (не Shortcuts — их пишет Worker), история аватара, разборы сезона, страницы дня до закрытия (рекорд недели).
   const advOps = new Map<ISODate, Extract<GameEvent, { type: 'advanced_trial_started' | 'advanced_trial_abandoned' | 'advanced_path_switched' }>[]>();
+  const legOps = new Map<ISODate, Extract<GameEvent, { type: 'legend_trial_started' | 'legend_stage_done' | 'legend_trial_abandoned' | 'legend_title_set' }>[]>();
   const openedTs: number[] = [], avatarHistory: GameState['avatarHistory'] = [], seasonRev = new Map<string, string>(), pagesT = new Map<ISODate, number>();
   for (const e of evs) {
     if (e.deviceId === 'shortcuts') sync.last = e.ts; // события по возрастанию ts
@@ -372,6 +374,12 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (!isDate(e.date) || e.date !== gd(e.ts) || e.date < BALANCE.rivalSince || e.date > today) break;
         if (e.type !== 'advanced_trial_abandoned' && !isAdvancedId(e.classId)) break;
         advOps.set(e.date, [...(advOps.get(e.date) ?? []), e]);
+        break;
+      }
+      case 'legend_trial_started': case 'legend_stage_done': case 'legend_trial_abandoned': case 'legend_title_set': {
+        // граница доверия: дата — игровая дата ts, с выхода «Доводки»; доступ и окна — в цикле дней
+        if (!isDate(e.date) || e.date !== gd(e.ts) || e.date < BALANCE.finishSince || e.date > today) break;
+        legOps.set(e.date, [...(legOps.get(e.date) ?? []), e]);
         break;
       }
       case 'custom_quest_added': {
@@ -537,7 +545,7 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (!isDate(e.weekStart) || weekStart(e.weekStart) !== e.weekStart || weeklyIssued.has(e.weekStart)) break;
         const seenIds = new Set<string>();
         const qs = (Array.isArray(e.quests) ? e.quests : []).filter(w => validWeekly(w) && !seenIds.has(w.id) && !!seenIds.add(w.id))
-          .slice(0, 5).map(w => ({ ...w, xp: Math.min(BALANCE.legacy.weeklyXpMax, Math.max(0, Math.round(w.xp))) }));
+          .slice(0, 5).map(w => ({ ...w, xp: Math.min(e.weekStart >= BALANCE.finishSince ? BALANCE.legacy.weeklyXpMaxNew : BALANCE.legacy.weeklyXpMax, Math.max(0, Math.round(w.xp))) }));
         if (qs.length) weeklyIssued.set(e.weekStart, { ts: e.ts, qs }); // побеждает первый
         break;
       }
@@ -1040,7 +1048,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       const relapse = honest !== undefined || (m !== null && m > S.dataRelapseMin);
       Object.assign(f, facetDay(f, relapse, assist.has(`${f.id}|${d}`), snap?.flat.relapse, advAt(d) === 'ascetic' ? AV.ascetClean : undefined));
       if (relapse) { relapsesOn.set(d, (relapsesOn.get(d) ?? 0) + 1); facetRelapse.add(`${f.id}|${d}`); }
-      if (banished(f)) { f.banished = true; bump(d, 'facetsBanished'); }
+      if (banished(f)) { f.banished = true; f.banishedOn = d; bump(d, 'facetsBanished'); }
     }
     const month = d.slice(0, 7);
     if (d >= today || d !== lastSunday(month) || !fs.length) return;
@@ -1181,6 +1189,10 @@ export function replay(events: GameEvent[], now: number): GameState {
   const finalized: { stat: Stat; done: boolean }[][] = [];
   const closed: { date: ISODate; done: number; rest: boolean }[] = []; // все закрытые дни от первого дня с заданиями (пустые тоже)
   let fatigue = 0, todayVit: Vitals | null = null; // Усталость рекуррентно от первого дня с заданиями
+  // калибровка шаблонов [S§6]: по воскресеньям с finishSince, по заданиям сборки (не свои/босс/цепочка/легаси)
+  const CB = BALANCE.calibration, tmplDays: { date: ISODate; items: { tid: string; stat: Stat; done: boolean }[] }[] = [];
+  let weekMult: Record<Stat, number> | null = null;   // множители характеристик на начало недели — старт шаблона (без двойного учёта недели)
+  const tmplMult = new Map<string, number>(), tmplStart = new Map<string, number>(), tmplLow = new Map<string, number>(), tmplRest = new Map<string, ISODate>();
   let streak = 0, idleRun = 0, multipliers = fill(1); // idleRun — подряд закрытых не-отдыхающих дней без выполненного
   // Даты: каждый день от первого дня с заданиями до сегодня (пропуски тоже закрываются) + выдачи и строки вне его.
   const firstLadder = ladList.map(l => l.created).filter(d => d <= today).sort()[0] as ISODate | undefined;
@@ -1266,6 +1278,8 @@ export function replay(events: GameEvent[], now: number): GameState {
   // Продвинутые (спека §8): испытание, текущий класс (фиксация до конца сезона), вторая способность.
   let adv = null as Adv | null, trialSt = null as { classId: AdvancedId; start: ISODate; day: number; counted: number; focusDone: number } | null, lastFail = null as ISODate | null;
   const guardDays = new Map<ISODate, AbilityId2>();   // «Стена»/«Бастион» по датам
+  const LG = BALANCE.legend;
+  let legTrial = null as LegendTrial | null, legend = null as { since: ISODate; title: string } | null, legFail = null as ISODate | null;
   const pledges: { id: AbilityId2; start: ISODate; days: number; ok: number; skill: SkillId; facetId: string | null; xp: number }[] = [];
   const invests: ISODate[] = [];
   /** Строка второй способности: XP частей по их навыкам (как задания). */
@@ -1281,6 +1295,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   };
   for (const p of recAll) for (let d = p.from; d < p.to && d <= today; d = addDays(d, 1)) dates.add(d);
   for (const d of advOps.keys()) dates.add(d);
+  for (const d of legOps.keys()) dates.add(d);
   if (today >= BALANCE.depthSince) dates.add(today);   // путь сезона догоняется и без событий сегодня
   for (const d of [...dates].sort()) {
     const qs = issued.get(d) ?? [];
@@ -1355,6 +1370,19 @@ export function replay(events: GameEvent[], now: number): GameState {
         adv = { id: e.classId, since: d, until: adv.until }; advHist.push({ ...adv });
       }
     }
+    // легендарный: старт (уровень на начало дня), отметки этапов в их окнах, отказ, своё название
+    for (const e of legOps.get(d) ?? []) {
+      if (e.type === 'legend_trial_started') {
+        const stages = Array.isArray(e.stages) && e.stages.length === LG.stages ? e.stages.map(x => legText(x, LG.textMax)) : [], final = legText(e.final, LG.textMax);
+        if (stages.length === LG.stages && stages.every(x => x !== null) && final && legendOpen({ level: lvl, date: d, held: heldFullSeason(advHist, d), lastFail: legFail, busy: !!legTrial || !!legend }))
+          legTrial = { start: d, stages: stages as string[], final, done: Array(LG.stages).fill(false), finalDone: false };
+      } else if (e.type === 'legend_stage_done') {
+        if (!legTrial || !canMark(legTrial, e.stage, d)) continue;
+        if (e.stage === LG.stages) legTrial.finalDone = true; else legTrial.done[e.stage] = true;
+        add(flatRow(`legend:${legTrial.start}:${e.stage}`, e.ts, d, 'legend', e.stage === LG.stages ? LG.finalXp : LG.stageXp, null));
+      } else if (e.type === 'legend_trial_abandoned') { if (legTrial) { legTrial = null; legFail = d; } }
+      else if (legend && legend.since <= d) { const t = legText(e.title, LG.titleMax); if (t) legend = { ...legend, title: t }; }
+    }
     const aId = advAt(d);
     const wkKey = (a: string) => `${weekStart(d)}|${a}`;
     const canUse = (a: string) => !!cls && CLASSES[cls.id].ability === a && !abUsed.has(wkKey(a));
@@ -1364,7 +1392,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       if (!wk || !Array.isArray(raw)) return false;
       const keep = wk.qs.filter(w => weekProgress({ ...w, weekStart: ws }, d) >= w.target), ids = new Set(keep.map(w => w.id));
       const fresh = raw.filter(w => validWeekly(w) && !ids.has(w.id) && !!ids.add(w.id)).slice(0, wk.qs.length - keep.length)
-        .map(w => ({ ...w, weekStart: ws, xp: Math.min(BALANCE.legacy.weeklyXpMax, Math.max(0, Math.round(w.xp))) }));
+        .map(w => ({ ...w, weekStart: ws, xp: Math.min(ws >= BALANCE.finishSince ? BALANCE.legacy.weeklyXpMaxNew : BALANCE.legacy.weeklyXpMax, Math.max(0, Math.round(w.xp))) }));
       if (!fresh.length) return false;
       wk.qs = [...keep, ...fresh];
       const wd = ws === thisWeek ? today : addDays(ws, 6);   // строки недели — на wd ≥ d
@@ -1475,7 +1503,7 @@ export function replay(events: GameEvent[], now: number): GameState {
           : { bonuses: [streakBonus(streak), themeOk ? BALANCE.bonus.theme : 0, q.stat === weak ? BALANCE.bonus.weakest : 0], goldBonus: 0 };   // до depthSince — прежний набор
         const x = aId && snap ? advancedBonuses(aId, { skills: q.skills, stat: q.stat, verify: q.verify! }, snap.power) : { xp: 0, gold: 0, mult: 1 };
         const gb = Math.round((b.goldBonus + x.gold) * 1e9) / 1e9;
-        return { q, gb, r: questReward({ rank: q.rank, verify: q.verify!, bonuses: [...b.bonuses, x.xp], goldBonus: gb,
+        return { q, gb, r: questReward({ rank: q.rank, verify: q.verify!, bonuses: [...b.bonuses, x.xp, legend && legend.since <= d ? LG.xpBonus : 0], goldBonus: gb,
           mult: (q.kind === 'restore' ? BALANCE.restore.mult : 1) * (ab.rush === q.id ? CL.rushMult : 1) * (ab.boost === q.id ? boostK : 1) * x.mult * (q.stat === 'int' && d >= BALANCE.automationSince ? intFocusMult(vit?.focus ?? null) : 1),
           penalties: [weakening ? BALANCE.penalty.weakening : 0, imbalance && q.stat === strong ? BALANCE.penalty.imbalance : 0,
             fatiguePenalty(vit?.fatigue ?? 0)] }) };
@@ -1499,7 +1527,10 @@ export function replay(events: GameEvent[], now: number): GameState {
       }
     }
     for (const { ws, ts, w } of weeklyAt.get(d) ?? []) if (weekProgress({ ...w, weekStart: ws }) >= w.target) {
-      add(flatRow(`weekly:${ws}:${w.id}`, ts, d, 'weekly', w.xp, w.stat)); bump(d, 'weeklyDone');
+      const row = flatRow(`weekly:${ws}:${w.id}`, ts, d, 'weekly', w.xp, w.stat);
+      // сундук недельного [S§6]: вещь из редких, все собраны — золото
+      if (ws >= BALANCE.finishSince) { const c = chestPick(`${ws}:${w.id}`, ownedIds); if (c) own(c, d, 'chest'); else row.gold += BALANCE.weeklyChestGold; }
+      add(row); bump(d, 'weeklyDone');
     }
     for (const r of extra.get(d) ?? []) add(r);
     if (d < today && d >= BALANCE.rivalSince && addDays(d, 1).endsWith('-01')) {
@@ -1553,6 +1584,14 @@ export function replay(events: GameEvent[], now: number): GameState {
       if (r.result === 'pass') { const since = addDays(d, 1); adv = { id: t.classId, since, until: seasonOf(since).end }; advHist.push({ ...adv }); trialSt = null; }
       else if (r.result === 'fail') { lastFail = d; trialSt = null; }
     }
+    // легендарное: итог на 30-м дне — 3 этапа из 4 и финал; успех — легенда со следующего дня
+    if (legTrial && d === addDays(legTrial.start, LG.days - 1)) {
+      if (legendPassed(legTrial)) {
+        const b = baseNow(), top = STAT_KEYS.reduce((a, k) => (b[k] > b[a] ? k : a));
+        legend = { since: addDays(d, 1), title: legendTitle(aId ? ADVANCED[aId].name : cls ? CLASSES[cls.id].name : 'Герой', top) };
+      } else legFail = d;
+      legTrial = null;
+    }
     if (o.perfect) add(flatRow(`perfect:${d}`, close, d, 'perfect_day', BALANCE.streak.perfectXp, null));
     // порядок конца дня: задания → недельные → ступени пути → ранг недели (золото — в goldSoFar следующего дня)
     pathDay(d);
@@ -1560,6 +1599,20 @@ export function replay(events: GameEvent[], now: number): GameState {
     rivalDay(d);
     closed.push({ date: d, done: dq.length, rest }); if (!rest) workDays.push(d);
     if (!rest) idleRun = realDone || (ritualsOn.get(d)?.done ?? 0) > 0 ? 0 : idleRun + 1; // ритуал — тоже активность
+    if (d >= BALANCE.finishSince && (!weekMult || weekStart(d) === d)) weekMult = { ...multipliers };
+    if (qs.length && !rest) tmplDays.push({ date: d, items: qs.filter(q => !q.legacy && !q.dropped && (q.kind === 'daily' || q.kind === 'challenge' || q.kind === 'restore')).map(q => ({ tid: q.templateId, stat: q.stat, done: q.done })) });
+    if (d >= BALANCE.finishSince && addDays(weekStart(d), 6) === d) {
+      const wk = tmplDays.filter(x => x.date > addDays(d, -7)).flatMap(x => x.items);
+      for (const tid of tmplLow.keys()) if (!wk.some(x => x.tid === tid)) tmplLow.set(tid, 0);   // «две недели подряд»
+      for (const tid of new Set(wk.map(x => x.tid))) {
+        const its = wk.filter(x => x.tid === tid), rate = its.filter(x => x.done).length / its.length;
+        if (!tmplStart.has(tid)) tmplStart.set(tid, weekMult![its[0].stat] ?? 1);
+        const m = tmplMult.get(tid) ?? tmplStart.get(tid)!;
+        tmplMult.set(tid, Math.min(CB.max, Math.max(CB.min, m * (rate >= CB.up ? CB.upK : rate < CB.down ? CB.downK : 1))));
+        const low = rate < CB.dropBelow ? (tmplLow.get(tid) ?? 0) + 1 : 0;
+        if (low >= CB.dropWeeks) { tmplRest.set(tid, addDays(d, CB.restDays)); tmplLow.set(tid, 0); } else tmplLow.set(tid, low);
+      }
+    }
     dayOf(d).streak = streak;
     if (!qs.length) continue;
     history.push({ date: d, xp: dq.reduce((a, q) => a + q.xpFinal!, 0), completed: dq.length, issued: qs.length, counted: o.counted, perfect: o.perfect, rest, streak,
@@ -1709,6 +1762,9 @@ export function replay(events: GameEvent[], now: number): GameState {
         ability: { id: a.ability, name: a.abilityName, desc: a.abilityDesc, usedOn: used, available: used === null && advAt(today) === adv.id } }; })(),
     trial: trialSt && { ...trialSt, need: { days: AV.passDays, quests: AV.passQuests } },
     trialOptions: cls ? pathsOf(cls.id).filter(id => trialOpen({ level: dayStartCaps?.level ?? level, date: today, firstDay: firstDay ?? null, lastFail, active: !!trialSt || !!adv, base: cls!.id, classId: id })) : [],
+    legend, legendTrial: legTrial && { ...legTrial, done: [...legTrial.done], day: Math.round((Date.parse(today) - Date.parse(legTrial.start)) / 864e5) + 1 },
+    legendOpen: legendOpen({ level: dayStartCaps?.level ?? level, date: today, held: heldFullSeason(advHist, today), lastFail: legFail, busy: !!legTrial || !!legend }),
+    legendFail: legFail,
     nextTrial: trialSt || adv || !firstDay || (dayStartCaps?.level ?? level) < AV.level ? null : [addDays(firstDay, AV.delayDays), lastFail ? addDays(lastFail, AV.retryDays) : '', BALANCE.rivalSince].sort().at(-1)! };
   const className = clsState.name;
   const a = interview?.analysis;
@@ -1746,6 +1802,8 @@ export function replay(events: GameEvent[], now: number): GameState {
     start: { source: start.source, scores: start.scores, levelWhy: start.levelWhy },
     stats, statInfo, gold, streak: streakNow,
     className, cls: clsState, tier: tierFor(level), multipliers,
+    calibration: { mult: Object.fromEntries(tmplMult), promoted: [...tmplMult].filter(([t, m]) => m >= CB.promote * tmplStart.get(t)!).map(([t]) => t),
+      rest: [...tmplRest].filter(([, until]) => until >= today).map(([t]) => t) },
     today: {
       date: today, started: !!st, work: st?.work ?? null, wakeAt: st?.wakeAt ?? null,
       closesAt: closesAtTs(today, closeOf(today)), dayType: types.get(today) ?? null, energy: vitals.energy ?? BALANCE.energy.fallback, changed: !!st && dayChange.has(today),
@@ -1774,7 +1832,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     seasonReviews: [...seasonRev].map(([seasonId, text]) => ({ seasonId, text })),
     ghost, growth, records: RECORDS.map(r => ({ ...r, ...recs.get(r.id)! })), avatarHistory, activity: { opened },
     reports: [...reports].map(([weekStart, r]) => ({ weekStart, text: r.text, ...(r.final ? { final: true as const } : {}) })).sort((a, b) => (a.weekStart < b.weekStart ? 1 : -1)),
-    genWeekly: { weekStart: thisWeek, stats, multipliers, prevActiveDays, prevStatQuests, bestSteps7: best7(metrics, today, 'steps'), themeStat: theme ? THEMES[theme].stats[0] : null,
+    genWeekly: { level: dayStartCaps?.level ?? level, weekStart: thisWeek, stats, multipliers, prevActiveDays, prevStatQuests, bestSteps7: best7(metrics, today, 'steps'), themeStat: theme ? THEMES[theme].stats[0] : null,
       easy: weekResults.find(r => r.weekStart === addDays(thisWeek, -7))?.rank === 'D',
       budget: Object.values(limitsAt(Infinity, finNow.cats, weekLim(thisWeek))).some(l => l !== null) },
     season: { id: season.id, kind: season.kind, name: season.name, start: season.start, end: season.end, theme, xp: seasonXp,
@@ -1804,7 +1862,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     shadow: {
       strength: shadowStrength(liveFacets()),
       facets: facetList.filter(f => f.status === 'on').map(f => ({ id: f.id, name: f.name, kind: f.kind, strength: f.strength, cleanRun: f.cleanRun,
-        banished: f.banished, relapsedToday: relapseAt.has(`${f.id}|${today}`) })),
+        banished: f.banished, banishedOn: f.banishedOn ?? null, relapsedToday: relapseAt.has(`${f.id}|${today}`) })),
       nextBattle: today <= lastSunday(today.slice(0, 7)) ? lastSunday(today.slice(0, 7)) : lastSunday(addDays(`${today.slice(0, 7)}-28`, 7).slice(0, 7)),
       lastBattle,
     },

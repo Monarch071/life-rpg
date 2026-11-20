@@ -7,6 +7,7 @@ import type { GameState } from '../domain/types'
 import { getAiConfig, PROVIDER_NAMES, type AiConfig } from '../ai/config'
 import { aiAnalysis, aiFollowups, type Followup } from '../ai/interview'
 import StatRadar from '../ui/StatRadar'
+import { useCurrency } from './Finance'
 import { parseDraft, splitScale, TOTAL, type Draft } from './interviewFlow'
 
 const ICONS: Record<string, LucideIcon> = { Sparkles, Dumbbell, HeartPulse, Clock, BookOpen, Wallet, Users, Target, Leaf }
@@ -61,6 +62,7 @@ function Chips({ title, items, cls }: { title: string; items: string[]; cls: str
 }
 
 function Field({ q, val, set }: { q: Question; val: Val; set: (v: Val) => void }) {
+  const cur = useCurrency()
   switch (q.kind) {
     case 'choice': return (
       <div className="chips opts" role="radiogroup" aria-label={q.text}>
@@ -89,7 +91,7 @@ function Field({ q, val, set }: { q: Question; val: Val; set: (v: Val) => void }
     case 'number': return (
       <label className="ivw-num">
         <input type="text" inputMode="decimal" autoComplete="off" aria-label={q.text} placeholder="0" value={val === undefined ? '' : String(val)} onChange={e => set(e.target.value)} />
-        {q.unit && <span>{q.unit}</span>}
+        {q.unit && <span>{q.unit === '¤' ? cur : q.unit}</span>}
       </label>)
     case 'text': return <textarea className="ivw-text" aria-label={q.text} rows={4} maxLength={2000} placeholder="Напиши как есть…" value={typeof val === 'string' ? val : ''} onChange={e => set(e.target.value)} />
   }
