@@ -97,10 +97,10 @@ export function rowKey(date: ISODate, amount: number, text: string, n: number): 
   return fnv(0x811c9dc5) + fnv(0x050c5d1f);
 }
 
-/** Строки импорта блоками по importRowsMax — одно событие fin_imported на блок. */
-export function importChunks(rows: ImportRow[]): ImportRow[][] {
-  const n = BALANCE.finance.importRowsMax, out: ImportRow[][] = [];
-  for (let i = 0; i < rows.length; i += n) out.push(rows.slice(i, i + n));
+/** Строки импорта блоками по importRowsMax — одно событие fin_imported на блок, id `<base>#<n>`; fin_import_removed с base снимает все блоки. */
+export function importChunks(base: string, rows: ImportRow[]): { importId: string; rows: ImportRow[] }[] {
+  const n = BALANCE.finance.importRowsMax, out: { importId: string; rows: ImportRow[] }[] = [];
+  for (let i = 0; i < rows.length; i += n) out.push({ importId: `${base}#${i / n}`, rows: rows.slice(i, i + n) });
   return out;
 }
 

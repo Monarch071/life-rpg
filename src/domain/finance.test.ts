@@ -5,8 +5,8 @@ import type { FinKind } from './types';
 describe('finance', () => {
   test('правила магазинов: самый длинный шаблон, ничья — позднее', () => {
     const r = [{ pattern: 'магазин', categoryId: 'a', ts: 1 }, { pattern: 'магазин 1', categoryId: 'b', ts: 2 }, { pattern: 'кафе', categoryId: 'c', ts: 3 }, { pattern: 'кафе', categoryId: 'd', ts: 4 }];
-    expect(matchRule('ОПЛАТА  МАГАЗИН 1 г. Город', r)).toBe('b');
-    expect(matchRule('Кафе Ёлка', r)).toBe('d');
+    expect(matchRule(normText('ОПЛАТА  МАГАЗИН 1 г. Город'), r)).toBe('b');
+    expect(matchRule(normText('Кафе Ёлка'), r)).toBe('d');
     expect(matchRule('Такси', r)).toBeNull();
     expect(normText(' Ёж\u0007  Кот ')).toBe('еж кот');
   });

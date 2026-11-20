@@ -61,8 +61,9 @@ const FACET_KINDS: readonly string[] = ['games', 'social', 'late', 'junk', 'smok
 const FB = BALANCE.finance, FIN_KINDS: readonly string[] = ['expense', 'income', 'saving'];
 const FIN_PREFIX = /^(wallet|import|legacy):/;   // id ручной записи не совпадает с id Wallet/импорта/старых трат
 /** Запись финансов до правок; cat null — категория по правилам магазинов. */
-type FinRaw = { id: string; ts: number; date: ISODate; kind: FinKind; amount: number; cat: string | null; text: string;
+type FinRaw = { id: string; ts: number; date: ISODate; kind: FinKind; amount: number; cat: string | null; text: string; norm: string;
   source: GameState['finance']['entries'][number]['source']; keyDup?: boolean };
+type FinRow = ImportRow & { norm: string };
 type FinEntry = GameState['finance']['entries'][number] & { ts: number };
 type FinCat = GameState['finance']['categories'][number];
 const lastDayOf = (m: string): ISODate => addDays(`${addDays(`${m}-28`, 4).slice(0, 7)}-01`, -1);
@@ -304,7 +305,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const finRaw: FinRaw[] = [], finIds = new Set<string>(), finCatIds = new Set<string>(), finRuleIds = new Set<string>();
   const finCats: (FinCat & { ts: number; month: string })[] = [], finRules: { ts: number; id: string; pattern: string; categoryId: string | null }[] = [];
   const finEdits: { ts: number; id: string; cat?: string; amount?: number; date?: ISODate; removed?: boolean }[] = [];
-  const finImports = new Map<string, { ts: number; rows: ImportRow[] }>(), finRemoved = new Map<string, number>();
+  const finImports = new Map<string, { ts: number; rows: FinRow[] }>(), finRemoved = new Map<string, number>();
   const gameOp = (ts: number, op: GameOp) => { const d = gd(ts); if (d >= MIN_ISSUE_DATE) gameOps.set(d, [...(gameOps.get(d) ?? []), op]); };
 
   for (const e of evs) {
@@ -372,7 +373,7 @@ export function replay(events: GameEvent[], now: number): GameState {
         m[e.metric] = e.mode === 'add' ? Math.min(lim, Math.max(-lim, (m[e.metric] ?? 0) + e.value)) : e.value;
         metrics.set(e.date, m);
         const amount = e.metric === 'spend' && e.mode === 'add' ? validAmount(e.value) : null;   // старые траты — записи «Прочее»
-        if (amount !== null) finRaw.push({ id: `legacy:${e.id}`, ts: e.ts, date: e.date, kind: 'expense', amount, cat: 'default:other', text: '', source: 'legacy' });
+        if (amount !== null) finRaw.push({ id: `legacy:${e.id}`, ts: e.ts, date: e.date, kind: 'expense', amount, cat: 'default:other', text: '', norm: '', source: 'legacy' });
         break;
       }
       case 'health_packet': {
@@ -418,7 +419,8 @@ export function replay(events: GameEvent[], now: number): GameState {
         if (!x || !isDate(d) || sigKeys.has(`${e.at}|${x.key}`)) break; // повтор от «Команд» — один сигнал
         sigKeys.add(`${e.at}|${x.key}`); sigs.push({ ...x.s, at: e.at, ts: e.ts, d }); seen(x.s.kind, e.at);
         const wa = x.s.kind === 'wallet' ? validAmount(x.s.amount) : null;   // > 0 — трата, < 0 — возврат
-        if (wa !== null) finRaw.push({ id: `wallet:${e.id}`, ts: e.ts, date: d, kind: 'expense', amount: wa, cat: null, text: cleanText(x.merchant, FB.textMax) ?? '', source: 'wallet' });
+        const wt = cleanText(x.merchant, FB.textMax) ?? '';
+        if (wa !== null) finRaw.push({ id: `wallet:${e.id}`, ts: e.ts, date: d, kind: 'expense', amount: wa, cat: null, text: wt, norm: normText(wt), source: 'wallet' });
         // ждёт только последний on (потерянный off не раздувает минуты); его закрывает первый пришедший (по ts) off позже него;
         // запоздавший off с ранним at уже закрытый интервал не укорачивает
         if (x.s.kind === 'focus' && x.s.state === 'on') pendingOn = Math.max(pendingOn ?? -Infinity, e.at);
@@ -553,7 +555,7 @@ export function replay(events: GameEvent[], now: number): GameState {
         const amount = validAmount(e.amount);
         if (!ID(e.entryId) || FIN_PREFIX.test(e.entryId) || finIds.has(e.entryId) || !isDate(e.date) || !FIN_KINDS.includes(e.kind) || amount === null) break;
         finIds.add(e.entryId);   // первая побеждает
-        finRaw.push({ id: e.entryId, ts: e.ts, date: e.date, kind: e.kind, amount, cat: typeof e.categoryId === 'string' ? e.categoryId : '', text: cleanText(e.note, FB.textMax) ?? '', source: 'manual' });
+        finRaw.push({ id: e.entryId, ts: e.ts, date: e.date, kind: e.kind, amount, cat: typeof e.categoryId === 'string' ? e.categoryId : '', text: cleanText(e.note, FB.textMax) ?? '', norm: '', source: 'manual' });
         break;
       }
       case 'fin_entry_edited': {
@@ -565,16 +567,19 @@ export function replay(events: GameEvent[], now: number): GameState {
       }
       case 'fin_imported': {
         if (!ID(e.importId) || finImports.has(e.importId) || !Array.isArray(e.rows)) break;
-        const keys = new Set<string>(), rows: ImportRow[] = [];
+        const keys = new Set<string>(), rows: FinRow[] = [];
         for (const r of e.rows.slice(0, FB.importRowsMax) as Partial<ImportRow>[]) {   // граница доверия: ≤ importRowsMax строк на событие
           const amount = validAmount(r?.amount);
           if (!r || !ID(r.key) || keys.has(r.key) || !isDate(r.date) || amount === null) continue;
-          keys.add(r.key); rows.push({ key: r.key, date: r.date, amount, text: cleanText(r.text, FB.textMax) ?? '' });
+          const text = cleanText(r.text, FB.textMax) ?? '';
+          keys.add(r.key); rows.push({ key: r.key, date: r.date, amount, text, norm: normText(text) });
         }
         finImports.set(e.importId, { ts: e.ts, rows });
         break;
       }
-      case 'fin_import_removed': if (finImports.has(e.importId) && !finRemoved.has(e.importId)) finRemoved.set(e.importId, e.ts); break;
+      case 'fin_import_removed':   // base снимает и все блоки `base#n`
+        if (ID(e.importId)) for (const id of finImports.keys()) if ((id === e.importId || id.startsWith(`${e.importId}#`)) && !finRemoved.has(id)) finRemoved.set(id, e.ts);
+        break;
       case 'boss_created': case 'boss_stage_done': case 'boss_abandoned': bossEvents.push(e); break;
       case 'reward_created': case 'reward_deleted': case 'reward_purchased': case 'cosmetic_bought': shopEvents.push(e); break;
       case 'cosmetic_equipped': equips.push(e); break;
@@ -607,11 +612,18 @@ export function replay(events: GameEvent[], now: number): GameState {
     const list = ivs.get(key); if (list) list.push(iv); else ivs.set(key, [iv]);
   }
   // «Записать траты»: записи расходов, принятые до закрытия своего дня; правки и удаления засчёт не отнимают (монотонно).
-  // shortcut: строка импорта, совпавшая с Wallet того же дня, считается дважды — импорт обычно приходит после закрытия дня
-  const finKeys = new Set<string>();
-  for (const r of finRaw) if (r.kind === 'expense' && inTime(r.date, r.ts)) addTo(r.date, 'finEntries', 1);
+  // Строка импорта, сопоставленная с Wallet, пришедшим не позже импорта, — та же покупка, второй раз не считается.
+  const finKeys = new Set<string>(), finWallets = finRaw.filter(r => r.source === 'wallet'), closeMemo = new Map<ISODate, number>();
+  const finTime = (d: ISODate, ts: number) => {
+    let c = closeMemo.get(d);
+    if (c === undefined) closeMemo.set(d, c = d >= today ? Infinity : closesAtTs(d, closeOf(d)));
+    return ts < c;
+  };
+  for (const r of finRaw) if (r.kind === 'expense' && finTime(r.date, r.ts)) addTo(r.date, 'finEntries', 1);
   for (const im of finImports.values()) {
-    for (const r of im.rows) if (r.amount < 0 && !finKeys.has(r.key) && inTime(r.date, im.ts)) addTo(r.date, 'finEntries', 1);
+    const cand = im.rows.filter(r => r.amount < 0 && !finKeys.has(r.key) && finTime(r.date, im.ts));
+    const paired = cand.length ? matchWallet(cand.map(r => ({ id: r.key, date: r.date, amount: r.amount })), finWallets.filter(w => w.ts <= im.ts), FB.dedupeDays) : new Set<string>();
+    for (const r of cand) if (!paired.has(r.key)) addTo(r.date, 'finEntries', 1);
     for (const r of im.rows) finKeys.add(r.key);
   }
   for (const [key, iv] of ivs) { const [k, d] = key.split('|') as ['focusMin' | 'readMin', ISODate]; addTo(d, k, unionMinutes(iv, BALANCE.vitals.focus.intervalMaxMin)); }
@@ -733,23 +745,32 @@ export function replay(events: GameEvent[], now: number): GameState {
   }
 
   // Финансы — отдельный проход: вид на момент cut (события ts < cut). Вердикты недели/месяца — срезом на закрытие их последнего дня (монотонно).
-  const finMemo = new Map<number, { entries: FinEntry[]; cats: Map<string, FinCat> }>();
-  const finAt = (cut: number) => {
-    const hit = finMemo.get(cut);
+  // Окно [from − dedupeDays, to + dedupeDays] по дате записи (после правок): вердикт периода не перебирает весь журнал.
+  const finMemo = new Map<string, { entries: FinEntry[]; cats: Map<string, FinCat> }>();
+  const finAt = (cut: number, from: ISODate = '', to: ISODate = '9999-12-31') => {
+    const mk = `${cut}|${from}`, hit = finMemo.get(mk);
     if (hit) return hit;
+    const lo = from && addDays(from, -FB.dedupeDays), hi = to < '9999' ? addDays(to, FB.dedupeDays) : to;
     const cats = new Map<string, FinCat>(DEFAULT_CATEGORIES.map(c => [c.id, { ...c, limit: null, archived: false }]));
     for (const c of finCats) if (c.ts < cut) cats.set(c.id, { id: c.id, title: c.title, kind: c.kind, limit: c.limit, archived: c.archived });
     const rm = new Map<string, { pattern: string; categoryId: string; ts: number }>();
     for (const r of finRules) if (r.ts < cut) { if (r.categoryId === null) rm.delete(r.id); else rm.set(r.id, { pattern: r.pattern, categoryId: r.categoryId, ts: r.ts }); }
     const rules = [...rm.values()], ed = new Map<string, (typeof finEdits)[number]>();
     for (const x of finEdits) if (x.ts < cut) ed.set(x.id, { ...ed.get(x.id), ...x });   // последнее по ts побеждает (по полю)
-    const raws: FinRaw[] = finRaw.filter(r => r.ts < cut), keys = new Set<string>();
+    const moved = new Set(finEdits.flatMap(x => (x.date && x.ts < cut ? [x.id] : [])));   // записи с правкой даты
+    const inWin = (id: string, date: ISODate) => { const d = moved.has(id) ? ed.get(id)?.date ?? date : date; return d >= lo && d <= hi; };
+    const raws: FinRaw[] = finRaw.filter(r => r.ts < cut && inWin(r.id, r.date)), keys = new Set<string>();
     for (const [iid, im] of finImports) {
       if (im.ts >= cut || (finRemoved.get(iid) ?? Infinity) < cut) continue;
-      // строка с ключом из более раннего импорта — дубль; поступление → «Прочий доход», списание → по правилам
-      for (const r of im.rows) raws.push({ id: `import:${iid}:${r.key}`, ts: im.ts, date: r.date, kind: r.amount < 0 ? 'expense' : 'income', amount: Math.abs(r.amount),
-        cat: r.amount < 0 ? null : 'default:income_other', text: r.text, source: 'import', keyDup: keys.has(r.key) });
-      for (const r of im.rows) keys.add(r.key);
+      // строка с ключом из более раннего импорта — дубль (по всем импортам); поступление → «Прочий доход», списание → по правилам
+      for (const r of im.rows) {
+        const keyDup = keys.has(r.key);
+        keys.add(r.key);
+        if (!moved.size && (r.date < lo || r.date > hi)) continue;   // быстрый отсев без строки id
+        const id = `import:${iid}:${r.key}`;
+        if (inWin(id, r.date)) raws.push({ id, ts: im.ts, date: r.date, kind: r.amount < 0 ? 'expense' : 'income', amount: Math.abs(r.amount),
+          cat: r.amount < 0 ? null : 'default:income_other', text: r.text, norm: r.norm, source: 'import', keyDup });
+      }
     }
     const entries: FinEntry[] = [], debits: { id: string; date: ISODate; amount: number }[] = [], wallets: { id: string; date: ISODate; amount: number; ts: number }[] = [];
     for (const r of raws) {
@@ -759,7 +780,7 @@ export function replay(events: GameEvent[], now: number): GameState {
       let kind = r.kind, cid = x?.cat ?? r.cat, uncategorized = false;
       if (x?.cat && cats.has(x.cat)) kind = cats.get(x.cat)!.kind;
       else if (cid === null) {
-        const m = matchRule(r.text, rules);
+        const m = matchRule(r.norm, rules);
         if (m && cats.has(m)) { cid = m; kind = cats.get(m)!.kind; } else uncategorized = true;
       }
       const e: FinEntry = { id: r.id, ts: r.ts, date: x?.date ?? r.date, kind, amount: x?.amount ?? r.amount, categoryId: cats.get(cid ?? '')?.kind === kind ? cid! : otherOf(kind),
@@ -772,7 +793,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     for (const e of entries) if (dup.has(e.id)) e.dup = true;
     entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.ts - a.ts || (a.id < b.id ? 1 : -1)));
     const v = { entries, cats };
-    finMemo.set(cut, v);
+    finMemo.set(mk, v);
     return v;
   };
   const limSets = (cut: number, id: string) => finCats.filter(c => c.ts < cut && c.id === id).map(c => ({ month: c.month, limit: c.limit }));
@@ -787,7 +808,7 @@ export function replay(events: GameEvent[], now: number): GameState {
     if (sun < BALANCE.rivalSince || sun >= today) return false;
     let r = budgetWeeks.get(ws);
     if (r === undefined) {
-      const cut = closesAtTs(sun, closeOf(sun)), v = finAt(cut), t = periodTotals(v.entries, ws, sun);
+      const cut = closesAtTs(sun, closeOf(sun)), v = finAt(cut, ws, sun), t = periodTotals(v.entries, ws, sun);
       budgetWeeks.set(ws, r = budgetVerdict(t.byCat, limitsAt(cut, v.cats, weekLim(ws)), t.loggedDays, FB.weekMinDays) === true);
     }
     return r;
@@ -796,7 +817,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const budgetMonth = (m: string) => {
     let r = budgetMonths.get(m);
     if (r) return r;
-    const end = lastDayOf(m), cut = closesAtTs(end, closeOf(end)), v = finAt(cut), t = periodTotals(v.entries, `${m}-01`, end);
+    const end = lastDayOf(m), cut = closesAtTs(end, closeOf(end)), v = finAt(cut, `${m}-01`, end), t = periodTotals(v.entries, `${m}-01`, end);
     let all = 0, auto = 0;   // доля расходов месяца из Wallet/импорта → проверка auto
     for (const e of v.entries) if (!e.dup && e.kind === 'expense' && e.date.startsWith(m)) {
       const c = Math.round(e.amount * 100);

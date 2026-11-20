@@ -46,7 +46,7 @@ describe('csvImport', () => {
     const keys = new Set(Array.from({ length: 20000 }, (_, i) => rowKey('2027-01-12', -i, 'x', 0)));
     expect(keys.size).toBe(20000);
     const rows = Array.from({ length: 2500 }, (_, i) => ({ key: `k${i}`, date: '2027-01-12', amount: -1, text: '' }));
-    expect(importChunks(rows).map(c => c.length)).toEqual([BALANCE.finance.importRowsMax, BALANCE.finance.importRowsMax, 500]);
+    expect(importChunks('s', rows).map(c => [c.importId, c.rows.length])).toEqual([['s#0', BALANCE.finance.importRowsMax], ['s#1', BALANCE.finance.importRowsMax], ['s#2', 500]]);
     const p = parseCsvLines('Дата;Сумма;Описание\n\n12.01.2027;-1;"a\nb"\r\nxx;-1;c\n');
     expect(p.lines).toEqual([1, 3, 5]);
     expect(toImportRows(p.rows, { date: 0, amount: 1, debit: null, credit: null, text: 2 }, true, p.lines).skipped).toEqual([{ line: 5, reason: 'date' }]);

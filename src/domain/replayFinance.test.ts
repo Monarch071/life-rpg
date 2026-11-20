@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import { BALANCE } from './balance';
-import { addDays } from './day';
+import { addDays, weekStart } from './day';
+import { importChunks } from './csvImport';
 import { QUEST_TEMPLATES } from './questBank';
 import { replay } from './replay';
 import type { GameEvent, ImportRow, Profile, Quest, Stat } from './types';
@@ -109,4 +110,36 @@ test('правка: категория → вид категории; удале
   expect(s.finance.months).toEqual([]);
   expect(s.finance.entries.find(e => e.source === 'wallet')).toMatchObject({ kind: 'saving', categoryId: 'default:piggy', uncategorized: false });
   expect(s.finance.entries.filter(e => e.source === 'manual').map(e => e.amount).sort()).toEqual([1, 9]);
+});
+
+test('импорт блоками: удаление по базовому id снимает все блоки', () => {
+  const rows = Array.from({ length: 2500 }, (_, i) => ({ key: `k${i}`, date: '2027-01-05', amount: -1, text: 'x' }));
+  const evs = importChunks('s', rows).map(c => imp(c.importId, c.rows, at('2027-01-06')));
+  expect(replay(evs, at('2027-01-07')).finance.month.expense).toBe(2500);
+  expect(replay([...evs, ev({ type: 'fin_import_removed', importId: 's', ts: at('2027-01-07', 9) })], at('2027-01-07')).finance.month.expense).toBe(0);
+});
+test('«Записать траты»: строка импорта, совпавшая с более ранним Wallet, не считается второй раз', () => {
+  const d = '2027-01-05';
+  const s = replay([wallet(d, 100, 'Магазин 1'), imp('a', [{ key: 'k1', date: d, amount: -100, text: 'магазин 1' }, { key: 'k2', date: d, amount: -7, text: 'y' }], at(d, 20))], at(d, 22));
+  expect(s.today.data.finEntries).toBe(2);
+});
+test('производительность: год Wallet и ручных записей, 4 импорта по 1000 строк, 52 бюджетные недели', () => {
+  let n = 0;
+  const e = (x: Draft) => ev({ ...x, id: `p${++n}` });
+  const evs: GameEvent[] = [cat('food', 30000, at('2026-11-01')), ev({ type: 'fin_rule_set', ruleId: 'r', pattern: 'магазин 1', categoryId: 'food', ts: at('2026-11-01') })];
+  for (let i = 0; i < 365; i++) {
+    const d = addDays('2026-12-01', i);
+    evs.push(e({ type: 'signal_logged', at: at(d, 13), ts: at(d, 13), signal: { kind: 'wallet', amount: 100 + i, merchant: 'Магазин 1' } }),
+      e({ type: 'fin_entry_added', entryId: `pm${i}`, date: d, kind: 'expense', amount: 50, categoryId: 'food', ts: at(d, 14) }));
+    if (d === weekStart(d)) evs.push(e({ type: 'weekly_issued', weekStart: d, ts: at(d, 8), quests: [{ id: `${d}:w:budget_week`, weekStart: d, kind: 'budget_week', stat: 'fin', target: 1, title: 'x', xp: 150 }] }));
+  }
+  for (let k = 0; k < 4; k++) evs.push(imp(`i${k}`, Array.from({ length: 1000 }, (_, j) => ({ key: `k${k}-${j}`, date: addDays('2026-12-01', 90 * k + (j % 90)), amount: -(100 + j), text: 'магазин 1' })), at(addDays('2026-12-01', 90 * k + 89))));
+  const now = at('2027-12-01');
+  const s = replay(evs, now);   // прогрев JIT
+  expect(s.ledger.filter(r => r.id.startsWith('weekly:')).length).toBeGreaterThan(40);
+  const t = performance.now(); replay(evs, now);
+  const ms = performance.now() - t;
+  console.log(`finance replay: ${Math.round(ms)} ms`);
+  // цель ~150 мс; порог с запасом под нагруженный CI
+  expect(ms).toBeLessThan(450);
 });

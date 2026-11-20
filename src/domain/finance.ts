@@ -20,11 +20,11 @@ export function normText(s: string): string {
   return String(s ?? '').toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').replace(/\p{Cc}/gu, '').replace(/ +/g, ' ').trim();
 }
 
-export function matchRule(text: string, rules: { pattern: string; categoryId: string; ts: number }[]): string | null {
-  const t = normText(text);
+/** text и pattern — уже после normText (нормализуются один раз при приёме события). */
+export function matchRule(t: string, rules: { pattern: string; categoryId: string; ts: number }[]): string | null {
   let best: { len: number; ts: number; id: string } | null = null;
   for (const r of rules) {
-    const p = normText(r.pattern);
+    const p = r.pattern;
     if (!p || !t.includes(p)) continue;
     if (!best || p.length > best.len || (p.length === best.len && r.ts > best.ts)) best = { len: p.length, ts: r.ts, id: r.categoryId };
   }
