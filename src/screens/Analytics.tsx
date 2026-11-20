@@ -11,7 +11,12 @@ import { METRIC_INFO } from '../domain/metricInfo'
 import { STATS } from '../domain/stats'
 import type { GameState, Metric, Stat } from '../domain/types'
 import LineChart from '../ui/LineChart'
-import Finance from './Finance'
+import Finance, { useCurrency } from './Finance'
+import CardSheet from './CardSheet'
+import HallOfFame from './HallOfFame'
+import MonthReview from './MonthReview'
+import { monthCard, monthTitle, type CardModel } from '../domain/card'
+import { CalendarCheck, Image as ImageIcon, TrendingUp } from 'lucide-react'
 
 const PERIODS = [7, 30, 90] as const
 const METRICS: Metric[] = ['steps', 'sleepHours', 'weightKg', 'mood', 'screenMin', 'spend', 'water', 'readPages']
@@ -89,6 +94,7 @@ function Progress({ state }: { state: GameState }) {
         <div key={m} className="panel"><h2><Ic size={18} aria-hidden="true" /> {i.label} <small className="muted">({i.unit})</small></h2>
           <LineChart title={i.label} unit={i.unit} labels={mh.map(h => dm(h.date))} series={[{ label: i.label, color: 'var(--fire)', values }]} /></div>
       ) })}
+      <Rival state={state} />
       <div className="panel"><h2><Bot size={18} aria-hidden="true" /> Недельный отчёт ИИ</h2>
         {!cfg && <p className="muted">Подключи ИИ в настройках, чтобы получать недельный отчёт</p>}
         {cfg && !state.reports.some(r => r.weekStart === prevWeek && r.final) &&
@@ -97,6 +103,36 @@ function Progress({ state }: { state: GameState }) {
         {repErr && <p className="err" role="alert">{repErr}</p>}
         {msg && <p className={msg.ok ? 'muted' : 'err'} role={msg.ok ? 'status' : 'alert'}>{msg.text}</p>}
       </div>
+    </>
+  )
+}
+
+/** Соперник — ты прошлый: индекс роста, зал славы, карточки месяцев, итоги месяца. */
+function Rival({ state }: { state: GameState }) {
+  const cur = useCurrency()
+  const [card, setCard] = useState<{ model: CardModel; name: string } | null>(null)
+  const [review, setReview] = useState<string | null>(null)
+  const g = state.growth, months12 = g.months.slice(0, 11).reverse().concat([{ ...g.current }])
+  const cards = g.months.map(m => m.month).slice(0, 12)
+  const reviews = [g.current.month, ...g.months.slice(0, 2).map(m => m.month)]
+  const openCard = (m: string) => { const model = monthCard(state, m); if (model) setCard({ model, name: `card-${m}.png` }) }
+  return (
+    <>
+      <div className="panel"><h2><TrendingUp size={18} aria-hidden="true" /> Индекс роста</h2>
+        <p className="growth"><b>{g.current.index ?? '—'}</b>
+          <small className="muted">{monthTitle(g.current.month)} · {g.current.days ? `${Math.round(g.current.xpPerDay)} XP в день за ${g.current.days} дн.` : 'закрытых рабочих дней пока нет'} · против {g.current.base === 'base' ? 'базы' : 'прошлого месяца'}{' '}(100 — вровень)</small></p>
+        {months12.length >= 2 && <LineChart title="Индекс роста по месяцам" labels={months12.map(m => `${m.month.slice(5)}.${m.month.slice(2, 4)}`)}
+          series={[{ label: 'Индекс', color: 'var(--fire)', values: months12.map(m => m.index) }]} />}
+      </div>
+      <HallOfFame state={state} cur={cur} />
+      <div className="panel"><h2><ImageIcon size={18} aria-hidden="true" /> Карточки и итоги месяцев</h2>
+        <div className="chips">
+          {cards.filter(m => monthCard(state, m)).map(m => <button key={m} className="btn" onClick={() => openCard(m)}><ImageIcon size={16} aria-hidden="true" /> Карточка: {monthTitle(m)}</button>)}
+          {reviews.map(m => <button key={`r${m}`} className="btn ghost" onClick={() => setReview(m)}><CalendarCheck size={16} aria-hidden="true" /> Итоги: {monthTitle(m)}{m === g.current.month ? ' (пока)' : ''}</button>)}
+        </div>
+      </div>
+      {card && <CardSheet model={card.model} name={card.name} onClose={() => setCard(null)} />}
+      {review && <MonthReview state={state} month={review} onClose={() => setReview(null)} />}
     </>
   )
 }

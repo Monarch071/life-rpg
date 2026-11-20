@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { appendEvent, getSetting, setSetting } from '../db'
 import { ACHIEVEMENTS } from '../domain/achievements'
-import { fromMin, gameDate, toMin } from '../domain/day'
+import { addDays, fromMin, gameDate, toMin } from '../domain/day'
 import type { DataFlag, DayQuest, GameState, Profile } from '../domain/types'
 import { hhmmNow, now } from '../now'
 import { imageNameFor, PHOTO_ERROR_TEXT, shrinkImage } from '../ai/avatar'
@@ -36,6 +36,11 @@ import { getAiConfig } from '../ai/config'
 import { aiWeeklyReport } from '../ai/tasks'
 import { weekReportOf } from '../domain/masterReport'
 import { cosmeticById } from '../domain/cosmetics'
+import { monthCard, monthTitle, type CardModel } from '../domain/card'
+import { seasonOf } from '../domain/calendar'
+import CardSheet, { SeasonFinale } from './CardSheet'
+import MonthReview from './MonthReview'
+import { CalendarCheck, Image as ImageIcon, Trophy } from 'lucide-react'
 
 type Sheet = null | 'quick' | 'busy' | 'checkin' | 'changed' | 'custom' | 'timer' | 'recovery' | 'season' | VitalId
 
@@ -211,6 +216,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
         </div>
       )}
       {!img && <PhotoCta go={go} />}
+      <PeriodCards state={state} />
       <WeekReport state={state} />
       {!state.character && !ivwSeen && <InterviewCta onStart={() => { hideIvw(); interview() }} onLater={hideIvw} />}
 
@@ -296,6 +302,41 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       {(sheet === 'hp' || sheet === 'energy' || sheet === 'focus' || sheet === 'fatigue') && <VitalInfo id={sheet} state={state} onClose={() => setSheet(null)} />}
       {!today.started && !later && <MyDay state={state} onLater={() => setLater(true)} />}
     </div>
+  )
+}
+
+const seenKey = (id: string) => `periodSeen:${id}`
+const isSeen = (id: string) => { try { return localStorage.getItem(seenKey(id)) === '1' } catch { return false } }
+const markPeriodSeen = (id: string) => { try { localStorage.setItem(seenKey(id), '1') } catch { /* не критично */ } }
+
+/** Карточки периода (спека §6, §9, §10): карточка месяца 1–7 числа, итоги сезона, итоги месяца в точке решения. Скрытие — на этом устройстве. */
+function PeriodCards({ state }: { state: GameState }) {
+  const today = state.today.date, R = BALANCE.rival
+  const [, bump] = useState(0)
+  const [open, setOpen] = useState<null | { kind: 'card'; model: CardModel; name: string } | { kind: 'season'; id: string } | { kind: 'review'; month: string }>(null)
+  const prevMonth = addDays(`${today.slice(0, 7)}-01`, -1).slice(0, 7)
+  const mc = +today.slice(8) <= R.cardDays ? monthCard(state, prevMonth) : null
+  const s = state.season, prev = seasonOf(addDays(s.start, -1))
+  const finale = s.kind !== 'prologue' && today === s.end ? s : prev.kind !== 'prologue' && today <= addDays(prev.end, R.cardDays) ? prev : null
+  const decision = today >= R.decisionDate && today <= addDays(R.decisionDate, R.cardDays) ? R.decisionDate.slice(0, 7) : null
+  const items = [
+    ...(mc ? [{ id: `month:${prevMonth}`, Icon: ImageIcon, text: `Твоя карточка за ${monthTitle(prevMonth).split(' ')[0]}`, go: () => setOpen({ kind: 'card', model: mc, name: `card-${prevMonth}.png` }) }] : []),
+    ...(finale ? [{ id: `season:${finale.id}`, Icon: Trophy, text: `Итоги сезона «${finale.name}»`, go: () => setOpen({ kind: 'season', id: finale.id }) }] : []),
+    ...(decision ? [{ id: `review:${decision}`, Icon: CalendarCheck, text: `Итоги месяца: ${monthTitle(decision).split(' ')[0]}`, go: () => setOpen({ kind: 'review', month: decision }) }] : []),
+  ].filter(x => !isSeen(x.id))
+  return (
+    <>
+      {items.map(x => (
+        <div key={x.id} className="glass period-card">
+          <x.Icon size={22} aria-hidden="true" />
+          <button className="link grow" onClick={x.go}>{x.text}</button>
+          <button className="icon-btn" aria-label={`Скрыть: ${x.text}`} onClick={() => { markPeriodSeen(x.id); bump(n => n + 1) }}><X size={18} aria-hidden="true" /></button>
+        </div>
+      ))}
+      {open?.kind === 'card' && <CardSheet model={open.model} name={open.name} onClose={() => setOpen(null)} />}
+      {open?.kind === 'season' && <SeasonFinale state={state} seasonId={open.id} onClose={() => setOpen(null)} />}
+      {open?.kind === 'review' && <MonthReview state={state} month={open.month} onClose={() => setOpen(null)} />}
+    </>
   )
 }
 

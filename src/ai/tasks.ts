@@ -3,7 +3,7 @@ import { STATS } from '../domain/stats'
 import { RANKS } from '../domain/balance'
 import type { GameState, Profile, Quest, Rank, Stat } from '../domain/types'
 import { weakestStat } from '../domain/weekly'
-import { AI_METRICS, reportInput, reportWeek } from '../domain/masterReport'
+import { AI_METRICS, reportInput, reportWeek, seasonInput } from '../domain/masterReport'
 import type { AiConfig } from './config'
 import { AiError, generateJson } from './providers'
 
@@ -116,6 +116,17 @@ export async function aiWeeklyReport(cfg: AiConfig, state: GameState, weekStart 
   const raw = await generateJson(cfg, REPORT_SYSTEM, user, REPORT_SCHEMA) as any
   const text = typeof raw === 'string' ? raw : raw?.text
   if (typeof text !== 'string' || !text.trim()) throw new AiError('пустой отчёт', 'bad_response')
+  return text.trim().slice(0, 4000)
+}
+
+const SEASON_SYSTEM = 'Ты — Мастер в игре по прокачке. Составь разбор завершённого сезона по-русски, 120–300 слов, простым текстом без разметки, с разделами: «Что получилось», «Что нет», «Что взять в следующий сезон». Опирайся только на данные.'
+
+/** Разбор сезона ИИ: только белый список seasonInput (без финансов и граней). Ответ пишется как ai_report scope 'season'. */
+export async function aiSeasonReview(cfg: AiConfig, state: GameState, seasonId: string): Promise<string> {
+  const i = seasonInput(state, seasonId)
+  const raw = await generateJson(cfg, SEASON_SYSTEM, `Данные сезона (JSON): ${JSON.stringify(i)}`, REPORT_SCHEMA) as any
+  const text = typeof raw === 'string' ? raw : raw?.text
+  if (typeof text !== 'string' || !text.trim()) throw new AiError('пустой разбор', 'bad_response')
   return text.trim().slice(0, 4000)
 }
 

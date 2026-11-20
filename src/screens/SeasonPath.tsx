@@ -4,6 +4,7 @@ import { cosmeticById } from '../domain/cosmetics'
 import { stepRewards } from '../domain/seasonPath'
 import type { GameState } from '../domain/types'
 import Sheet from '../ui/Sheet'
+import { GhostMark } from '../ui/HeroStage'
 import { leagueChip, pathLabel } from '../ui/statBar'
 
 const dm = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`
@@ -16,9 +17,13 @@ export default function SeasonPath({ state, onClose }: { state: GameState; onClo
   return (
     <Sheet id="season-title" title={season.name} onClose={onClose}>
       <p><b>{path.title}</b><br /><small className="muted">{path.sub}</small></p>
-      <div className="path-bar" role="progressbar" aria-label={`Путь сезона: ${path.title}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(path.pct)}>
-        <i style={{ width: `${path.pct}%` }} />
+      <div className="path-track">
+        <div className="path-bar" role="progressbar" aria-label={`Путь сезона: ${path.title}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(path.pct)}>
+          <i style={{ width: `${path.pct}%` }} />
+        </div>
+        <GhostMark state={state} />
       </div>
+      {state.ghost.season && <p className="muted">Призрак прошлого сезона к этому дню: ступень {state.ghost.season.step}, {state.ghost.season.xp} XP — наград не даёт.</p>}
       {kind && <p className="muted">
         Ступень стоит {season.stepXp} XP{season.stepXp < S.stepXp && season.joined ? ` вместо ${S.stepXp}: ты вошёл в игру ${dm(season.joined)}, после начала сезона, — цена снижена по оставшимся дням` : ''}.
         Сезон {dm(season.start)}–{dm(season.end)}.

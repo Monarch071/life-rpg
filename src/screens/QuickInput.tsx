@@ -30,7 +30,7 @@ export default function QuickInput({ state, onClose }: { state: GameState; onClo
   const [saving, setSaving] = useState(false)
   const [fin, setFin] = useState(false)
   const cur = useCurrency()
-  const dlg = useDialog<HTMLDivElement>(fin ? undefined : onClose)   // Escape закрывает верхний лист
+  const dlg = useDialog<HTMLDivElement>(onClose)
 
   const log = async (metric: Metric, value: number, mode: 'set' | 'add', label: string) => {
     if (saving) return

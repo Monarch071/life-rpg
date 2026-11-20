@@ -3,7 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 vi.mock('./providers', async (orig) => ({ ...(await orig<typeof import('./providers')>()), generateJson: vi.fn() }))
 import { AiError, generateJson } from './providers'
 import { AI_METRICS } from '../domain/masterReport'
-import { aiCustomRank, aiQuestTexts, aiTuning, aiWeeklyReport, applyTexts, questContext, validateAiTexts } from './tasks'
+import { aiCustomRank, aiQuestTexts, aiSeasonReview, aiTuning, aiWeeklyReport, applyTexts, questContext, validateAiTexts } from './tasks'
 import { replay } from '../domain/replay'
 import type { GameEvent, Profile, Quest } from '../domain/types'
 import type { AiConfig } from './config'
@@ -173,4 +173,13 @@ test('questContext: финансы не уходят в ИИ', () => {
   expect(s.finance.entries.length).toBe(2)
   const c = questContext(s, profile)
   for (const bad of ['СекретМагазин', '4321', 'finance']) expect(c).not.toContain(bad)
+})
+
+test('aiSeasonReview: в ИИ уходит только вход сезона', async () => {
+  gen.mockResolvedValueOnce({ text: '  Разбор  ' })
+  expect(await aiSeasonReview(cfg, state, 'winter-2026')).toBe('Разбор')
+  const user = gen.mock.calls[0][2] as string
+  expect(user).toContain('"season"'); expect(user).not.toContain('finance')
+  gen.mockResolvedValueOnce({ text: '' })
+  await expect(aiSeasonReview(cfg, state, 'winter-2026')).rejects.toThrow()
 })

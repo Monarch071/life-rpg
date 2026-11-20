@@ -28,3 +28,14 @@ export function pathLabel(season: GameState['season'], today: ISODate): { title:
 /** Чип лиги: ступень и очки внутри неё (из perTier). */
 export const leagueChip = (l: GameState['league']): { name: string; into: number; of: 6 } =>
   ({ name: l.name, into: Math.max(0, l.points - l.tier * BALANCE.league.perTier), of: BALANCE.league.perTier as 6 })
+
+const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
+
+/** Строка призрака (спека §11); нет призрака — дата первого: 1-е число месяца, перед которым целый месяц сезона (не Пролога). */
+export function ghostLine(g: Pick<GameState['ghost'], 'available' | 'lead'>, today?: ISODate): string {
+  if (g.available) return g.lead > 0 ? `Ты впереди призрака на ${g.lead} XP` : g.lead < 0 ? `Отстаёшь от призрака на ${-g.lead} XP` : 'Вровень с призраком'
+  if (!today) return 'Призрака пока нет'
+  let first = addDays(`${today.slice(0, 7)}-28`, 4).slice(0, 7) + '-01'   // 1-е следующего месяца
+  while (seasonOf(addDays(first, -1)).kind === 'prologue') first = addDays(`${first.slice(0, 7)}-28`, 4).slice(0, 7) + '-01'
+  return `Призрак появится 1 ${MONTHS_GEN[+first.slice(5, 7) - 1]}`
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GameState } from '../domain/types'
-import { leagueChip, pathLabel, statBar } from './statBar'
+import { ghostLine, leagueChip, pathLabel, statBar } from './statBar'
 
 const season = (o: Partial<GameState['season']>): GameState['season'] =>
   ({ id: 'winter-2026', kind: 'winter', name: 'Зима', start: '2026-12-01', end: '2027-02-28', theme: 'mind_spirit', xp: 0, step: 0, stepXp: 600, joined: null, rewards: [], title: null, ...o })
@@ -42,5 +42,16 @@ describe('путь и лига (Глубина)', () => {
     expect(leagueChip({ tier: 1, name: 'Серебро', points: 8, seasonId: 'winter-2026' })).toEqual({ name: 'Серебро', into: 2, of: 6 })
     expect(leagueChip({ tier: 5, name: 'Легенда', points: 35, seasonId: 'winter-2026' })).toEqual({ name: 'Легенда', into: 5, of: 6 })
     expect(leagueChip({ tier: 0, name: 'Бронза', points: 0, seasonId: 'prologue' })).toEqual({ name: 'Бронза', into: 0, of: 6 })
+  })
+})
+
+describe('строка призрака', () => {
+  it('впереди, отстаёшь, вровень, ещё нет', () => {
+    expect(ghostLine({ available: true, lead: 340 } as GameState['ghost'])).toBe('Ты впереди призрака на 340 XP')
+    expect(ghostLine({ available: true, lead: -120 } as GameState['ghost'])).toBe('Отстаёшь от призрака на 120 XP')
+    expect(ghostLine({ available: true, lead: 0 } as GameState['ghost'])).toBe('Вровень с призраком')
+    expect(ghostLine({ available: false, lead: 0 } as GameState['ghost'], '2026-12-20')).toBe('Призрак появится 1 января')
+    expect(ghostLine({ available: false, lead: 0 } as GameState['ghost'], '2026-11-25')).toBe('Призрак появится 1 января')
+    expect(ghostLine({ available: false, lead: 0 } as GameState['ghost'], '2027-03-02')).toBe('Призрак появится 1 апреля')
   })
 })

@@ -11,9 +11,9 @@ export async function tryShare(share: () => Promise<void>): Promise<'shared' | '
   catch (e) { return (e as Error)?.name === 'AbortError' ? 'cancelled' : 'failed' }
 }
 
-/** iOS: share-sheet с файлом, иначе скачивание по ссылке. */
-export async function saveBackup(blob: Blob): Promise<SaveResult> {
-  const file = new File([blob], backupFileName(new Date()), { type: 'application/json' })
+/** iOS: share-sheet с файлом («Сохранить изображение», сторис), иначе скачивание по ссылке. Никакой загрузки на сервер. */
+export async function saveFile(blob: Blob, name: string): Promise<SaveResult> {
+  const file = new File([blob], name, { type: blob.type })
   if (navigator.canShare?.({ files: [file] })) {
     const r = await tryShare(() => navigator.share({ files: [file] }))
     if (r !== 'failed') return r
@@ -28,3 +28,6 @@ export async function saveBackup(blob: Blob): Promise<SaveResult> {
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
   return 'downloaded'
 }
+
+export const saveBackup = (blob: Blob): Promise<SaveResult> =>
+  saveFile(new Blob([blob], { type: 'application/json' }), backupFileName(new Date()))

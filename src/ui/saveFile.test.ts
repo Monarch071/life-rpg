@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backupFileName, tryShare } from './saveFile'
+import { backupFileName, saveFile, tryShare } from './saveFile'
 
 describe('backupFileName', () => {
   it('formats local date with zero padding', () => {
@@ -14,5 +14,14 @@ describe('tryShare', () => {
     expect(await tryShare(() => Promise.resolve())).toBe('shared')
     expect(await tryShare(err('AbortError'))).toBe('cancelled')
     expect(await tryShare(err('NotAllowedError'))).toBe('failed')
+  })
+})
+
+describe('saveFile', () => {
+  it('имя и тип файла', async () => {
+    const shared: File[] = []
+    Object.assign(navigator, { canShare: () => true, share: async ({ files }: { files: File[] }) => { shared.push(...files) } })
+    expect(await saveFile(new Blob(['x'], { type: 'image/png' }), 'card-2026-12.png')).toBe('shared')
+    expect(shared[0]).toMatchObject({ name: 'card-2026-12.png', type: 'image/png' })
   })
 })

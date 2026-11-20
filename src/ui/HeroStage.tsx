@@ -1,13 +1,41 @@
-import { ChevronRight, Coins, Flame, Shield, Swords, User } from 'lucide-react'
+import { ChevronRight, Coins, Flame, Ghost, Shield, Swords, User } from 'lucide-react'
 import { now } from '../now'
 import { STATS } from '../domain/stats'
 import type { GameState, Profile, Stat, StatInfo } from '../domain/types'
 import Avatar from './Avatar'
 import { STAT_COLORS, STAT_ICONS } from './icons'
-import { leagueChip, pathLabel, statBar } from './statBar'
+import { ghostLine, leagueChip, pathLabel, statBar } from './statBar'
 import { freshness, vitalChips, type VitalId } from './vitalsView'
 
 export const STATUS: Record<StatInfo['status'], string> = { new: 'новая', in_form: 'в форме', sagging: 'проседает', abandoned: 'заброшена' }
+/** Полупрозрачная фигура сезонного призрака у его метки на полосе пути (со второго сезона). */
+export function GhostMark({ state }: { state: GameState }) {
+  const g = state.ghost.season, s = state.season
+  if (!g || s.kind === 'prologue') return null
+  const pct = g.step > s.step ? 100 : g.step < s.step ? 0 : Math.max(0, Math.min(100, ((g.xp - g.step * s.stepXp) / s.stepXp) * 100))
+  return (
+    <span className="ghost-mark" style={{ left: `${pct}%` }}>
+      <Avatar params={state.avatar} tier={state.tier} size={30} decorative />
+      <span className="sr-only">Призрак прошлого сезона: ступень {g.step}</span>
+    </span>
+  )
+}
+
+/** Строка призрака: текст живого региона зависит только от знака — объявляется лишь смена «впереди / позади / вровень». */
+function GhostRow({ state }: { state: GameState }) {
+  const g = state.ghost, sign = g.available ? Math.sign(g.lead) : null
+  const max = Math.max(1, g.you, g.ghost)
+  return (
+    <div className="ghost-row">
+      <p><Ghost size={15} aria-hidden="true" /> {ghostLine(g, state.today.date)}</p>
+      <span className="sr-only" aria-live="polite">{sign === null ? '' : sign > 0 ? 'Ты обогнал призрака' : sign < 0 ? 'Призрак впереди' : 'Вровень с призраком'}</span>
+      {g.available && <div className="ghost-bars" aria-hidden="true">
+        <i className="you" style={{ width: `${(g.you / max) * 100}%` }} /><i className="gh" style={{ width: `${(g.ghost / max) * 100}%` }} />
+      </div>}
+    </div>
+  )
+}
+
 const statAria = (name: string, base: number, i: StatInfo) =>
   i.form === null ? `${name} ${base}, форма ещё не посчитана` : `${name} ${base}, форма ${Math.round(i.form * 100)}%, ${STATUS[i.status]}`
 
@@ -93,6 +121,7 @@ export default function HeroStage({ state, profile, image, cta, onCta, onVital, 
           <span>Сегодня <b>{today.xp}</b> XP</span>
           <span className="streak-n"><Flame size={18} aria-hidden="true" />серия <b>{state.streak}</b> дн.</span>
         </div>
+        <GhostRow state={state} />
         <div className="league-row">
           <span className="league-chip" role="progressbar" aria-label={`Лига ${lg.name}: ${lg.into} из ${lg.of} очков`} aria-valuemin={0} aria-valuemax={lg.of} aria-valuenow={lg.into}>
             <Shield size={14} aria-hidden="true" />{lg.name}<small aria-hidden="true">{lg.into}/{lg.of}</small>
@@ -106,8 +135,11 @@ export default function HeroStage({ state, profile, image, cta, onCta, onVital, 
           <button type="button" className="path-t" onClick={onPath} aria-label={`${path.title}, ${path.sub}. Открыть путь сезона и лигу`}>
             <b aria-hidden="true">{path.title}</b><small aria-hidden="true">{path.sub}<ChevronRight size={14} /></small>
           </button>
-          <div className="path-bar" role="progressbar" aria-label={`Путь сезона: ${path.title}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(path.pct)}>
-            <i style={{ width: `${path.pct}%` }} />
+          <div className="path-track">
+            <div className="path-bar" role="progressbar" aria-label={`Путь сезона: ${path.title}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(path.pct)}>
+              <i style={{ width: `${path.pct}%` }} />
+            </div>
+            <GhostMark state={state} />
           </div>
         </div>
         {cta && <button className="btn primary big" onClick={onCta}><Swords size={18} aria-hidden="true" />{cta}</button>}

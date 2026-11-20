@@ -22,3 +22,12 @@ describe('победа над боссом сезона', () => {
   it('показана → null', () => expect(pickCelebration(won, { level: 5, bossSeason: 'w2026' })).toBeNull())
   it('уровень приоритетнее', () => expect(pickCelebration({ ...won, level: 6 }, { level: 5 })?.kind).toBe('level'))
 })
+
+describe('новый рекорд', () => {
+  const rec = (o: object) => ({ ...st(5), records: [{ id: 'steps_day', title: 'Шагов за день', value: 14230, date: '2026-11-16', prev: 12000, unit: 'шагов', ...o }] as never })
+  it('побит вчера, не показан → record', () => expect(pickCelebration(rec({}), { level: 5 })).toEqual({ kind: 'record', key: 'steps_day:2026-11-16', text: 'Новый рекорд: 14 230 шагов' }))
+  it('показан → null', () => expect(pickCelebration(rec({}), { level: 5, records: ['steps_day:2026-11-16'] })).toBeNull())
+  it('первое значение (прошлого нет) → null', () => expect(pickCelebration(rec({ prev: null }), { level: 5 })).toBeNull())
+  it('накопления — без суммы', () => expect(pickCelebration(rec({ id: 'savings_month', title: 'Месяц с наибольшими накоплениями', value: 5000, prev: 100 }), { level: 5 }))
+    .toMatchObject({ text: 'Новый рекорд: месяц с наибольшими накоплениями' }))
+})
