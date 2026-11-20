@@ -190,6 +190,9 @@ export type DistributiveOmit<T, K extends keyof any> = T extends any ? Omit<T, K
 
 export type Rank = 'E' | 'D' | 'C' | 'B' | 'A' | 'S';
 export type Verify = 'auto' | 'photo' | 'honest';
+export type ClassId = 'warrior' | 'paladin' | 'ranger' | 'sage' | 'strategist' | 'merchant' | 'bard' | 'wanderer';
+export type AbilityId = 'rush' | 'shield' | 'insight' | 'plan' | 'deal' | 'inspire' | 'march' | 'universal';
+export type SeasonKind = 'prologue' | 'winter' | 'spring' | 'summer' | 'autumn';
 export type QuestKind = 'daily' | 'challenge' | 'restore' | 'custom' | 'boss' | 'chain';
 export interface LadderStep { label: string; per7: 1 | 2 | 3 | 4 | 5 | 6 | 7; auto?: { metric: AutoMetric; op: '>=' | '<='; value: number } }
 export type LadderKind = 'do' | 'dont';

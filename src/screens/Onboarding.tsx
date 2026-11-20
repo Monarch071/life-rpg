@@ -2,7 +2,8 @@ import { useState, type ReactNode } from 'react'
 import { X, Plus } from 'lucide-react'
 import { StatIcon } from '../ui/icons'
 import { appendEvent } from '../db'
-import { classFor, initialStats, STATS } from '../domain/stats'
+import { classNameOf } from '../domain/classes'
+import { initialStats, STATS } from '../domain/stats'
 import type { Profile, Stat } from '../domain/types'
 import JoinSync from './JoinSync'
 import { validateStep, type Draft } from './onboardingValidation'
@@ -81,7 +82,7 @@ export default function Onboarding() {
   const steps = Math.min(100000, Math.max(0, Math.round(Number(stepsText)) || 0))
   const profile = { ...toProfile(d), stepsUsual: steps }
   const stats = initialStats(profile)
-  const cls = classFor(stats)
+  const cls = classNameOf(stats)
 
   const next = async () => {
     const e = validateStep(step, d)

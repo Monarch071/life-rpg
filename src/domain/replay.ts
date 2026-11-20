@@ -14,7 +14,8 @@ import { bossOptionsByRules, partHp, partWindows, validBossDraft, validChainStep
 import { banished, battleOutcome, facetDay, isSerious, lastSunday, masterPlan } from './shadow';
 import { startProfile } from './startProfile';
 import { dayOutcome, nextStreak } from './streak';
-import { classFor, isStat, STATS, tierFor } from './stats';
+import { classNameOf } from './classes';
+import { isStat, STATS, tierFor } from './stats';
 import { cleanText } from './text';
 import type { Analysis, Answers, BossDraft, AutoMetric, FacetKind, AvatarParams, LadderKind, LadderStep, Boss, DayData, DayQuest, DayResult, GameEvent, GameState, HealthData, HHMM, ISODate, LedgerEntry, Metric, Profile, Quest, QuestKind, Rank, SkillState, Stat, StatInfo, Vitals, WeeklyQuest } from './types';
 import { weakestStat } from './weekly';
@@ -1115,7 +1116,7 @@ export function replay(events: GameEvent[], now: number): GameState {
   const yearGoal = interview?.answers.year_goal;
   const bossOptions = bossOptionsByRules({ goals: profile?.goals ?? [], legacy: legacyBosses, yearGoal: typeof yearGoal === 'string' ? yearGoal : null, theme });
 
-  const className = classFor(stats);
+  const className = classNameOf(stats);   // временно: до снимка форм (задача 4)
   const a = interview?.analysis;
   const character: GameState['character'] = interview && {
     archetype: a?.archetype ?? className, summary: a?.summary ?? '', strengths: a?.strengths ?? [], weaknesses: a?.weaknesses ?? [],
