@@ -46,3 +46,9 @@ test('пассивы по классам и потолок +100%', () => {
   const big = q({ streak: 25, theme: true, weakest: true, cls: { id: 'wanderer', power: 1 }, perk: { xp: 0.3, gold: 0 }, rust: true, inspire: true });
   expect(questReward({ rank: 'E', verify: 'auto', bonuses: big.bonuses, penalties: [] }).bonus).toBe(1);
 });
+test('продвинутый: пассив базового ×2; Крестоносец — серия 3%/день до 60%', () => {
+  const q = (o: Partial<Parameters<typeof questBonuses>[0]>) => questBonuses({ skills: ['strength'], stat: 'str', verify: 'honest', streak: 30, theme: false, weakest: false, cls: null, perk: { xp: 0, gold: 0 }, rust: false, inspire: false, ...o });
+  expect(q({ cls: { id: 'warrior', power: 1, adv: 'champion' } }).bonuses[3]).toBe(0.2);
+  expect(q({ cls: { id: 'paladin', power: 1, adv: 'crusader' } }).bonuses[0]).toBe(0.6);
+  expect(q({ streak: 10, cls: { id: 'paladin', power: 1, adv: 'keeper' } }).bonuses[0]).toBe(0.4);
+});

@@ -147,7 +147,7 @@ test('недоверенные способности отбрасываются
   const s = replay([...base, use(T, 'shield') /* не способность Воина */, use(T, 'rush', { questId: 'a' }) /* не тренировка */,
     use(MON, 'rush', { questId: 'a' }, 30) /* игровая дата ts — T, а date — MON */, use(addDays(D0, -6), 'rush', { questId: 'a' }),
     use(T, 'zzz'), use(T, 'rush', { questId: 'nope' }), use(T, 'rush'), ev({ type: 'ability_used', date: 5 as unknown as string, ability: null, ts: at(T) })], at(T, 12));
-  expect(s.today.ability).toEqual({ rush: null, shield: false, inspire: false, march: false, freeRerolls: 0 });
+  expect(s.today.ability).toEqual({ rush: null, shield: false, inspire: false, march: false, freeRerolls: 0, boost: null, dayMult: null, guard: null, pledges: [] });
   expect(s.cls.ability).toMatchObject({ usedOn: null, available: true });
 });
 test('Щит Паладина: пропуск не режет серию', () => {

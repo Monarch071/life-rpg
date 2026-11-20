@@ -133,8 +133,14 @@ export interface PerkView { id: string; level: 3 | 6 | 10; title: string; desc: 
 export interface ClassState { id: ClassId; name: string; pair: [Stat, Stat] | null; since: ISODate | null; weights: Record<Stat, number>;
   passive: { text: string; power: 0 | 0.5 | 1 };
   ability: { id: AbilityId; name: string; desc: string; target: 'quest' | 'day' | 'week'; usedOn: ISODate | null; available: boolean };
-  nextRecalc: ISODate; changedFrom: { id: ClassId; date: ISODate } | null }
-export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss' | 'ritual' | 'ladder' | 'shadow' | 'chain' | 'week_rank' | 'season_step' | 'budget' | 'ghost' | 'record';
+  nextRecalc: ISODate; changedFrom: { id: ClassId; date: ISODate } | null;
+  /** Продвинутый класс (спека §8.4): зафиксирован до конца сезона; trial — идущее испытание; trialOptions — пути, открытые сегодня; nextTrial — дата, с которой можно начать. */
+  advanced: { id: AdvancedId; name: string; since: ISODate; until: ISODate; passive: string;
+    ability: { id: AbilityId2; name: string; desc: string; usedOn: ISODate | null; available: boolean } } | null;
+  trial: { classId: AdvancedId; start: ISODate; day: number; counted: number; focusDone: number; need: { days: number; quests: number } } | null;
+  trialOptions: AdvancedId[]; nextTrial: ISODate | null }
+export interface LedgerEntry { id: string; ts: number; date: ISODate; source: 'quest' | 'perfect_day' | 'day_changed' | 'weekly' | 'boss' | 'ritual' | 'ladder' | 'shadow' | 'chain' | 'week_rank' | 'season_step' | 'budget' | 'ghost' | 'record'
+    | 'ability' | 'invest';
   questId?: string; base: number; k: number; bonus: number; penalty: number; mult: number; xp: number; gold: number;
   skills: [SkillId, number][]; stats: Partial<Record<Stat, number>>; verified: boolean }
 /** legacy — задание без ранга (старый журнал): XP как сохранено, без проверки и бонусов. */
@@ -162,7 +168,9 @@ export interface GameState {
            restDaysLeft: number;          // дней отдыха в этом календарном месяце осталось
            dayStart: { level: number; skills: Record<SkillId, number> };   // уровень и навыки на начало дня — потолки рангов для переброса и своих
            rerollsUsed: number; nextRerollCost: number;   // принятые перебросы сегодня; цена следующего (0 | 50)
-           ability: { rush: string | null; shield: boolean; inspire: boolean; march: boolean; freeRerolls: number };   // способности, принятые сегодня; freeRerolls — доп. бесплатные перебросы «Сделки»
+           ability: { rush: string | null; shield: boolean; inspire: boolean; march: boolean; freeRerolls: number;   // способности, принятые сегодня; freeRerolls — доп. бесплатные перебросы «Сделки»
+             boost: string | null; dayMult: AbilityId2 | null; guard: AbilityId2 | null;   // вторая способность: задание ×k, день ×k, защита на сегодня
+             pledges: { id: AbilityId2; start: ISODate; days: number; ok: number }[] };   // идущие обет/пост
            customCount: number;           // своих заданий сегодня
            spendable: number;             // золото для платных трат (переброс, покупки с эффектом)
            freezesLeft: number;           // заморозок можно купить в этом месяце

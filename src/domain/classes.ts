@@ -1,7 +1,7 @@
 import { BALANCE as B } from './balance';
 import { streakBonus } from './progression';
 import { SKILL_CATALOG, type SkillId } from './skillCatalog';
-import type { AbilityId, ClassId, Stat, Verify } from './types';
+import type { AbilityId, AdvancedId, ClassId, Stat, Verify } from './types';
 
 export type { AbilityId, ClassId };
 const C = B.classes;
@@ -69,8 +69,9 @@ export function passivePower(c: { id: ClassId; pair: [Stat, Stat] | null }, form
 }
 
 export function questBonuses(i: { skills: readonly SkillId[]; stat: Stat; verify: Verify; streak: number; theme: boolean; weakest: boolean;
-  cls: { id: ClassId; power: 0 | 0.5 | 1 } | null; perk: { xp: number; gold: number }; rust: boolean; inspire: boolean }): { bonuses: number[]; goldBonus: number } {
-  const main = i.skills[0], pw = i.cls?.power ?? 0, id = i.cls?.id, P = C.passive;
+  cls: { id: ClassId; power: 0 | 0.5 | 1; adv?: AdvancedId | null } | null; perk: { xp: number; gold: number }; rust: boolean; inspire: boolean }): { bonuses: number[]; goldBonus: number } {
+  const main = i.skills[0], pw = i.cls?.power ?? 0, id = i.cls?.id, P = C.passive, A = B.advanced;
+  const m = i.cls?.adv ? A.passiveMult : 1;   // продвинутый: пассив базового ×2 (спека §8.2)
   const team = SKILL_CATALOG.find(s => s.id === main)?.stat === 'team';
   const classXp =
     id === 'warrior' ? (TRAINING.includes(main) ? P.warrior : 0)
@@ -79,8 +80,11 @@ export function questBonuses(i: { skills: readonly SkillId[]; stat: Stat; verify
     : id === 'bard' ? (i.stat === 'cha' || team ? P.bard : 0)
     : id === 'ranger' ? (i.verify === 'auto' ? P.ranger : 0)
     : id === 'wanderer' ? P.wanderer : 0;
-  const perDay = B.bonus.streakPerDay + (id === 'paladin' ? P.paladinStreak * pw : 0);
-  const bonuses = [streakBonus(i.streak, r9(perDay)), i.theme ? B.bonus.theme : 0, i.weakest ? B.bonus.weakest : 0,
-    r9(classXp * pw), i.perk.xp, i.rust ? B.rust.bonus : 0, i.inspire ? C.inspire : 0];
-  return { bonuses, goldBonus: r9(i.perk.gold + (id === 'merchant' ? P.merchantGold * pw : 0)) };
+  // Крестоносец — своя серия: до perDay в день и потолок cap (по силе пассива)
+  const crusader = id === 'paladin' && i.cls?.adv === 'crusader';
+  const perDay = crusader ? B.bonus.streakPerDay + (A.crusader.perDay - B.bonus.streakPerDay) * pw : B.bonus.streakPerDay + (id === 'paladin' ? P.paladinStreak * pw * m : 0);
+  const streakB = crusader ? Math.min(r9(B.bonus.streakMax + (A.crusader.cap - B.bonus.streakMax) * pw), r9(perDay * i.streak)) : streakBonus(i.streak, r9(perDay));
+  const bonuses = [streakB, i.theme ? B.bonus.theme : 0, i.weakest ? B.bonus.weakest : 0,
+    r9(classXp * pw * m), i.perk.xp, i.rust ? B.rust.bonus : 0, i.inspire ? C.inspire : 0];
+  return { bonuses, goldBonus: r9(i.perk.gold + (id === 'merchant' ? P.merchantGold * pw * m : 0)) };
 }
