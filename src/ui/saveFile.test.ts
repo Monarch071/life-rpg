@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { backupFileName, saveFile, tryShare } from './saveFile'
 
 describe('backupFileName', () => {
@@ -18,9 +18,11 @@ describe('tryShare', () => {
 })
 
 describe('saveFile', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
   it('имя и тип файла', async () => {
     const shared: File[] = []
-    Object.assign(navigator, { canShare: () => true, share: async ({ files }: { files: File[] }) => { shared.push(...files) } })
+    // в Node 20 (CI) глобального navigator нет — подменяем целиком
+    vi.stubGlobal('navigator', { canShare: () => true, share: async ({ files }: { files: File[] }) => { shared.push(...files) } })
     expect(await saveFile(new Blob(['x'], { type: 'image/png' }), 'card-2026-12.png')).toBe('shared')
     expect(shared[0]).toMatchObject({ name: 'card-2026-12.png', type: 'image/png' })
   })
