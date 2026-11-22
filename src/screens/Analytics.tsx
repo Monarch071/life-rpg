@@ -97,7 +97,7 @@ function Progress({ state }: { state: GameState }) {
       ) })}
       <Rival state={state} />
       <div className="panel"><h2><Bot size={18} aria-hidden="true" /> Недельный отчёт ИИ</h2>
-        {!cfg && <p className="muted">Подключи ИИ в настройках, чтобы получать недельный отчёт</p>}
+        {!cfg && <p className="muted">Включи синхронизацию в настройках — тогда ИИ будет присылать недельный отчёт</p>}
         {cfg && !state.reports.some(r => r.weekStart === prevWeek && r.final) &&
           <button className="btn" disabled={gen || busy} onClick={makeReport}>{gen ? 'Составляю…' : 'Составить отчёт за прошлую неделю'}</button>}
         {report && <><h3>Неделя с {dm(report.weekStart)}</h3><p style={{ whiteSpace: 'pre-wrap' }}>{report.text}</p></>}

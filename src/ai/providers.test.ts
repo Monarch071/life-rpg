@@ -138,3 +138,19 @@ test('config', async () => {
   await clearAiConfig()
   expect(await db.settings.count()).toBe(0)
 })
+
+test('встроенный ИИ: без своего ключа идёт через сервер синхронизации', async () => {
+  expect(await getAiConfig()).toBeNull()
+  await setSetting('syncUrl', 'https://s.example/'); await setSetting('syncToken', 'T')
+  const cfg = (await getAiConfig())!
+  expect(cfg).toMatchObject({ provider: 'gemini', key: '', via: { url: 'https://s.example/', token: 'T' } })
+  const f = vi.fn(async () => json({ candidates: [{ content: { parts: [{ text: '{"x":2}' }] } }] }))
+  vi.stubGlobal('fetch', f)
+  expect(await generateJson(cfg, 's', 'u', {})).toEqual({ x: 2 })
+  const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit]
+  expect(url).toBe('https://s.example/ai/text')
+  expect(init.headers).toMatchObject({ authorization: 'Bearer T' })
+  expect(JSON.stringify(init.headers)).not.toContain('x-goog-api-key')
+  await saveAiConfig(gem)
+  expect((await getAiConfig())!.via).toBeUndefined()   // свой ключ важнее встроенного
+})

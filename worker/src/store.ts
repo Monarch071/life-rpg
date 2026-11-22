@@ -14,6 +14,10 @@ export interface Store {
   getPushSub(endpoint: string): Promise<PushRow | null>
   listPushSubs(): Promise<PushRow[]>
   markPushSent(endpoint: string, kind: Kind, date: string): Promise<void>
+  getMeta(key: string): Promise<string | null>
+  setMeta(key: string, value: string): Promise<void>
+  /** +1 к счётчику в meta, возвращает новое значение. */
+  bump(key: string): Promise<number>
 }
 
 export interface D1Stmt {
@@ -80,5 +84,16 @@ export class D1Store implements Store {
   async markPushSent(endpoint: string, kind: Kind, date: string) {
     const col = kind === 'morning' ? 'last_morning' : 'last_evening'
     await this.db.prepare(`UPDATE push_subs SET ${col} = ? WHERE endpoint = ?`).bind(date, endpoint).run()
+  }
+  async getMeta(key: string) {
+    return (await this.db.prepare('SELECT value FROM meta WHERE key = ?').bind(key).first<{ value: string }>())?.value ?? null
+  }
+  async setMeta(key: string, value: string) {
+    await this.db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').bind(key, value).run()
+  }
+  async bump(key: string) {
+    const r = await this.db.prepare("INSERT INTO meta (key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1 RETURNING value")
+      .bind(key).first<{ value: string }>()
+    return Number(r?.value ?? 1)
   }
 }

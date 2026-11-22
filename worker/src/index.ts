@@ -2,8 +2,10 @@ import { parseSyncPayload, type SyncPacket } from './parse'
 import { D1Store, type D1Like, type Store } from './store'
 import { message, parseSubscribe, pushTo, runCron, sendWakePush } from './push'
 import type { Vapid } from './webpush'
+import { AI_BODY_MAX, AiHttpError, aiProxy } from './ai'
 
-export interface Env { DB: D1Like; ALLOWED_ORIGINS: string; VAPID_PUBLIC?: string; VAPID_PRIVATE?: string; VAPID_SUBJECT?: string }
+export interface Env { DB: D1Like; ALLOWED_ORIGINS: string; VAPID_PUBLIC?: string; VAPID_PRIVATE?: string; VAPID_SUBJECT?: string; GEMINI_KEY?: string; AI_TEXT_MODEL?: string; AI_IMAGE_MODEL?: string }
+export type AiEnv = Pick<Env, 'GEMINI_KEY' | 'AI_TEXT_MODEL' | 'AI_IMAGE_MODEL'>
 
 const SYNC_MAX = 256 * 1024
 const EVENTS_MAX = 1024 * 1024
@@ -67,9 +69,22 @@ async function authorize(req: Request, store: Store): Promise<void> {
 
 type Out = { status: number; body: unknown; mime?: string }
 
-async function route(req: Request, store: Store, vapid: Vapid | undefined, now: number, fetcher?: typeof fetch): Promise<Out> {
+async function route(req: Request, store: Store, vapid: Vapid | undefined, now: number, fetcher?: typeof fetch, ai: AiEnv = {}): Promise<Out> {
   const url = new URL(req.url)
   const key = `${req.method} ${url.pathname}`
+
+  if (key === 'POST /ai/text' || key === 'POST /ai/image') {
+    await authorize(req, store)
+    const text = await req.text()
+    if (new TextEncoder().encode(text).length > AI_BODY_MAX) throw new HttpError(413, 'Слишком большой запрос')
+    try {
+      const r = await aiProxy(key === 'POST /ai/text' ? 'text' : 'image', text, store, ai, now, fetcher)
+      return { status: r.status, body: JSON.parse(r.body) }
+    } catch (e) {
+      if (e instanceof AiHttpError) throw new HttpError(e.status, e.message)
+      throw new HttpError(502, 'ИИ недоступен')
+    }
+  }
 
   if (key === 'POST /register') {
     const b = await readJson(req, SMALL_MAX)
@@ -178,7 +193,7 @@ async function route(req: Request, store: Store, vapid: Vapid | undefined, now: 
   }
 }
 
-export async function handle(req: Request, store: Store, allowedOrigins: string[], vapid?: Vapid, now = Date.now(), fetcher?: typeof fetch): Promise<Response> {
+export async function handle(req: Request, store: Store, allowedOrigins: string[], vapid?: Vapid, now = Date.now(), fetcher?: typeof fetch, ai?: AiEnv): Promise<Response> {
   const headers: Record<string, string> = { 'content-type': 'application/json; charset=utf-8' }
   const origin = req.headers.get('origin')
   if (origin) {
@@ -196,7 +211,7 @@ export async function handle(req: Request, store: Store, allowedOrigins: string[
 
   let status: number, body: unknown, mime: string | undefined
   try {
-    ({ status, body, mime } = await route(req, store, vapid, now, fetcher))
+    ({ status, body, mime } = await route(req, store, vapid, now, fetcher, ai))
   } catch (e) {
     if (e instanceof HttpError) { status = e.status; body = { ok: false, error: e.message } }
     else { status = 500; body = { ok: false, error: 'Внутренняя ошибка' } }
@@ -211,7 +226,7 @@ const vapidOf = (env: Env): Vapid | undefined =>
 
 export default {
   fetch(req: Request, env: Env): Promise<Response> {
-    return handle(req, new D1Store(env.DB), env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean), vapidOf(env))
+    return handle(req, new D1Store(env.DB), env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean), vapidOf(env), Date.now(), undefined, env)
   },
   async scheduled(_ev: unknown, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<void> {
     const v = vapidOf(env)
