@@ -4,8 +4,9 @@ import { SKILL_CATALOG } from '../domain/skillCatalog'
 import { achievementIcon, RARITY_NAME, rarityOf } from './achievementLook'
 import { Wordmark } from './Logo'
 import StatRadar from './StatRadar'
+import StatSheet, { StatList } from './StatSheet'
+import { useState } from 'react'
 import { now } from '../now'
-import { STATS } from '../domain/stats'
 import type { GameState, Profile, Stat, StatInfo } from '../domain/types'
 import Avatar from './Avatar'
 import { STAT_COLORS, STAT_ICONS } from './icons'
@@ -41,9 +42,6 @@ function GhostRow({ state }: { state: GameState }) {
   )
 }
 
-const statAria = (name: string, base: number, i: StatInfo) =>
-  i.form === null ? `${name} ${base}, форма ещё не посчитана` : `${name} ${base}, форма ${Math.round(i.form * 100)}%, ${STATUS[i.status]}`
-
 const More = ({ onClick, label }: { onClick: () => void; label: string }) =>
   <button type="button" className="more" onClick={onClick} aria-label={label}>Подробнее<ChevronRight size={14} aria-hidden="true" /></button>
 
@@ -53,7 +51,7 @@ export default function HeroStage({ state, profile, image, cta, onCta, onVital, 
   onVital: (id: VitalId) => void; onSyncHelp: () => void; onPath: () => void; onMore: (id: 'stats' | 'skills' | 'achievements') => void
 }) {
   const { today } = state
-  const keys = Object.keys(STATS) as Stat[]
+  const [stat, setStat] = useState<Stat | null>(null)
   const path = pathLabel(state.season, today.date)
   const fresh = freshness(state.sync.last, now())
   const lg = leagueChip(state.league), rank = state.week.preview.rank
@@ -112,20 +110,9 @@ export default function HeroStage({ state, profile, image, cta, onCta, onVital, 
         <div className="dcard-h"><h2>Характеристики</h2><More onClick={() => onMore('stats')} label="Все характеристики" /></div>
         <div className="radar-row">
           <StatRadar stats={state.stats} size={170} compact />
-          <ul className="stat-list">
-            {keys.map(k => {
-              const Icon = STAT_ICONS[k], info = state.statInfo[k]
-              return (
-                <li key={k} style={{ '--c': STAT_COLORS[k] } as React.CSSProperties}>
-                  <span className="sr-only">{statAria(STATS[k].name, state.stats[k], info)}</span>
-                  <Icon size={15} aria-hidden="true" />
-                  <span aria-hidden="true">{STATS[k].name}</span>
-                  <b aria-hidden="true">{state.stats[k]}</b>
-                </li>
-              )
-            })}
-          </ul>
+          <StatList state={state} onPick={setStat} />
         </div>
+        {stat && <StatSheet stat={stat} state={state} onClose={() => setStat(null)} />}
       </section>
 
       <section className="glass dcard" aria-label="Навыки">

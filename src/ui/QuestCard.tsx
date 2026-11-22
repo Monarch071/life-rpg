@@ -1,12 +1,24 @@
-import { Camera, Check, Hand, Shuffle, Sparkles, Timer, Zap } from 'lucide-react'
-import { SKILL_CATALOG } from '../domain/skillCatalog'
-import type { DayQuest, Verify } from '../domain/types'
+import { useState } from 'react'
+import { Camera, Check, Hand, Play, Shuffle, Sparkles, Timer, Zap } from 'lucide-react'
+import { SKILL_CATALOG, skillStatShares } from '../domain/skillCatalog'
+import { STATS } from '../domain/stats'
+import type { DayQuest, Stat, Verify } from '../domain/types'
+import { STAT_COLORS, STAT_ICONS } from './icons'
+import { categoryOf, DIFFICULTY } from './skillGroups'
 
 const VERIFY: Record<Verify, { Icon: typeof Zap; text: string }> = {
   auto: { Icon: Zap, text: 'Проверка: автоматически по данным' },
   photo: { Icon: Camera, text: 'Проверка: фото' },
   honest: { Icon: Hand, text: 'Проверка: честное слово' },
 }
+// «Начать» — отметка на этом устройстве, что задание в работе (на награду не влияет)
+const startKey = (id: string) => `qstart:${id}`
+const wasStarted = (id: string) => { try { return localStorage.getItem(startKey(id)) === '1' } catch { return false } }
+const markStarted = (id: string) => { try { localStorage.setItem(startKey(id), '1') } catch { /* не критично */ } }
+/** Характеристики, которые качает задание, — по долям навыков. */
+export const questStats = (skills: readonly string[]): Stat[] =>
+  [...new Set(skills.flatMap(id => Object.keys(skillStatShares(id as never)) as Stat[]))]
+
 const skillTitle = (id: string) => SKILL_CATALOG.find(s => s.id === id)?.title ?? id
 
 /** Карточка задания: ранг, навыки и окно, «почему», способ проверки, «+XP», галочка, фото и переброс. */
@@ -22,11 +34,19 @@ export default function QuestCard({ q, i, pop, busy, reroll, hint, ability = nul
   const v = VERIFY[q.done ? q.verify ?? 'honest' : q.auto ? 'auto' : 'honest']
   const xp = q.done ? q.xpFinal ?? q.xp : q.xp
   const open = !q.done && !q.legacy
+  const [started, setStarted] = useState(() => wasStarted(q.id))
+  const cat = categoryOf(q.skills[0]), stats = questStats(q.skills)
   return (
-    <li className={`q${q.done ? ' done' : ''}`} style={{ '--i': i } as React.CSSProperties}>
+    <li className={`q${q.done ? ' done' : ''}${started && open ? ' going' : ''}`} style={{ '--i': i } as React.CSSProperties}>
       <span className={`rk rk-${q.rank}`} role="img" aria-label={`Ранг ${q.rank}`}>{q.rank}</span>
       <div className="t">
         <b>{(q.kind === 'boss' || q.kind === 'chain') && <em className={`qbadge ${q.kind}`}>{q.kind === 'boss' ? 'Босс' : 'Сюжет'}</em>}{q.title}</b>
+        <span className="q-meta">
+          <em className="q-cat" style={{ '--c': cat.color } as React.CSSProperties}><cat.Icon size={12} aria-hidden="true" />{cat.title}</em>
+          <em className={`q-dif rk-${q.rank}`}>{DIFFICULTY[q.rank]}</em>
+          {stats.map(st => { const I = STAT_ICONS[st]; return <I key={st} size={14} style={{ color: STAT_COLORS[st] }} role="img" aria-label={`Качает: ${STATS[st].name}`} /> })}
+          {started && open && <em className="q-going">в процессе</em>}
+        </span>
         <small>{q.skills.map(skillTitle).join(' + ')} · {q.window ? `${q.window.start}–${q.window.end}` : 'в течение дня'}</small>
         {q.why && <small className="why">{q.why}</small>}
         {hint && <small className="auto-hint">{hint}</small>}
@@ -40,6 +60,9 @@ export default function QuestCard({ q, i, pop, busy, reroll, hint, ability = nul
       </button>
       {open && (
         <div className="q-acts">
+          {started
+            ? <button className="btn primary sm" disabled={busy} onClick={onDone} aria-label={`Завершить: ${q.title}`}><Check size={16} aria-hidden="true" /> Завершить</button>
+            : <button className="btn sm" disabled={busy} onClick={() => { markStarted(q.id); setStarted(true) }} aria-label={`Начать: ${q.title}`}><Play size={16} aria-hidden="true" /> Начать</button>}
           <label className={`btn ghost sm${busy ? ' off' : ''}`}>
             <Camera size={16} aria-hidden="true" /> Фото
             <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={busy}

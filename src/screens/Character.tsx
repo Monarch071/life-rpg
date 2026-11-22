@@ -10,6 +10,7 @@ import { imageNameFor } from '../ai/avatar'
 import { useBlobUrl } from '../blobs'
 import AvatarAi, { PhotoCta, type Go } from './AvatarAi'
 import StatRadar from '../ui/StatRadar'
+import StatSheet, { StatList } from '../ui/StatSheet'
 import Skills from './Skills'
 import ClassCard from '../ui/ClassCard'
 import Wardrobe from '../ui/Wardrobe'
@@ -78,6 +79,7 @@ export default function Character({ state, go, interview }: { state: GameState; 
   const last7 = state.history.slice(-7)
   const img = useBlobUrl(imageNameFor(state.avatarImages, state.tier))
   const [chart, setChart] = useState(true)
+  const [pick, setPick] = useState<Stat | null>(null)
   const prev = state.statHistory.length ? state.statHistory[Math.max(0, state.statHistory.length - 7)].stats : null
   // контур «неделю назад» — только когда есть история и он отличается от текущего
   const radarPrev = prev && state.statHistory.length >= 2 && (Object.keys(STATS) as Stat[]).some(k => prev[k] !== state.stats[k]) ? prev : null
@@ -109,12 +111,13 @@ export default function Character({ state, go, interview }: { state: GameState; 
         {chart ? <>
           <StatRadar stats={state.stats} prev={radarPrev} />
           {radarPrev && <p className="muted center radar-key"><i /> неделю назад</p>}
+          <StatList state={state} onPick={setPick} />
         </> : (Object.keys(STATS) as Stat[]).map(s => {
           const si = state.statInfo[s]
           const d = prev ? state.stats[s] - prev[s] : 0
           return (
-            <div key={s} className="stat-row">
-              <div className="stat">
+            <button type="button" key={s} className="stat-row" onClick={() => setPick(s)} aria-label={`${STATS[s].name} ${state.stats[s]}. Подробнее`}>
+              <div className="stat" aria-hidden="true">
                 <StatIcon stat={s} />
                 <span className="n">{STATS[s].name}</span>
                 <span className="d">{d > 0 ? `▲${d}` : ''}</span>
@@ -122,9 +125,10 @@ export default function Character({ state, go, interview }: { state: GameState; 
               </div>
               <div className="bar" style={{ '--c': `var(--${s})` } as React.CSSProperties} role="progressbar" aria-label={`${STATS[s].name}: ${si.into} из ${si.need} XP до следующего очка Основы`} aria-valuemin={0} aria-valuemax={si.need} aria-valuenow={si.into}><i style={{ width: `${si.need ? (si.into / si.need) * 100 : 100}%` }} /></div>
               <small className="muted">{si.base >= BALANCE.stat.max ? 'Основа на максимуме' : `+${si.need - si.into} XP до следующего очка`} · {si.form === null ? 'форма ещё не посчитана' : `форма ${Math.round(si.form * 100)}% · ${STATUS[si.status]}`}</small>
-            </div>
+            </button>
           )
         })}
+        {pick && <StatSheet stat={pick} state={state} onClose={() => setPick(null)} />}
       </section>
       <ClassCard state={state} />
       <Shadow state={state} />
