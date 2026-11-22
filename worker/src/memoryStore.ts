@@ -41,4 +41,8 @@ export class MemoryStore implements Store {
     const r = this.subs.get(e)
     if (r) r[kind === 'morning' ? 'last_morning' : 'last_evening'] = date
   }
+  meta = new Map<string, string>()
+  async getMeta(k: string) { return this.meta.get(k) ?? null }
+  async setMeta(k: string, v: string) { this.meta.set(k, v) }
+  async bump(k: string) { const n = Number(this.meta.get(k) ?? 0) + 1; this.meta.set(k, String(n)); return n }
 }

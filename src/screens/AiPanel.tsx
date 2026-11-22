@@ -43,18 +43,24 @@ export default function AiPanel() {
   const off = async () => {
     setConfirmOff(false)
     await clearAiConfig()
-    setCfg(null); setEdit(false); setKey(''); setModels(null); setMsg(null)
+    setCfg(await getAiConfig()); setEdit(false); setKey(''); setModels(null); setMsg(null)
   }
-  const change = () => { setProvider(cfg!.provider); setKey(''); setModels(null); setMsg(null); setEdit(true) }
+  const change = () => { setProvider(cfg?.provider ?? 'gemini'); setKey(''); setModels(null); setMsg(null); setEdit(true) }
 
   if (cfg === undefined) return null
   return (
     <section className="panel stack">
       <h2><Bot size={18} aria-hidden="true" /> ИИ</h2>
-      {cfg && !edit ? (<>
+      {cfg?.via && !edit ? (<>
+        <p role="status">ИИ встроен и работает: Google Gemini через твой сервер. Ключ вводить не нужно.</p>
+        <button className="btn ghost big" onClick={change}>Подключить свой ключ</button>
+      </>) : !cfg && !edit ? (<>
+        <p>Включи синхронизацию выше — ИИ заработает сам, без ключа.</p>
+        <button className="btn ghost big" onClick={change}>Подключить свой ключ</button>
+      </>) : cfg && !edit ? (<>
         <p role="status">ИИ включён: {PROVIDER_NAMES[cfg.provider]}, {cfg.textModel}</p>
         <button className="btn big" onClick={change}>Изменить</button>
-        <button className="btn ghost big" onClick={() => setConfirmOff(true)}>Отключить ИИ</button>
+        <button className="btn ghost big" onClick={() => setConfirmOff(true)}>Вернуться к встроенному ИИ</button>
       </>) : (<>
         <div className="chips" role="group" aria-label="Провайдер ИИ">
           {PROVIDERS.map((p) => (
@@ -87,10 +93,10 @@ export default function AiPanel() {
             )}
           <button className="btn primary big" onClick={save}>Сохранить</button>
         </>)}
-        {cfg && <button className="btn ghost big" onClick={() => { setEdit(false); setMsg(null) }}>Отмена</button>}
+        <button className="btn ghost big" onClick={() => { setEdit(false); setMsg(null) }}>Отмена</button>
       </>)}
       {msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? 'ok' : 'err'}>{msg.text}</p>}
-      {confirmOff && <Confirm title="Отключить ИИ и удалить ключ с этого устройства?" yes="Отключить" onYes={off} onNo={() => setConfirmOff(false)} />}
+      {confirmOff && <Confirm title="Удалить свой ключ с этого устройства и вернуться к встроенному ИИ?" yes="Удалить ключ" onYes={off} onNo={() => setConfirmOff(false)} />}
     </section>
   )
 }

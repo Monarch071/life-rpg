@@ -21,7 +21,7 @@ export function PhotoCta({ go }: { go: Go }) {
   return (
     <section className="photo-cta" aria-label="Образ по фото">
       <span className="ic" aria-hidden="true"><Camera size={20} /></span>
-      <div><b>Поставь своего героя на главный экран</b><small>{ready ? 'ИИ нарисует тебя по фото в полный рост' : 'Загрузи свой арт или подключи ИИ'}</small></div>
+      <div><b>Поставь своего героя на главный экран</b><small>{ready ? 'ИИ нарисует тебя по фото в полный рост' : 'Загрузи свой арт или включи синхронизацию — ИИ нарисует героя'}</small></div>
       <button type="button" className="btn primary" onClick={() => go('Герой', 'avatar-ai')}>{ready ? 'Создать' : 'Добавить'}</button>
     </section>
   )
