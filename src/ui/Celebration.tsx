@@ -37,7 +37,7 @@ function Overlay({ c, onClose, frame }: { c: NonNullable<ReturnType<typeof pickC
     <div className={`lvlup${frame && c.kind === 'level' ? ` framed frame-${frame.split(':')[1]}` : ''}`} role="dialog" aria-modal="true" aria-labelledby="cel-title">
       <div className="rays" aria-hidden="true" />
       {[8, 20, 33, 47, 60, 74, 88].map((l, i) => <i key={l} className="conf" aria-hidden="true" style={{ left: `${l}%`, animationDelay: `${i * 0.35}s`, background: i % 2 ? 'var(--gold)' : 'var(--fire2)' }} />)}
-      <div className="k">{boss ? 'БОСС СЕЗОНА' : rec ? 'ЗАЛ СЛАВЫ' : win ? 'ИДЕАЛЬНЫЙ ДЕНЬ' : 'НОВЫЙ УРОВЕНЬ'}</div>
+      <div className="k">{boss ? 'БОСС СЕЗОНА' : rec ? 'ЗАЛ СЛАВЫ' : win ? 'ИДЕАЛЬНЫЙ ДЕНЬ' : 'LEVEL UP'}</div>
       {c.kind === 'level' ? <div className="huge"><b>{c.level}</b></div>
         : <div className="huge"><b>{boss ? <Crown size={88} strokeWidth={3} aria-hidden="true" /> : rec ? <Trophy size={88} strokeWidth={3} aria-hidden="true" /> : <Check size={88} strokeWidth={4} aria-hidden="true" />}</b></div>}
       <h2 id="cel-title">{boss ? 'Босс сезона повержен' : rec ? c.text : win ? 'Все задания выполнены' : 'Новый уровень'}</h2>

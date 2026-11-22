@@ -208,7 +208,7 @@ export default function Home({ state, profile, go, interview }: { state: GameSta
       <HeroStage state={state} profile={profile} image={img}
         cta={!today.started ? 'Начать день' : remaining > 0 ? `Задания дня · осталось ${remaining}` : null}
         onCta={() => (!today.started ? setLater(false) : document.getElementById('quests')?.scrollIntoView({ behavior: 'smooth' }))}
-        onVital={id => setSheet(id)} onSyncHelp={() => go('Настройки', 'sync-panel')} onPath={() => setSheet('season')} />
+        onVital={id => setSheet(id)} onSyncHelp={() => go('Настройки', 'sync-panel')} onPath={() => setSheet('season')} onMore={id => go('Герой', id)} />
       <Banner state={state} hidden={hideBanner} onHide={setHideBanner} busy={leaving}
         onRecovery={() => setSheet('recovery')} onLeave={() => void leaveRecovery()} onChangeDay={() => setSheet('changed')} />
       {state.recovery.active && (

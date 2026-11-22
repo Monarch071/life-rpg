@@ -1,10 +1,15 @@
-import { ChevronRight, Coins, Flame, Ghost, Shield, Swords, User } from 'lucide-react'
+import { ChevronRight, Coins, Flame, Ghost, Shield, Swords, Trophy, User } from 'lucide-react'
+import { ACHIEVEMENTS } from '../domain/achievements'
+import { SKILL_CATALOG } from '../domain/skillCatalog'
+import { achievementIcon, RARITY_NAME, rarityOf } from './achievementLook'
+import { Wordmark } from './Logo'
+import StatRadar from './StatRadar'
 import { now } from '../now'
 import { STATS } from '../domain/stats'
 import type { GameState, Profile, Stat, StatInfo } from '../domain/types'
 import Avatar from './Avatar'
 import { STAT_COLORS, STAT_ICONS } from './icons'
-import { ghostLine, leagueChip, pathLabel, statBar } from './statBar'
+import { ghostLine, leagueChip, pathLabel } from './statBar'
 import { freshness, vitalChips, type VitalId } from './vitalsView'
 
 export const STATUS: Record<StatInfo['status'], string> = { new: 'новая', in_form: 'в форме', sagging: 'проседает', abandoned: 'заброшена' }
@@ -39,88 +44,126 @@ function GhostRow({ state }: { state: GameState }) {
 const statAria = (name: string, base: number, i: StatInfo) =>
   i.form === null ? `${name} ${base}, форма ещё не посчитана` : `${name} ${base}, форма ${Math.round(i.form * 100)}%, ${STATUS[i.status]}`
 
-/** Главный экран: арт героя на весь экран и стеклянные HUD-панели поверх. */
-export default function HeroStage({ state, profile, image, cta, onCta, onVital, onSyncHelp, onPath }: {
+const More = ({ onClick, label }: { onClick: () => void; label: string }) =>
+  <button type="button" className="more" onClick={onClick} aria-label={label}>Подробнее<ChevronRight size={14} aria-hidden="true" /></button>
+
+/** Главный экран по брифу: шапка с уровнем, герой в полный рост, карточки характеристик, навыков, достижений и дня. */
+export default function HeroStage({ state, profile, image, cta, onCta, onVital, onSyncHelp, onPath, onMore }: {
   state: GameState; profile: Profile; image: string | null; cta: string | null; onCta: () => void
-  onVital: (id: VitalId) => void; onSyncHelp: () => void; onPath: () => void
+  onVital: (id: VitalId) => void; onSyncHelp: () => void; onPath: () => void; onMore: (id: 'stats' | 'skills' | 'achievements') => void
 }) {
   const { today } = state
   const keys = Object.keys(STATS) as Stat[]
-  const quote = profile.goals[0]?.text || state.character?.archetype || 'Каждый день — шаг вперёд.'
   const path = pathLabel(state.season, today.date)
   const fresh = freshness(state.sync.last, now())
   const lg = leagueChip(state.league), rank = state.week.preview.rank
   const { background, frame } = state.cosmetics.equipped
   const pct = state.xpNeed > 0 ? Math.min(100, (state.xpInto / state.xpNeed) * 100) : 0
+  const legend = !!state.cls.legend && state.cls.legend.since <= today.date
+  const topSkills = SKILL_CATALOG.map(d => ({ d, k: state.skills[d.id] })).sort((a, b) => b.k.xp - a.k.xp).slice(0, 4)
+  const recent = [...state.achievements].reverse().slice(0, 3)
+  const nextAch = ACHIEVEMENTS.find(a => !state.achievements.some(x => x.id === a.id))
+  const quests = today.quests.filter(q => !q.dropped), done = quests.filter(q => q.done).length
 
   return (
-    <section className="stage" aria-label="Герой">
-      <div className={`stage-art${background ? ` bg-${background.split(':')[1]}` : ''}${state.cls.legend && state.cls.legend.since <= today.date ? ' legend' : ''}`} aria-hidden="true">
-        {background && <i className="stage-bg" />}
-        {image ? <img src={image} alt="" /> : <div className="stage-fallback"><Avatar params={state.avatar} tier={state.tier} size={360} decorative wear={state.cosmetics.equipped} /></div>}
-      </div>
+    <section className="dash" aria-label="Герой">
+      <header className="dash-head">
+        <Wordmark />
+        <span className="coins-pill" aria-label={`Золото: ${state.gold}`}><Coins size={15} aria-hidden="true" />{state.gold}</span>
+      </header>
 
-      <div className="stage-top">
-        <div className="glass lvl-card">
-          <div className={`ring${frame ? ` frame-${frame.split(':')[1]}` : ''}`} aria-hidden="true">
-            {image ? <i style={{ backgroundImage: `url(${image})` }} /> : <i className="empty"><User size={26} /></i>}
-          </div>
-          <div className="lvl-body">
-            <b><small>Lv.</small>{state.level}</b>
-            <div className="lvl-xp" role="progressbar" aria-label="Опыт до следующего уровня" aria-valuemin={0} aria-valuemax={state.xpNeed} aria-valuenow={state.xpInto}>
-              <i style={{ width: `${pct}%` }} />
-            </div>
-            <small className="n"><em>{state.xpInto}</em> / {state.xpNeed} XP</small>
-            {state.cls.legend && <small className="legend-name">{state.cls.legend.title}</small>}
-          </div>
+      <div className="glass profile-bar">
+        <div className={`ring${frame ? ` frame-${frame.split(':')[1]}` : ''}`} aria-hidden="true">
+          {image ? <i style={{ backgroundImage: `url(${image})` }} /> : <i className="empty"><User size={24} /></i>}
         </div>
-        <span className="glass coins-pill" aria-label={`Золото: ${state.gold}`}><Coins size={16} aria-hidden="true" />{state.gold}<small aria-hidden="true">Золото</small></span>
+        <div className="pb-body">
+          <div className="pb-top">
+            <span className="pb-name"><b>{profile.name || 'Герой'}</b><small>{legend ? state.cls.legend!.title : `${state.className} · «${state.title}»`}</small></span>
+            <span className="pb-lvl"><small>LV</small>{state.level}</span>
+          </div>
+          <div className="xp-line" role="progressbar" aria-label="Опыт до следующего уровня" aria-valuemin={0} aria-valuemax={state.xpNeed} aria-valuenow={state.xpInto}>
+            <i style={{ width: `${pct}%` }} />
+          </div>
+          <small className="pb-xp"><span>{state.xpInto.toLocaleString('ru')} / {state.xpNeed.toLocaleString('ru')} XP</span><span>ещё {Math.max(0, state.xpNeed - state.xpInto).toLocaleString('ru')} до {state.level + 1}</span></small>
+        </div>
       </div>
 
-      <ul className="vitals" aria-label="Состояние дня">
-        {vitalChips(today.vitals).map(c => (
-          <li key={c.id}>
-            <button className={`glass vital t-${c.tone}`} onClick={() => onVital(c.id)}
-              aria-label={`${c.label}: ${c.value === '—' ? 'нет данных' : `${c.value} из 100`}. Подробнее`}>
-              <small aria-hidden="true">{c.label}</small>
-              <b aria-hidden="true">{c.value}</b>
-              <i aria-hidden="true"><i style={{ width: `${c.pct}%` }} /></i>
-            </button>
-          </li>
-        ))}
-      </ul>
-      <p className={`fresh${fresh.stale ? ' stale' : ''}`}>
-        {fresh.text}
-        {fresh.stale && <>{state.sync.last !== null && ' · «Команды» давно не присылали данные'} <button className="link" onClick={onSyncHelp}>Настроить</button></>}
-      </p>
-
-      <div className="glass quote-card">
-        <small>{profile.name || 'Герой'} · {state.className} · «{state.title}»</small>
-        «{quote}»
-      </div>
-
-      <ul className="glass stat-card" aria-label="Характеристики">
-        {keys.map(k => {
-          const Icon = STAT_ICONS[k], info = state.statInfo[k], w = statBar(state.stats[k], info.form)
-          return (
-            <li key={k}>
-              <span className="sr-only">{statAria(STATS[k].name, state.stats[k], info)}</span>
-              <span className="ic" style={{ color: STAT_COLORS[k] }} aria-hidden="true"><Icon size={17} /></span>
-              <span aria-hidden="true">{STATS[k].name}</span>
-              <b aria-hidden="true"><i className={`fdot f-${info.status}`} />{state.stats[k]}</b>
-              <i className="sbar" aria-hidden="true" style={{ '--c': STAT_COLORS[k] } as React.CSSProperties}>
-                <i className="sb-base" style={{ width: `${w.base}%` }} />
-                <i className="sb-form" style={{ width: `${w.form}%` }} />
-              </i>
+      <div className="stage">
+        <div className={`stage-art${background ? ` bg-${background.split(':')[1]}` : ''}${legend ? ' legend' : ''}`} aria-hidden="true">
+          {background && <i className="stage-bg" />}
+          {image ? <img src={image} alt="" /> : <div className="stage-fallback"><Avatar params={state.avatar} tier={state.tier} size={340} decorative wear={state.cosmetics.equipped} /></div>}
+        </div>
+        <ul className="vitals" aria-label="Состояние дня">
+          {vitalChips(today.vitals).map(c => (
+            <li key={c.id}>
+              <button className={`vital t-${c.tone}`} onClick={() => onVital(c.id)}
+                aria-label={`${c.label}: ${c.value === '—' ? 'нет данных' : `${c.value} из 100`}. Подробнее`}>
+                <small aria-hidden="true">{c.label}</small>
+                <b aria-hidden="true">{c.value}</b>
+                <i aria-hidden="true"><i style={{ width: `${c.pct}%` }} /></i>
+              </button>
             </li>
-          )
-        })}
-      </ul>
+          ))}
+        </ul>
+      </div>
+      {fresh.stale && <p className="fresh stale">{fresh.text}{state.sync.last !== null && ' · «Команды» давно не присылали данные'} <button className="link" onClick={onSyncHelp}>Настроить</button></p>}
 
-      <div className="glass versus-card">
-        <div className="vs-row" aria-live="polite">
-          <span>Сегодня <b>{today.xp}</b> XP</span>
-          <span className="streak-n"><Flame size={18} aria-hidden="true" />серия <b>{state.streak}</b> дн.</span>
+      <section className="glass dcard" aria-label="Характеристики">
+        <div className="dcard-h"><h2>Характеристики</h2><More onClick={() => onMore('stats')} label="Все характеристики" /></div>
+        <div className="radar-row">
+          <StatRadar stats={state.stats} size={170} compact />
+          <ul className="stat-list">
+            {keys.map(k => {
+              const Icon = STAT_ICONS[k], info = state.statInfo[k]
+              return (
+                <li key={k} style={{ '--c': STAT_COLORS[k] } as React.CSSProperties}>
+                  <span className="sr-only">{statAria(STATS[k].name, state.stats[k], info)}</span>
+                  <Icon size={15} aria-hidden="true" />
+                  <span aria-hidden="true">{STATS[k].name}</span>
+                  <b aria-hidden="true">{state.stats[k]}</b>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      </section>
+
+      <section className="glass dcard" aria-label="Навыки">
+        <div className="dcard-h"><h2>Навыки</h2><More onClick={() => onMore('skills')} label="Все навыки" /></div>
+        <ul className="skill-list">
+          {topSkills.map(({ d, k }) => {
+            const I = d.stat === 'team' ? Swords : STAT_ICONS[d.stat]
+            return (
+              <li key={d.id} style={{ '--c': d.stat === 'team' ? 'var(--fire)' : STAT_COLORS[d.stat] } as React.CSSProperties}>
+                <span className="sk-ic" aria-hidden="true"><I size={16} /></span>
+                <span className="sk-n">{d.title}</span>
+                <span className="sk-l">ур. <b>{k.level}</b></span>
+                <i className="sk-bar" role="progressbar" aria-label={`${d.title}: уровень ${k.level}`} aria-valuemin={0} aria-valuemax={k.need || 1} aria-valuenow={k.into}><i style={{ width: `${k.need ? (k.into / k.need) * 100 : 100}%` }} /></i>
+              </li>
+            )
+          })}
+        </ul>
+      </section>
+
+      <section className="glass dcard" aria-label="Достижения">
+        <div className="dcard-h"><h2>Достижения <small>{state.achievements.length} / {ACHIEVEMENTS.length}</small></h2><More onClick={() => onMore('achievements')} label="Все достижения" /></div>
+        {recent.length ? (
+          <ul className="ach-row">
+            {recent.map(a => {
+              const def = ACHIEVEMENTS.find(x => x.id === a.id), Icon = achievementIcon(a.id), r = rarityOf(a.id)
+              return def && <li key={a.id} className={`ach r-${r}`}><span className="ach-ic" aria-hidden="true"><Icon size={20} /></span><b>{def.title}</b><small>{RARITY_NAME[r]}</small></li>
+            })}
+          </ul>
+        ) : <p className="muted">Первое достижение — за первое выполненное задание.</p>}
+        {nextAch && <p className="ach-next"><Trophy size={14} aria-hidden="true" /> Следующее: <b>{nextAch.title}</b> — {nextAch.desc.charAt(0).toLowerCase() + nextAch.desc.slice(1)}</p>}
+      </section>
+
+      <section className="glass dcard today-card" aria-label="Сегодня">
+        <div className="today-nums" aria-live="polite">
+          <span><b>{done}</b><small>выполнено</small></span>
+          <span><b>{quests.length - done}</b><small>осталось</small></span>
+          <span><b className="acc">+{today.xp}</b><small>XP сегодня</small></span>
+          <span><b className="hot"><Flame size={16} aria-hidden="true" />{state.streak}</b><small>серия, дн.</small></span>
         </div>
         <GhostRow state={state} />
         <div className="league-row">
@@ -144,7 +187,7 @@ export default function HeroStage({ state, profile, image, cta, onCta, onVital, 
           </div>
         </div>
         {cta && <button className="btn primary big" onClick={onCta}><Swords size={18} aria-hidden="true" />{cta}</button>}
-      </div>
+      </section>
     </section>
   )
 }

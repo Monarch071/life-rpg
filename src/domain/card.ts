@@ -80,7 +80,7 @@ export function weekCard(state: GameState, weekStart: ISODate): CardModel | null
 /** Раскладка 9:16 в «стеклянной ночи»: фон со свечением, колонки «было / стало», крупный индекс, прирост характеристик. */
 export function cardOps(m: CardModel, w = 1080, h = 1920): CardOp[] {
   const k = w / 1080, X = (x: number) => Math.round(x * k), Y = (y: number) => Math.round(y * (h / 1920))
-  const C = { text: '#eef2ff', muted: '#9aa6c6', fire: '#f3bd5a', fire2: '#ffd98a', ice: '#a9d1ff', card: '#121a33' }
+  const C = { text: '#f4f6ff', muted: '#929db8', fire: '#8757ff', fire2: '#b49bff', ice: '#a9d1ff', card: '#151d32' }
   const t = (x: number, y: number, text: string, size: number, color = C.text, align: 'left' | 'center' | 'right' = 'center', weight = 700): CardOp =>
     ({ op: 'text', x: X(x), y: Y(y), text, size: Math.round(size * k), color, align, weight })
   const col = (p: CardPoint, x: number, label: string, slot: 'before' | 'after'): CardOp[] => [
@@ -91,7 +91,7 @@ export function cardOps(m: CardModel, w = 1080, h = 1920): CardOp[] {
     t(x + 225, 1150, `Ур. ${p.level}`, 64, slot === 'after' ? C.fire2 : C.text, 'center', 900),
   ]
   const ops: CardOp[] = [
-    { op: 'rect', x: 0, y: 0, w, h, fill: '#070b18', glow: '#1c2b52' },
+    { op: 'rect', x: 0, y: 0, w, h, fill: '#070b18', glow: '#2a1d5c' },
     t(540, 150, m.title, 56, C.fire2, 'center', 900),
     t(540, 220, 'до и после', 32, C.muted),
     ...col(m.before, 60, 'Было', 'before'), ...col(m.after, 570, 'Стало', 'after'),

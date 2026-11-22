@@ -30,11 +30,11 @@ const fade = (t: number, a: number, b: number, f = 400) => Math.max(0, Math.min(
 /** Кадр в момент t (мс): 0–3,5 с «было», 3–7 с «стало» со счётчиком уровня, 7–16 с три момента, 16–18 с итог. */
 export function videoOps(m: CardModel, moments: Moment[], t: number, w = 720, h = 1280): CardOp[] {
   const k = w / 1080, X = (x: number) => Math.round(x * k), Y = (y: number) => Math.round(y * (h / 1920))
-  const C = { text: '#eef2ff', muted: '#9aa6c6', fire: '#f3bd5a', fire2: '#ffd98a', card: '#121a33' }
+  const C = { text: '#f4f6ff', muted: '#929db8', fire: '#8757ff', fire2: '#b49bff', card: '#151d32' }
   const tx = (x: number, y: number, text: string, size: number, color: string, alpha: number, weight = 800): CardOp =>
     ({ op: 'text', x: X(x), y: Y(y), text, size: Math.round(size * k), color, align: 'center', weight, alpha })
   const img = (slot: 'before' | 'after', alpha: number): CardOp => ({ op: 'image', slot, x: X(140), y: Y(330), w: X(800), h: Y(1200), alpha })
-  const ops: CardOp[] = [{ op: 'rect', x: 0, y: 0, w, h, fill: '#070b18', glow: '#1c2b52' }, tx(540, 170, m.title, 60, C.fire2, Math.min(1, t / 600), 900)]
+  const ops: CardOp[] = [{ op: 'rect', x: 0, y: 0, w, h, fill: '#070b18', glow: '#2a1d5c' }, tx(540, 170, m.title, 60, C.fire2, Math.min(1, t / 600), 900)]
   // «было» → «стало»: смена аватара 3–4 с, уровень растёт 4–6 с
   const a = fade(t, 0, 3600), b = fade(t, 3000, 7400, 1000)
   if (a > 0) ops.push(img('before', a), tx(540, 1640, 'Было', 44, C.muted, a), tx(540, 1760, `Ур. ${m.before.level}`, 96, C.text, a, 900))

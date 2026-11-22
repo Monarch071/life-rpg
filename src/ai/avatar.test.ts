@@ -14,7 +14,8 @@ test('avatarPrompt: цвет волос и описание тира', () => {
   expect(p).toContain('#c2185b')
   expect(p).toContain('glowing accents')
   expect(p).toContain('no watermark')
-  expect(avatarPrompt(params, 4, 'Эд')).toContain('radiant aura')
+  expect(avatarPrompt(params, 4, 'Эд')).toContain('radiant legendary')
+  expect(p).toContain('black oversized hoodie')
 })
 
 test('nextQuality: ≤600 КБ — готово, иначе q−0.15 до 0.4', () => {

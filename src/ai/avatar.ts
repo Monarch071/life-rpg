@@ -4,19 +4,20 @@ import { generateImage } from './providers'
 
 type Tier = 1 | 2 | 3 | 4
 
+// одежда не меняется с тиром (лицо и образ узнаваемы), растёт только свечение
 const TIER_LOOK: Record<Tier, string> = {
-  1: 'simple casual clothes, soft light.',
-  2: 'light armor and a cloak.',
-  3: 'rich equipment with glowing accents.',
-  4: 'a legendary hero with a radiant aura.',
+  1: 'no aura, soft rim light.',
+  2: 'a faint violet energy glow around the hands.',
+  3: 'a visible violet and cyan energy aura, glowing accents on the clothes.',
+  4: 'a radiant legendary violet-gold aura with floating light particles.',
 }
 
 export function avatarPrompt(params: AvatarParams, tier: Tier, _name: string): string {
   return `Semi-realistic anime illustration, full-body portrait of the person in the photo standing confidently, head to shoes visible. `
     + `Keep their facial features, face shape and skin tone recognizable. `
-    + `Hair: ${params.hair} ${params.hairColor}. Outfit main color ${params.outfitColor}. Tier ${tier}: ${TIER_LOOK[tier]} `
-    + `Place the character in the right half of the frame, leave the left side open. `
-    + `Background: modern city at night, skyscrapers with warm window lights, deep blue sky, wet reflective pavement, cinematic lighting. `
+    + `Hair: ${params.hair} ${params.hairColor}. Outfit: black oversized hoodie, black cropped slacks, clean sneakers, one white AirPod in the ear, a thin red string bracelet on the wrist. Tier ${tier}: ${TIER_LOOK[tier]} `
+    + `Character centered, full body, slightly low camera angle. `
+    + `Background: futuristic city at night, neon violet and cyan lights, deep blue-black sky, wet reflective street, light haze, cinematic lighting, premium dark anime RPG key art. `
     + `Vertical 2:3, single character, no text, no UI, no logos, no watermark, safe for work.`
 }
 

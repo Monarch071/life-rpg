@@ -15,7 +15,7 @@ export default function Skills({ state }: { state: GameState }) {
   const groups: (Stat | 'team')[] = [...Object.keys(STATS) as Stat[], 'team']
   const [open, setOpen] = useState<SkillDef | null>(null)
   return (
-    <section className="panel stack" aria-label="Навыки">
+    <section className="panel stack" id="skills" aria-label="Навыки">
       <div className="sec"><h2>Навыки</h2><span>перки на 3, 6 и 10 уровне</span></div>
       {groups.map(g => (
         <div key={g} className="stack" style={g === 'team' ? undefined : { '--c': STAT_COLORS[g] } as React.CSSProperties}>

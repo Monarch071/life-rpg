@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { refreshPush } from './push'
 import { seedDefaultRewards } from './seed'
 import { useGame } from './useGame'
@@ -16,14 +16,35 @@ import Interview from './screens/Interview'
 import Celebration from './ui/Celebration'
 import Avatar, { EYE_OPTIONS, HAIR_OPTIONS } from './ui/Avatar'
 import { DEFAULT_AVATAR } from './domain/replay'
-import { House, Swords, User, ChartLine, ShoppingBag, Settings as SettingsIcon } from 'lucide-react'
+import { House, Swords, User, ChartLine, ShoppingBag, Settings as SettingsIcon, X } from 'lucide-react'
+import Logo from './ui/Logo'
+import { useDialog } from './ui/useDialog'
 
+// нижняя панель по брифу: 4 раздела и кнопка-символ в центре (меню: магазин, настройки)
 const TABS = [
-  { id: 'Главная', Icon: House, label: true }, { id: 'Задания', Icon: Swords, label: true },
-  { id: 'Герой', Icon: User, label: true }, { id: 'Анализ', Icon: ChartLine, label: true },
-  { id: 'Магазин', Icon: ShoppingBag, label: true }, { id: 'Настройки', Icon: SettingsIcon, label: false },
+  { id: 'Главная', label: 'Главная', Icon: House }, { id: 'Анализ', label: 'Прогресс', Icon: ChartLine },
+  { id: 'Задания', label: 'Задания', Icon: Swords }, { id: 'Герой', label: 'Профиль', Icon: User },
 ] as const
-type Tab = (typeof TABS)[number]['id']
+type Tab = (typeof TABS)[number]['id'] | 'Магазин' | 'Настройки'
+
+function GameMenu({ go, onClose }: { go: (t: Tab) => void; onClose: () => void }) {
+  const dlg = useDialog<HTMLDivElement>(onClose)
+  const item = (t: Tab, Icon: typeof House, title: string, sub: string) => (
+    <button className="menu-item" onClick={() => { go(t); onClose() }}>
+      <span className="ico" style={{ '--c': 'var(--fire)' } as React.CSSProperties}><Icon aria-hidden="true" /></span>
+      <span><b>{title}</b><small>{sub}</small></span>
+    </button>
+  )
+  return (
+    <div className="sheet-wrap" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="sheet" ref={dlg} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="menu-title">
+        <div className="sheet-head"><h2 id="menu-title">Меню</h2><button className="icon-btn" aria-label="Закрыть" onClick={onClose}><X size={20} aria-hidden="true" /></button></div>
+        {item('Магазин', ShoppingBag, 'Магазин и инвентарь', 'Награды за золото, одежда и эффекты')}
+        {item('Настройки', SettingsIcon, 'Настройки', 'Синхронизация, ИИ, уведомления, валюта')}
+      </div>
+    </div>
+  )
+}
 
 export default function App() {
   const state = useGame()
@@ -31,6 +52,7 @@ export default function App() {
   const sync = useSync()
   const [tab, setTab] = useState<Tab>('Главная')
   const [ivw, setIvw] = useState(false)
+  const [menu, setMenu] = useState(false)
   const openIvw = () => setIvw(true)
   const [login, setLogin] = useState(() => parseLoginHash(location.hash))
   // переход на вкладку и прокрутка к блоку; блок дорисовывается асинхронно — ждём его высоту (до ~1 с)
@@ -66,12 +88,14 @@ export default function App() {
           : tab === 'Анализ' ? <Analytics state={state} />
           : <Settings state={state} sync={sync} />}
       </main>
+      {menu && <GameMenu go={setTab} onClose={() => setMenu(false)} />}
       <nav className="tabbar">
-        {TABS.map((t) => (
-          <button key={t.id} className={t.id === tab ? 'active' : ''} aria-label={t.id} aria-current={t.id === tab ? 'page' : undefined} onClick={() => setTab(t.id)}>
-            <t.Icon aria-hidden="true" />{t.label && <span aria-hidden="true">{t.id}</span>}
+        {TABS.map((t, i) => (<Fragment key={t.id}>
+          {i === 2 && <button className={`tab-core${tab === 'Магазин' || tab === 'Настройки' ? ' active' : ''}`} aria-label="Меню: магазин и настройки" onClick={() => setMenu(true)}><Logo /></button>}
+          <button className={t.id === tab ? 'active' : ''} aria-label={t.label} aria-current={t.id === tab ? 'page' : undefined} onClick={() => setTab(t.id)}>
+            <t.Icon aria-hidden="true" /><span aria-hidden="true">{t.label}</span>
           </button>
-        ))}
+        </Fragment>))}
       </nav>
     </div>
   )

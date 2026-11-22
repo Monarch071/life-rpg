@@ -99,7 +99,7 @@ export default function Character({ state, go, interview }: { state: GameState; 
         </div>
       </section>
       {!img && <PhotoCta go={go} />}
-      <section className="panel stats" aria-label="Характеристики">
+      <section className="panel stats" id="stats" aria-label="Характеристики">
         <div className="sec"><h3>Характеристики</h3>
           <div className="seg-toggle" role="group" aria-label="Вид">
             <button type="button" aria-pressed={chart} onClick={() => setChart(true)}>Диаграмма</button>
