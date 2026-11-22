@@ -92,16 +92,16 @@ export default function AvatarAi({ state }: { state: GameState }) {
       <h2><ImageIcon size={18} aria-hidden="true" /> Арт героя</h2>
       <p className="muted">Картинка в полный рост встанет фоном главного экрана. Лучше всего — вертикальная, герой справа.</p>
       {newTier && <p role="status">Новый тир! Создай новый образ</p>}
-      <label className="btn big" style={{ cursor: 'pointer' }}>
-        <Upload size={18} aria-hidden="true" />Загрузить свою картинку
+      {ai && <label className="btn primary big" style={{ cursor: 'pointer' }}>
+        <Camera size={18} aria-hidden="true" />Нарисовать героя по моему фото (ИИ)
+        <input type="file" accept="image/*" hidden disabled={busy}
+          onChange={e => { const f = e.target.files?.[0] ?? null; setPhoto(f); setResult(null); setErr(null); if (f) setAsk(true); e.target.value = '' }} />
+      </label>}
+      {!ai && <p className="muted">Чтобы ИИ нарисовал героя по твоему фото, включи синхронизацию или подключи Gemini/OpenAI в настройках.</p>}
+      <label className="btn ghost" style={{ cursor: 'pointer' }}>
+        <Upload size={16} aria-hidden="true" />Поставить готовую картинку без ИИ
         <input type="file" accept="image/*" hidden disabled={busy} onChange={e => { void upload(e.target.files?.[0]); e.target.value = '' }} />
       </label>
-      {!ai && <p className="muted">Чтобы ИИ нарисовал героя по твоему фото, подключи Gemini или OpenAI в настройках.</p>}
-      {ai && <label className="btn big" style={{ cursor: 'pointer' }}>
-        <Camera size={18} aria-hidden="true" />Нарисовать по фото (ИИ)
-        <input type="file" accept="image/*" hidden disabled={busy}
-          onChange={e => { setPhoto(e.target.files?.[0] ?? null); setResult(null); setErr(null); e.target.value = '' }} />
-      </label>}
       {photo && !result && <button className="btn primary big" disabled={busy} onClick={() => setAsk(true)}>Создать аватар</button>}
       {busy && <p role="status">Рисую аватар… это может занять до минуты</p>}
       {err && <p role="alert">{err}</p>}
