@@ -7,6 +7,8 @@ export class AiError extends Error {
 
 const TEXT_MS = 25_000
 const IMAGE_MS = 120_000
+// встроенный ИИ: сервер сам перебирает модели, если основная перегружена
+const VIA_MS = { text: 60_000, image: 150_000 }
 const GEMINI = 'https://generativelanguage.googleapis.com/v1beta'
 const OPENAI = 'https://api.openai.com/v1'
 
@@ -106,7 +108,7 @@ export async function generateJson(cfg: AiConfig, system: string, user: string, 
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: `${user}\n\nОтветь только JSON по схеме:\n${JSON.stringify(schema)}` }] }],
       }),
-    }, TEXT_MS)
+    }, cfg.via ? VIA_MS.text : TEXT_MS)
     const parts: { text?: string; thought?: boolean }[] = d?.candidates?.[0]?.content?.parts ?? []
     return extractJson(parts.filter((p) => !p.thought).map((p) => p.text ?? '').join(''))
   }
@@ -151,7 +153,7 @@ export async function generateImage(cfg: AiConfig, photo: Blob, prompt: string):
         contents: [{ role: 'user', parts: [{ text: prompt }, { inline_data: { mime_type: photo.type || 'image/jpeg', data: await b64(photo) } }] }],
         generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
       }),
-    }, IMAGE_MS)
+    }, cfg.via ? VIA_MS.image : IMAGE_MS)
     for (const p of d?.candidates?.[0]?.content?.parts ?? []) {
       const i = p.inlineData ?? p.inline_data
       if (i?.data && p.thought !== true) return fromB64(i.data, i.mimeType ?? i.mime_type ?? 'image/png')

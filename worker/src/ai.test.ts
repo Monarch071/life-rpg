@@ -9,21 +9,22 @@ const LIST = { models: ['gemini-2.5-flash', 'gemini-3.1-flash', 'gemini-3.1-flas
 
 describe('pickModels', () => {
   it('новейшая flash и flash-image без lite', () => {
-    expect(pickModels(LIST.models.map(m => m.name.slice(7)))).toEqual({ text: 'gemini-3.1-flash', image: 'gemini-3.1-flash-image' })
+    expect(pickModels(LIST.models.map(m => m.name.slice(7)))).toEqual({ text: ['gemini-3.1-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'], image: ['gemini-3.1-flash-image', 'gemini-3-pro-image', 'gemini-3.1-flash-lite-image'] })
   })
   it('алиас flash-latest в приоритете, пустой список — null', () => {
-    expect(pickModels(['gemini-flash-latest', 'gemini-3.1-flash']).text).toBe('gemini-flash-latest')
-    expect(pickModels([])).toEqual({ text: null, image: null })
+    expect(pickModels(['gemini-flash-latest', 'gemini-3.1-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash']).text).toEqual(['gemini-flash-latest', 'gemini-3.1-flash', 'gemini-3.1-flash-lite'])
+    expect(pickModels([])).toEqual({ text: [], image: [] })
   })
 })
 
-async function setup(env: { GEMINI_KEY?: string } = { GEMINI_KEY: 'k' }) {
+async function setup(env: { GEMINI_KEY?: string; busy?: string } = { GEMINI_KEY: 'k' }) {
   const store = new MemoryStore()
   await handle(new Request('http://x/register', { method: 'POST', body: JSON.stringify({ token: TOKEN }) }), store, [])
   const calls: { url: string; key: string | null }[] = []
   const f = (async (url: string, init?: RequestInit) => {
     calls.push({ url, key: new Headers(init?.headers).get('x-goog-api-key') })
     if (url.includes('/models?')) return new Response(JSON.stringify(LIST))
+    if (env.busy && url.includes(`/models/${env.busy}:`)) return new Response('{"error":{"message":"high demand"}}', { status: 503 })
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"a":1}' }] } }] }))
   }) as typeof fetch
   const post = (path: string, token = TOKEN) => handle(new Request('http://x' + path, {
@@ -33,6 +34,12 @@ async function setup(env: { GEMINI_KEY?: string } = { GEMINI_KEY: 'k' }) {
 }
 
 describe('POST /ai/*', () => {
+  it('перегруженная модель (503) — запрос уходит в следующую', async () => {
+    const { calls, post } = await setup({ GEMINI_KEY: 'k', busy: 'gemini-3.1-flash' } as never)
+    const r = await post('/ai/text')
+    expect(r.status).toBe(200)
+    expect(calls.filter(c => c.url.includes(':generateContent')).map(c => c.url.split('/models/')[1])).toEqual(['gemini-3.1-flash:generateContent', 'gemini-2.5-flash:generateContent'])
+  })
   it('проксирует в Gemini с ключом сервера и выбранной моделью', async () => {
     const { calls, post } = await setup()
     const r = await post('/ai/text')
