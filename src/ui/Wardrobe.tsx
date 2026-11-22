@@ -4,7 +4,7 @@ import type { GameState } from '../domain/types'
 import Avatar from './Avatar'
 import { useWrite } from './useWrite'
 
-const SLOTS: [CosmeticSlot, string][] = [['head', 'Голова'], ['neck', 'Шея'], ['cloak', 'Плащ'], ['emblem', 'Знак'], ['background', 'Фон главной'], ['frame', 'Рамка портрета'], ['look', 'Образ ИИ-аватара']]
+const SLOTS: [CosmeticSlot, string][] = [['head', 'Голова'], ['neck', 'Шея'], ['cloak', 'Плащ'], ['emblem', 'Знак'], ['background', 'Фон главной'], ['frame', 'Рамка портрета'], ['look', 'Тема ИИ-персонажа']]
 const SOURCE = { path: 'путь сезона', chest: 'сундук недели', shop: 'магазин', trophy: 'трофей' } as const
 
 /** «Инвентарь»: полка по слотам, примерка без надевания, «Надеть» / «Снять». */
@@ -49,7 +49,7 @@ export default function Wardrobe({ state }: { state: GameState }) {
           </div>
         )
       })}
-      {equipped.look && <small className="muted">Образ — тема сезона для ИИ-аватара. На ИИ-картинке носимые вещи не рисуются (они видны здесь), фон и рамка работают всегда.</small>}
+      {equipped.look && <small className="muted">Тема сезона для ИИ-персонажа. На ИИ-картинке носимые вещи не рисуются (они видны здесь), фон и рамка работают всегда.</small>}
       <div aria-live="polite">{w.msg && <p role={w.msg.ok ? 'status' : 'alert'} className={w.msg.ok ? 'ok' : 'err'}>{w.msg.text}</p>}</div>
     </section>
   )

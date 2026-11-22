@@ -6,15 +6,18 @@ vi.mock('./providers', () => ({ generateImage: gen }))
 import { avatarPrompt, generateAvatar, nextQuality } from './avatar'
 import type { AiConfig } from './config'
 
-const params = { hair: 'long', hairColor: '#c2185b', outfitColor: '#2fb5ff', eyes: 'round' }
+const hero = { className: 'Воин', archetype: 'Упрямый стратег', strengths: ['режим', 'сила'], sportLevel: 3 as const }
 const cfg: AiConfig = { provider: 'gemini', key: 'K', textModel: 'g', imageModel: 'gi' }
 
-test('avatarPrompt: цвет волос и описание тира', () => {
-  const p = avatarPrompt(params, 3, 'Эд')
-  expect(p).toContain('#c2185b')
+test('avatarPrompt: данные персонажа и описание тира', () => {
+  const p = avatarPrompt(hero, 3)
+  expect(p).toContain('RPG class: Воин')
+  expect(p).toContain('Упрямый стратег')
+  expect(p).toContain('Athletic')
+  expect(avatarPrompt({ className: 'Странник' }, 1)).not.toContain('archetype')
   expect(p).toContain('glowing accents')
   expect(p).toContain('no watermark')
-  expect(avatarPrompt(params, 4, 'Эд')).toContain('radiant legendary')
+  expect(avatarPrompt(hero, 4)).toContain('radiant legendary')
   expect(p).toContain('black oversized hoodie')
 })
 
@@ -31,7 +34,7 @@ test('generateAvatar: ужать фото → картинка → ужать р
   const photo = new Blob(['p']), small = new Blob(['s']), raw = new Blob(['r']), out = new Blob(['o'])
   const shrink = vi.fn(async (b: Blob, side?: number) => { calls.push(`shrink${side ?? ''}`); return b === photo ? small : out })
   gen.mockImplementation(async () => { calls.push('gen'); return raw })
-  const res = await generateAvatar(cfg, photo, params, 2, 'Эд', shrink)
+  const res = await generateAvatar(cfg, photo, hero, 2, shrink)
   expect(res).toBe(out)
   expect(calls).toEqual(['shrink1024', 'gen', 'shrink1280'])
   expect(gen).toHaveBeenCalledWith(cfg, small, expect.stringContaining('Tier 2'))

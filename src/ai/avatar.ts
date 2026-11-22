@@ -1,10 +1,9 @@
-import type { AvatarParams } from '../domain/types'
 import type { AiConfig } from './config'
 import { generateImage } from './providers'
 
 type Tier = 1 | 2 | 3 | 4
 
-// одежда не меняется с тиром (лицо и образ узнаваемы), растёт только свечение
+// одежда не меняется с тиром (лицо узнаваемо), растёт только свечение
 const TIER_LOOK: Record<Tier, string> = {
   1: 'no aura, soft rim light.',
   2: 'a faint violet energy glow around the hands.',
@@ -12,10 +11,18 @@ const TIER_LOOK: Record<Tier, string> = {
   4: 'a radiant legendary violet-gold aura with floating light particles.',
 }
 
-export function avatarPrompt(params: AvatarParams, tier: Tier, _name: string): string {
-  return `Semi-realistic anime illustration, full-body portrait of the person in the photo standing confidently, head to shoes visible. `
-    + `Keep their facial features, face shape and skin tone recognizable. `
-    + `Hair: ${params.hair} ${params.hairColor}. Outfit: black oversized hoodie, black cropped slacks, clean sneakers, one white AirPod in the ear, a thin red string bracelet on the wrist. Tier ${tier}: ${TIER_LOOK[tier]} `
+/** Данные персонажа из анкеты и игры, которые попадают в промпт. */
+export interface HeroInfo { className: string; archetype?: string; strengths?: string[]; sportLevel?: 0 | 1 | 2 | 3 }
+
+const BUILD = ['', '', 'Fit, toned build. ', 'Athletic, muscular build. ']
+
+export function avatarPrompt(hero: HeroInfo, tier: Tier): string {
+  const who = [`RPG class: ${hero.className}.`, hero.archetype && `Personality archetype from their test: ${hero.archetype}.`,
+    hero.strengths?.length && `Strengths: ${hero.strengths.slice(0, 3).join(', ')}.`].filter(Boolean).join(' ')
+  return `Turn the person in the photo into an original anime RPG game character. Semi-realistic anime illustration, full-body, standing confidently, head to shoes visible. `
+    + `Keep their face, face shape, hairstyle, hair color and skin tone recognizable. ${BUILD[hero.sportLevel ?? 0]}`
+    + `${who} Reflect the class and personality in pose and expression. `
+    + `Outfit: black oversized hoodie, black cropped slacks, clean sneakers, one white AirPod in the ear, a thin red string bracelet on the wrist. Tier ${tier}: ${TIER_LOOK[tier]} `
     + `Character centered, full body, slightly low camera angle. `
     + `Background: futuristic city at night, neon violet and cyan lights, deep blue-black sky, wet reflective street, light haze, cinematic lighting, premium dark anime RPG key art. `
     + `Vertical 2:3, single character, no text, no UI, no logos, no watermark, safe for work.`
@@ -59,9 +66,9 @@ export async function shrinkImage(blob: Blob, maxSide = 768): Promise<Blob> {
   } finally { bmp.close() }
 }
 
-export async function generateAvatar(cfg: AiConfig, photo: Blob, params: AvatarParams, tier: Tier, name: string, shrink = shrinkImage): Promise<Blob> {
+export async function generateAvatar(cfg: AiConfig, photo: Blob, hero: HeroInfo, tier: Tier, shrink = shrinkImage): Promise<Blob> {
   const small = await shrink(photo, 1024).catch(() => { throw new PhotoError('photo') })
-  const raw = await generateImage(cfg, small, avatarPrompt(params, tier, name))
+  const raw = await generateImage(cfg, small, avatarPrompt(hero, tier))
   return shrink(raw, ART_SIDE)
 }
 
