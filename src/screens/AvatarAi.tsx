@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Camera, Image as ImageIcon } from 'lucide-react'
-import { generateAvatar, PHOTO_ERROR_TEXT, PhotoError } from '../ai/avatar'
+import { generateAvatar, imageNameFor, PHOTO_ERROR_TEXT, PhotoError } from '../ai/avatar'
 import { getAiConfig, PROVIDER_NAMES, type AiConfig } from '../ai/config'
 import { aiErrorText } from '../ai/providers'
 import { saveBlob, useBlobUrl } from '../blobs'
 import type { GameState } from '../domain/types'
 import { useWrite } from '../ui/useWrite'
-
-const TIERS = [1, 2, 3, 4] as const
 
 export type Go = (tab: 'Герой' | 'Настройки', id: string) => void
 
@@ -22,15 +20,9 @@ export function PhotoCta({ go }: { go: Go }) {
   )
 }
 
-function Slot({ tier, name }: { tier: number; name: string | undefined }) {
-  const url = useBlobUrl(name ?? null)
-  return (
-    <figure>
-      {url ? <img src={url} alt={`Персонаж тира ${tier}`} style={{ width: '100%', aspectRatio: '2 / 3', objectFit: 'cover', borderRadius: 8 }} />
-        : <div className="muted" style={{ width: '100%', aspectRatio: '2 / 3', display: 'grid', placeItems: 'center', border: '1px dashed var(--line)', borderRadius: 8 }}>—</div>}
-      <figcaption className="muted center">Тир {tier}</figcaption>
-    </figure>
-  )
+function Current({ name }: { name: string | null }) {
+  const url = useBlobUrl(name)
+  return url ? <div className="center"><img src={url} alt="Твой персонаж" style={{ width: 200, aspectRatio: '2 / 3', objectFit: 'cover', borderRadius: 12 }} /></div> : null
 }
 
 /** Арт героя: любое загруженное фото сразу превращается ИИ в аниме-персонажа и ставится героем. */
@@ -60,13 +52,11 @@ export default function AvatarAi({ state }: { state: GameState }) {
     } catch (e) { if (alive.current) setErr(e instanceof PhotoError ? PHOTO_ERROR_TEXT : aiErrorText(e)) }
     if (alive.current) setBusy(false)
   }
-  const saved = TIERS.filter(t => state.avatarImages[t])
-  const newTier = saved.length > 0 && Math.max(...saved) < state.tier
 
   return (
     <section className="panel stack" aria-label="Арт героя">
       <h2><ImageIcon size={18} aria-hidden="true" /> Арт героя</h2>
-      {newTier && <p role="status">Новый тир! Загрузи фото, чтобы обновить персонажа</p>}
+      <Current name={imageNameFor(state.avatarImages, state.tier)} />
       {ai ? <>
         <label className="btn primary big" style={{ cursor: busy ? 'default' : 'pointer' }} aria-disabled={busy}>
           <Camera size={18} aria-hidden="true" />{busy ? 'Создаю персонажа…' : 'Загрузите фотографию, чтобы сделать своего персонажа'}
@@ -78,7 +68,6 @@ export default function AvatarAi({ state }: { state: GameState }) {
       {err && <p role="alert">{err}</p>}
       {err && photo && !busy && <button className="btn big" onClick={() => void run(photo)}>Попробовать ещё раз</button>}
       {msg && <p role={msg.ok ? 'status' : 'alert'} className="center">{msg.text}</p>}
-      <div className="tier-slots">{TIERS.map(t => <Slot key={t} tier={t} name={state.avatarImages[t]} />)}</div>
     </section>
   )
 }
