@@ -1,5 +1,8 @@
-import { useState, type ReactNode } from 'react'
-import { X, Plus } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Camera, X, Plus } from 'lucide-react'
+import { generateAvatar } from '../ai/avatar'
+import { getAiConfig } from '../ai/config'
+import { saveBlob } from '../blobs'
 import { StatIcon } from '../ui/icons'
 import { appendEvent } from '../db'
 import { classNameOf } from '../domain/classes'
@@ -57,7 +60,49 @@ function Chips({ options, picked, label, onToggle }: { options: string[][]; pick
   )
 }
 
+type Art = { status: 'idle' | 'busy' | 'done' | 'fail'; url?: string }
+
+/** Рисует персонажа по фото в фоне; готовую картинку сохраняет как образ тира 1, когда анкета завершена. */
+function useHeroArt() {
+  const [art, setArt] = useState<Art>({ status: 'idle' })
+  const job = useRef<Promise<Blob | null>>(Promise.resolve(null))
+  useEffect(() => () => { if (art.url) URL.revokeObjectURL(art.url) }, [art.url])
+  const start = (photo: File) => {
+    setArt({ status: 'busy' })
+    job.current = getAiConfig()
+      .then(cfg => generateAvatar(cfg!, photo, { className: 'Странник' }, 1))
+      .then(b => { setArt({ status: 'done', url: URL.createObjectURL(b) }); return b }, () => { setArt({ status: 'fail' }); return null })
+  }
+  // после onboarding_completed экран размонтируется, но обещание доживёт и сохранит картинку
+  const saveWhenReady = () => void job.current.then(async b => {
+    if (!b) return
+    const name = `avatar-t1-${Array.from(crypto.getRandomValues(new Uint8Array(4)), x => x.toString(16).padStart(2, '0')).join('')}`
+    await saveBlob(name, b)
+    await appendEvent({ type: 'avatar_image', tier: 1, blob: name })
+  }).catch(() => {})
+  return { art, start, saveWhenReady }
+}
+
+function PhotoIntro({ onPhoto, onSkip }: { onPhoto: (f: File) => void; onSkip: () => void }) {
+  return (
+    <div className="onb">
+      <div className="onb-body onb-photo">
+        <h2>Стань героем своей игры</h2>
+        <p>Загрузи фото — ИИ нарисует тебя аниме-персонажем. Пока он рисует, ответь на пару вопросов о себе.</p>
+        <label className="btn primary big" style={{ cursor: 'pointer' }}>
+          <Camera size={20} aria-hidden="true" />Загрузить фото и создать персонажа
+          <input type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onPhoto(f) }} />
+        </label>
+        <small className="muted">Фото уходит в Google Gemini только для рисунка и нигде не хранится.</small>
+      </div>
+      <div className="onb-nav"><button type="button" className="ghost" onClick={onSkip}>Позже</button></div>
+    </div>
+  )
+}
+
 export default function Onboarding() {
+  const { art, start, saveWhenReady } = useHeroArt()
+  const [intro, setIntro] = useState(true)
   const [step, setStep] = useState(1)
   const [d, setD] = useState<Draft>(initial)
   const [err, setErr] = useState<string | null>(null)
@@ -92,6 +137,7 @@ export default function Onboarding() {
     setSaving(true)
     try {
       await appendEvent({ type: 'onboarding_completed', profile })
+      saveWhenReady()
     } catch {
       setSaving(false)
       setErr('Не удалось сохранить, попробуй ещё раз')
@@ -232,6 +278,9 @@ export default function Onboarding() {
     default:
       body = (<>
         <h2>{profile.name}</h2>
+        {art.status === 'done' && <img className="onb-art" src={art.url} alt="Твой персонаж" />}
+        {art.status === 'busy' && <p role="status" className="muted">Персонаж ещё рисуется — появится на главном экране, как будет готов.</p>}
+        {art.status === 'fail' && <p className="muted">Персонажа нарисовать не вышло — попробуй ещё раз в «Профиль» → «Арт героя».</p>}
         <div className="hero">
           <div className="cls">{cls}</div>
           <div>Уровень 1</div>
@@ -246,8 +295,10 @@ export default function Onboarding() {
       </>)
   }
 
+  if (intro) return <PhotoIntro onPhoto={f => { start(f); setIntro(false) }} onSkip={() => setIntro(false)} />
   return (
     <div className="onb">
+      {art.status === 'busy' && <small className="onb-art-busy" role="status">Рисую персонажа…</small>}
       <div className="progress" role="progressbar" aria-label="Прогресс" aria-valuemin={1} aria-valuemax={TOTAL} aria-valuenow={step}><i style={{ width: `${(step / TOTAL) * 100}%` }} /></div>
       <div className="onb-body">
         <small className="step">Шаг {step} из {TOTAL}</small>
