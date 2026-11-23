@@ -19,6 +19,7 @@ const sdk = vi.hoisted(() => {
 })
 vi.mock('@anthropic-ai/sdk', () => ({ default: sdk.Anthropic }))
 
+import { DEFAULT_SYNC_URL } from '../sync'
 import { AiError, aiErrorText, extractJson, generateImage, generateJson, listModels } from './providers'
 import { getAiConfig, saveAiConfig, clearAiConfig, type AiConfig } from './config'
 import { db, setSetting } from '../db'
@@ -129,18 +130,28 @@ test('claude', async () => {
 })
 
 test('config', async () => {
-  expect(await getAiConfig()).toBeNull()
   await saveAiConfig(gem)
   expect(await getAiConfig()).toEqual(gem)
   expect(await (await exportData()).text()).not.toContain('"K"')
   await setSetting('aiTextModel', '')
-  expect(await getAiConfig()).toBeNull()
+  expect((await getAiConfig())!.via).toBeDefined()   // неполный свой ключ — встроенный ИИ
   await clearAiConfig()
-  expect(await db.settings.count()).toBe(0)
+  expect(await db.settings.get('aiProvider')).toBeUndefined()
 })
 
-test('встроенный ИИ: без своего ключа идёт через сервер синхронизации', async () => {
-  expect(await getAiConfig()).toBeNull()
+test('встроенный ИИ без настроек: анонимно по id устройства, id постоянный', async () => {
+  const a = (await getAiConfig())!
+  expect(a.via).toMatchObject({ url: DEFAULT_SYNC_URL, token: '', device: expect.stringMatching(/^[0-9a-f-]{36}$/) })
+  expect((await getAiConfig())!.via!.device).toBe(a.via!.device)
+  const f = vi.fn(async () => json({ candidates: [{ content: { parts: [{ text: '{"x":1}' }] } }] }))
+  vi.stubGlobal('fetch', f)
+  await generateJson(a, 's', 'u', {})
+  const [, init] = f.mock.calls[0] as unknown as [string, RequestInit]
+  expect(init.headers).toMatchObject({ 'x-device': a.via!.device })
+  expect(JSON.stringify(init.headers)).not.toContain('authorization')
+})
+
+test('встроенный ИИ: с синхронизацией идёт по токену', async () => {
   await setSetting('syncUrl', 'https://s.example/'); await setSetting('syncToken', 'T')
   const cfg = (await getAiConfig())!
   expect(cfg).toMatchObject({ provider: 'gemini', key: '', via: { url: 'https://s.example/', token: 'T' } })

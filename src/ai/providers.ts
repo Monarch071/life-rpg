@@ -54,7 +54,7 @@ async function http(url: string, init: RequestInit, ms: number): Promise<any> {
 const gHeaders = (key: string) => ({ 'x-goog-api-key': key, 'content-type': 'application/json' })
 /** Адрес и заголовки generateContent: напрямую в Gemini или через свой сервер (встроенный ИИ). */
 const gemini = (cfg: AiConfig, kind: 'text' | 'image'): [string, Record<string, string>] => cfg.via
-  ? [`${cfg.via.url.replace(/\/+$/, '')}/ai/${kind}`, { authorization: `Bearer ${cfg.via.token}`, 'content-type': 'application/json' }]
+  ? [`${cfg.via.url.replace(/\/+$/, '')}/ai/${kind}`, { ...(cfg.via.token ? { authorization: `Bearer ${cfg.via.token}` } : { 'x-device': cfg.via.device ?? '' }), 'content-type': 'application/json' }]
   : [`${GEMINI}/models/${kind === 'text' ? cfg.textModel : cfg.imageModel}:generateContent`, gHeaders(cfg.key)]
 const oHeaders = (key: string) => ({ authorization: `Bearer ${key}` })
 

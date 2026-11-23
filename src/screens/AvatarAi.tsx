@@ -63,7 +63,7 @@ export default function AvatarAi({ state }: { state: GameState }) {
           <input type="file" accept="image/*" hidden disabled={busy} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void run(f) }} />
         </label>
         <small className="muted">Фото уходит в {PROVIDER_NAMES[ai.provider]} только для рисунка и нигде не хранится. Персонаж учитывает твой класс и результаты анкеты.</small>
-      </> : <p className="muted">Чтобы ИИ нарисовал персонажа по фото, включи синхронизацию или подключи Gemini/OpenAI в настройках.</p>}
+      </> : <p className="muted">ИИ сейчас недоступен, попробуй позже.</p>}
       {busy && <p role="status">Рисую персонажа… это может занять до 2–3 минут</p>}
       {err && <p role="alert">{err}</p>}
       {err && photo && !busy && <button className="btn big" onClick={() => void run(photo)}>Попробовать ещё раз</button>}

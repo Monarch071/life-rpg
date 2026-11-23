@@ -3,7 +3,8 @@
 import type { Store } from './store'
 
 const GEMINI = 'https://generativelanguage.googleapis.com/v1beta'
-export const AI_LIMITS = { text: 300, image: 15 } as const   // запросов в сутки (UTC) на сервер
+export const AI_LIMITS = { text: 300, image: 15 } as const   // запросов в сутки (UTC) на сервер — потолок расходов
+export const AI_DEVICE_LIMITS = { text: 40, image: 3 } as const   // на одно анонимное устройство
 export const AI_BODY_MAX = 4 * 1024 * 1024
 export type AiKind = keyof typeof AI_LIMITS
 const MODELS_TTL = 24 * 3600_000
@@ -50,14 +51,15 @@ async function models(store: Store, key: string, now: number, f: typeof fetch): 
 }
 
 /** POST /ai/text и /ai/image: лимит в сутки, затем проксирование в Gemini. */
-export async function aiProxy(kind: AiKind, body: string, store: Store, env: { GEMINI_KEY?: string; AI_TEXT_MODEL?: string; AI_IMAGE_MODEL?: string }, now: number, f: typeof fetch = fetch): Promise<{ status: number; body: string }> {
+export async function aiProxy(kind: AiKind, body: string, store: Store, env: { GEMINI_KEY?: string; AI_TEXT_MODEL?: string; AI_IMAGE_MODEL?: string }, now: number, f: typeof fetch = fetch, device: string | null = null): Promise<{ status: number; body: string }> {
   if (!env.GEMINI_KEY) throw new AiHttpError(503, 'ИИ на сервере не настроен')
   try { if (typeof JSON.parse(body) !== 'object') throw 0 } catch { throw new AiHttpError(400, 'Некорректный JSON') }
   const env1 = kind === 'text' ? env.AI_TEXT_MODEL : env.AI_IMAGE_MODEL
   const list = env1 ? [env1] : (await models(store, env.GEMINI_KEY, now, f))[kind]
   if (!list.length) throw new AiHttpError(503, 'Нет подходящей модели ИИ')
   const day = new Date(now).toISOString().slice(0, 10)
-  if (await store.bump(`ai_${kind}_${day}`) > AI_LIMITS[kind]) throw new AiHttpError(429, 'Дневной лимит ИИ исчерпан')
+  if (device && await store.bump(`ai_${kind}_${day}_${device}`) > AI_DEVICE_LIMITS[kind]) throw new AiHttpError(429, kind === 'image' ? 'На сегодня персонажей хватит — попробуй завтра' : 'Дневной лимит ИИ исчерпан, попробуй завтра')
+  if (await store.bump(`ai_${kind}_${day}`) > AI_LIMITS[kind]) throw new AiHttpError(429, 'Дневной лимит ИИ исчерпан, попробуй завтра')
   let r: Response | null = null, picked = list[0]
   for (const m of list) {   // перегружена или снята — пробуем следующую
     picked = m

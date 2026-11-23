@@ -16,7 +16,6 @@ import { DEFAULT_DAY_TYPES, validDayType, type DayType } from '../domain/dayType
 import { STATS } from '../domain/stats'
 import type { GameState } from '../domain/types'
 import type { SyncState } from '../useSync'
-import AiPanel from './AiPanel'
 import NotifyPanel from './NotifyPanel'
 import SyncPanel from './SyncPanel'
 
@@ -81,7 +80,6 @@ export default function Settings({ state, sync }: { state: GameState; sync: Sync
       <SeasonTheme state={state} />
       <Currency />
       <div id="sync-panel"><SyncPanel state={state} sync={sync} /></div>
-      <div id="ai-panel"><AiPanel /></div>
       <NotifyPanel sync={sync} />
       <p className="muted center">Версия {__APP_VERSION__}</p>
       {file && <Confirm onYes={doImport} onNo={reset} />}

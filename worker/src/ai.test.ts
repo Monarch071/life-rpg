@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AI_LIMITS, pickModels } from './ai'
+import { AI_DEVICE_LIMITS, AI_LIMITS, pickModels } from './ai'
 import { handle } from './index'
 import { MemoryStore } from './memoryStore'
 
@@ -27,10 +27,12 @@ async function setup(env: { GEMINI_KEY?: string; busy?: string } = { GEMINI_KEY:
     if (env.busy && url.includes(`/models/${env.busy}:`)) return new Response('{"error":{"message":"high demand"}}', { status: 503 })
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"a":1}' }] } }] }))
   }) as typeof fetch
-  const post = (path: string, token = TOKEN) => handle(new Request('http://x' + path, {
-    method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ contents: [] }),
+  const req = (path: string, headers: Record<string, string>) => handle(new Request('http://x' + path, {
+    method: 'POST', headers, body: JSON.stringify({ contents: [] }),
   }), store, [], undefined, Date.UTC(2026, 10, 23), f, env)
-  return { store, calls, post }
+  const post = (path: string, token = TOKEN) => req(path, { authorization: `Bearer ${token}` })
+  const anon = (path: string, device: string) => req(path, { 'x-device': device })
+  return { store, calls, post, anon }
 }
 
 describe('POST /ai/*', () => {
@@ -59,7 +61,15 @@ describe('POST /ai/*', () => {
     for (let i = 0; i < AI_LIMITS.image; i++) expect((await post('/ai/image')).status).toBe(200)
     const r = await post('/ai/image')
     expect(r.status).toBe(429)
-    expect(await r.json()).toEqual({ ok: false, error: 'Дневной лимит ИИ исчерпан' })
+    expect(await r.json()).toEqual({ ok: false, error: 'Дневной лимит ИИ исчерпан, попробуй завтра' })
     expect((await post('/ai/text')).status).toBe(200)
+  })
+  it('анонимное устройство: без id 401, свой лимит на устройство', async () => {
+    const { anon } = await setup()
+    expect((await anon('/ai/text', 'short')).status).toBe(401)
+    const d1 = 'd'.repeat(32), d2 = 'e'.repeat(32)
+    for (let i = 0; i < AI_DEVICE_LIMITS.image; i++) expect((await anon('/ai/image', d1)).status).toBe(200)
+    expect((await anon('/ai/image', d1)).status).toBe(429)
+    expect((await anon('/ai/image', d2)).status).toBe(200)
   })
 })

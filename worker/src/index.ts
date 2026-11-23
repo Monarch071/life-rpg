@@ -59,6 +59,7 @@ async function readJson(req: Request, max: number): Promise<any> {
   try { return JSON.parse(text) } catch { throw new HttpError(400, 'Некорректный JSON') }
 }
 
+const DEVICE_ID = /^[A-Za-z0-9-]{16,64}$/
 const isTokenString = (t: unknown): t is string => typeof t === 'string' && t.length >= 32 && t.length <= 200
 
 async function authorize(req: Request, store: Store): Promise<void> {
@@ -74,11 +75,13 @@ async function route(req: Request, store: Store, vapid: Vapid | undefined, now: 
   const key = `${req.method} ${url.pathname}`
 
   if (key === 'POST /ai/text' || key === 'POST /ai/image') {
-    await authorize(req, store)
+    // владелец — по токену; любое другое устройство — анонимно по x-device с суточным лимитом на устройство
+    const device = req.headers.get('authorization') ? (await authorize(req, store), null) : req.headers.get('x-device') ?? ''
+    if (device !== null && !DEVICE_ID.test(device)) throw new HttpError(401, 'Нет идентификатора устройства')
     const text = await req.text()
     if (new TextEncoder().encode(text).length > AI_BODY_MAX) throw new HttpError(413, 'Слишком большой запрос')
     try {
-      const r = await aiProxy(key === 'POST /ai/text' ? 'text' : 'image', text, store, ai, now, fetcher)
+      const r = await aiProxy(key === 'POST /ai/text' ? 'text' : 'image', text, store, ai, now, fetcher, device)
       return { status: r.status, body: JSON.parse(r.body) }
     } catch (e) {
       if (e instanceof AiHttpError) throw new HttpError(e.status, e.message)
@@ -203,7 +206,7 @@ export async function handle(req: Request, store: Store, allowedOrigins: string[
     Object.assign(headers, {
       'access-control-allow-origin': origin,
       vary: 'Origin',
-      'access-control-allow-headers': 'authorization, content-type',
+      'access-control-allow-headers': 'authorization, content-type, x-device',
       'access-control-allow-methods': 'GET, POST, PUT, OPTIONS',
     })
   }
